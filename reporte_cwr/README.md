@@ -1,6 +1,6 @@
 # Reporte CWR por territorio
 
-Versión vigente: **v4** (`reporte_cwr_x_territorio_v4.sql`). La v3 se conserva como referencia.
+Versión vigente: **v5** (`reporte_cwr_x_territorio_v5.sql`). La v3 y la v4 se conservan como referencia.
 Estado: v4 ejecutada (`resultados/resultado_v4.json`, 380 filas = 76 obras x 5 paises). Ver "Resultado de la v4".
 
 ## Qué agrega la v4 sobre la v3
@@ -60,12 +60,40 @@ arbitraria. Ahora desempata prefiriendo la fila con exclusiones (más conservado
   6686578 Your Love Diplo Remix (2024), 7710563 Velocidade (2026-06-30). La columna `estado_contrato` las marca
   `TODOS VENCIDOS`; la query no las pasa a NVFT.
 
-## Caso abierto: Baba O'Riley (2701309)
-Archivos en `casos/baba_oriley/` (resultado v4, export del front, `diagnostico.sql`).
-- Front: grupo "All Other Contractual Territories", contrato 1525818 (Westminster, ex. Philippines),
-  control Yes. Esperado en AR/CL/CO/PE/UY: Mecanico 100 / Performance 50 / Sync 100 (salvo exclusiones de pais).
-- v4: NVFT en los 5 paises. El grupo se eligio bien; el contrato 1525818 se evaluo como "pais no incluido",
-  sin alerta de texto faltante o prestado. O sea que el texto de `contract_territories` para esta obra y
-  contrato no dice World ni nombra a Argentina, y no coincide con lo que muestra el front.
-- Causa pendiente de confirmar con `diagnostico.sql` (3 consultas). La v4 ahora trae la columna
-  `texto_territorio_contratos` con el texto exacto que uso para cada contrato.
+## Caso Baba O'Riley (2701309): resuelto en la v5
+Archivos en `casos/baba_oriley/` (resultado v4, export del front, diagnóstico y sus tres resultados).
+
+**Qué pasaba.** La v3/v4 exigían que el contrato de la columna "Associated Contract" de la participación cubriera el
+país. Aquí ese contrato es el 1525818 (Westminster, texto Asia: China, Hong Kong… Tailandia; idéntico en las 191 obras
+que lo usan), así que daba NVFT. El control real de la obra está en otras líneas de control que existen en
+`contract_territories` pero no aparecen en las participaciones de `song_share_detail_mv`:
+
+| Contrato | Texto | Cubre AR/CL/CO/PE/UY |
+|---|---|---|
+| 1551025 ABKCO Music International Limited | World menos una lista larga (ninguno de los 5 excluido) | Sí |
+| 1146885 Westminster Admin Gen (2000) | Lista explícita con los 5 países | Sí |
+| 1525818 Westminster (ex. Philippines) | Asia | No |
+| 1551999 ABKCO (Mexico & Philippines Only) | Indonesia, Malasia, México, Filipinas | No |
+
+**Regla nueva (v5).** El grupo "All (Other) Contractual Territories" significa "los demás territorios contratados".
+Un país está controlado si el grupo IP que le corresponde es de SMP **y** alguna línea de control de la obra lo cubre.
+Resultado esperado y obtenido con los datos del caso: Mecánico 100 / Performance 50 / Sync 100 en los 5 países, igual
+que el front. Las filas donde el contrato asociado no cubre pero otra línea sí llevan la alerta
+`CONTROL SOSTENIDO POR OTRA LINEA DE CONTROL`.
+
+**Otros cambios de la v5**
+- `estado_contrato` y los vencimientos se calculan sobre las líneas que cubren el país. Se corrigió un error: una línea
+  sin vencimiento mezclada con una vencida daba `TODOS VENCIDOS`.
+- Columnas nuevas: `lineas_de_control_obra`, `lineas_que_cubren_el_pais`; `texto_territorio_contratos` ahora lista
+  todas las líneas con su texto.
+
+## Pruebas
+`python3 reporte_cwr/tests/test_v5.py` ejecuta la v5 en DuckDB (la query se transpila de Redshift con `sqlglot`) con 39
+chequeos: el caso real 2701309, Ella Dijo, Sin Sentimientos, Te Encontre, obra ausente, vencimientos, regiones,
+acentos y `(REG)`, empates de grupos, publishers múltiples y filas duplicadas. Sirve para validar la lógica; no
+reemplaza correr la query en Redshift. Contra la v3 el mismo caso real da NVFT, como en producción.
+
+## Pendiente
+- Correr la v5 en Redshift y mirar las filas con la alerta `CONTROL SOSTENIDO POR OTRA LINEA DE CONTROL`: son las
+  que cambian respecto de la v4 (se espera que pase de NVFT a un porcentaje).
+- Decisión sobre contratos vencidos (ver arriba).

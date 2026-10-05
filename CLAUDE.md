@@ -29,6 +29,16 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   - Los overrides de la obra ya están aplicados en el texto (ganan sobre el contrato).
 - Porcentajes de control por obra: `publisher_*_pc` filtrando `smp_controlled_ind='Y'`, un solo grupo IP por país
   (el que nombra al país; si no, región; si no, mundial).
+- **Territorio de control = líneas de control de la obra**, no el "Associated Contract" de la participación.
+  `contract_territories` trae una fila por línea de control (contrato con rate client activo) y puede incluir
+  contratos que `song_share_detail_mv` no menciona. El grupo IP "All (Other) Contractual Territories" significa
+  "los demás territorios contratados". Un país está controlado si el grupo IP aplicable es de SMP y **alguna** línea de
+  control de la obra lo cubre. Caso de referencia: Baba O'Riley 2701309 (`reporte_cwr/casos/baba_oriley/`).
+- Un contrato puede tener texto de territorio distinto al que sugiere su nombre (1525818 "ex. Philippines" = Asia).
+  Confiar en `contract_territories`, no en el nombre.
+- `MIN/MAX` de vencimientos ignoran NULL: contar líneas sin vencimiento por separado antes de decir "todos vencidos".
 
 ## Queries existentes
-- `reporte_cwr/reporte_cwr_x_territorio_v4.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO). Ver `reporte_cwr/README.md`.
+- `reporte_cwr/reporte_cwr_x_territorio_v5.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO). Ver `reporte_cwr/README.md`.
+  Antes de entregar un cambio: `python3 reporte_cwr/tests/test_v5.py` (DuckDB + sqlglot, necesita `pip install duckdb sqlglot`).
+  Agregar a ese test un caso por cada conflicto nuevo que aparezca con el front.
