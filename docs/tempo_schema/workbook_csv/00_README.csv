@@ -1,0 +1,9 @@
+x,Value
+Workbook purpose,Consolidated enterprise metadata catalog for all self-service subject areas.
+Current status,Documented 7 Subject Areas. Flagged rows in each tab that need further review
+Definition approach,SQL-derived technical metadata plus business definitions inferred data itself. Candidate keys and unresolved definitions remain explicitly marked.
+How to use,Green rows/fields are validated; orange fields require SME or governance review. Maintain stable IDs and use the Change Log for updates.
+Version,10.0 fully restored
+Last update date,2026-08-24 00:00:00
+Created By,Miguel Colmenares
+Last Updated By,Miguel Colmenares

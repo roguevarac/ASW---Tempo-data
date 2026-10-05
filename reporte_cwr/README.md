@@ -1,6 +1,13 @@
-# Reporte CWR por territorio (v3)
+# Reporte CWR por territorio
 
-Estado: query v3 y control previo ejecutado. **Falta correr la v3 y validar los tres casos conocidos.**
+Versión vigente: **v4** (`reporte_cwr_x_territorio_v4.sql`). La v3 se conserva como referencia.
+Estado: control previo ejecutado. **Falta correr la v4 y validar los tres casos conocidos.**
+
+## Qué agrega la v4 sobre la v3
+- Obra ausente de `song_share_detail_mv` (caso 7525701) sale como `SIN DATOS`, no `NVFT`, con alerta.
+- Alerta si algún total supera 100 (posible doble conteo en la cadena de publishers).
+- Alerta de contrato sin texto de territorio, con la causa real (sin rate client o payment option activo).
+- Consulta C en `control_previo_v3.sql` para investigar por qué falta esa obra.
 
 ## Contexto
 El usuario no tiene permiso de lectura sobre el esquema `edw` (v2 descartada).

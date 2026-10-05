@@ -46,3 +46,20 @@ WHERE ct.contract_id IN (
       )
 )
 ORDER BY ct.contract_id;
+
+
+-- C) Por qué falta la obra 7525701 en song_share_detail_mv.
+--    La MV solo incluye obras tipo 1, secuencia 0, con writer cuya sociedad
+--    mecánica y de ejecución estén cargadas, y con grupo de país. Esta consulta
+--    muestra qué tiene la obra en song_v (secuencias, tipo, writers, NOP).
+SELECT
+    song_id,
+    song_sequence_id,
+    song_title_tx,
+    song_type_nm,
+    song_not_ours_dt,
+    orig_office_nm,
+    tempo_create_date
+FROM dp_song_metadata.song_v
+WHERE song_id = 7525701
+ORDER BY song_sequence_id;
