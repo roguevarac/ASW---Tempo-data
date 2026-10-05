@@ -39,7 +39,7 @@ WITH
 -- ---------------------------------------------------------------------
 -- Obras a analizar: se leen de la tabla public.rankingdigital_song_id.
 -- Para cambiar las obras se carga/actualiza esa tabla; la query no se toca.
--- Si la columna de la tabla no se llama song_id, cambiar el nombre SOLO acá.
+-- La tabla tiene una columna song_id (se carga con INSERT INTO public.rankingdigital_song_id (song_id) SELECT ...).
 ids AS (
     SELECT DISTINCT CAST(t.song_id AS BIGINT) AS song_id
     FROM public.rankingdigital_song_id t
