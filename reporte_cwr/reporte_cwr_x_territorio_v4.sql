@@ -504,6 +504,34 @@ contratos_listados AS (
     FROM contratos_por_pais
     GROUP BY song_id, pais
 ),
+-- Texto de territorio tal como lo guarda contract_territories (recortado), para auditar
+-- diferencias contra lo que muestra el front.
+texto_auditoria AS (
+    SELECT
+        d.song_id,
+        d.pais,
+        LISTAGG(DISTINCT
+            CAST(d.associated_contract_id AS VARCHAR(20)) || ' -> ' || COALESCE(tr.fuente_texto, '-')
+            || ' | INC: ' || SUBSTRING(COALESCE(tx.inclusions, '(vacio)'), 1, 120)
+            || ' | EXC: ' || SUBSTRING(COALESCE(tx.exclusions, '(vacio)'), 1, 160)
+            || ' | cubre=' || CAST(d.cubre AS VARCHAR(1)),
+            ' || ') WITHIN GROUP (ORDER BY CAST(d.associated_contract_id AS VARCHAR(20)) || ' -> ' || COALESCE(tr.fuente_texto, '-')
+            || ' | INC: ' || SUBSTRING(COALESCE(tx.inclusions, '(vacio)'), 1, 120)
+            || ' | EXC: ' || SUBSTRING(COALESCE(tx.exclusions, '(vacio)'), 1, 160)
+            || ' | cubre=' || CAST(d.cubre AS VARCHAR(1))) AS texto_territorio_contratos
+    FROM detalle_pre d
+    LEFT JOIN texto_contrato_raw tr ON tr.song_id = d.song_id AND tr.contract_id = d.associated_contract_id
+    LEFT JOIN (
+        SELECT song_id, contract_id, inclusions, exclusions FROM ct_par
+        UNION ALL
+        SELECT cs.song_id, cc.contract_id, cc.inclusions, cc.exclusions
+        FROM contratos_scope cs
+        JOIN ct_contrato cc ON cc.contract_id = cs.contract_id
+        WHERE NOT EXISTS (SELECT 1 FROM ct_par p WHERE p.song_id = cs.song_id AND p.contract_id = cs.contract_id)
+    ) tx ON tx.song_id = d.song_id AND tx.contract_id = d.associated_contract_id
+    WHERE d.associated_contract_id IS NOT NULL
+    GROUP BY d.song_id, d.pais
+),
 reglas_por_pais AS (
     SELECT DISTINCT song_id, pais, regla FROM detalle_pre
 ),
@@ -584,6 +612,7 @@ SELECT
     END                                               AS como_se_eligio_grupo,
     COALESCE(rl.regla_territorial, '—')               AS regla_territorial,
     gl.grupos_ip_de_la_obra,
+    ta.texto_territorio_contratos,
     NULLIF(
         CASE WHEN ge.n_empate > 1 THEN 'VARIOS GRUPOS CON LA MISMA PRIORIDAD; ' ELSE '' END
         || CASE WHEN t.hay_sin_contrato = 1 THEN 'PARTICIPACION SIN CONTRATO; ' ELSE '' END
@@ -606,4 +635,5 @@ LEFT JOIN contratos_obra co      ON co.song_id = sc.song_id
 LEFT JOIN oficinas_obra oo       ON oo.song_id = sc.song_id
 LEFT JOIN grupos_listados gl     ON gl.song_id = sc.song_id
 LEFT JOIN alertas_pais ap        ON ap.song_id = sc.song_id AND ap.pais = sc.pais
+LEFT JOIN texto_auditoria ta      ON ta.song_id = sc.song_id AND ta.pais = sc.pais
 ORDER BY sc.song_id, sc.pais;

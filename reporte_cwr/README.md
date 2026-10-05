@@ -59,3 +59,13 @@ arbitraria. Ahora desempata prefiriendo la fila con exclusiones (más conservado
   191014 Take On Me (1988), 1303178 Titanium (2016), 4273597 To My Love (2020), 4555478 That's What I Like (2021),
   6686578 Your Love Diplo Remix (2024), 7710563 Velocidade (2026-06-30). La columna `estado_contrato` las marca
   `TODOS VENCIDOS`; la query no las pasa a NVFT.
+
+## Caso abierto: Baba O'Riley (2701309)
+Archivos en `casos/baba_oriley/` (resultado v4, export del front, `diagnostico.sql`).
+- Front: grupo "All Other Contractual Territories", contrato 1525818 (Westminster, ex. Philippines),
+  control Yes. Esperado en AR/CL/CO/PE/UY: Mecanico 100 / Performance 50 / Sync 100 (salvo exclusiones de pais).
+- v4: NVFT en los 5 paises. El grupo se eligio bien; el contrato 1525818 se evaluo como "pais no incluido",
+  sin alerta de texto faltante o prestado. O sea que el texto de `contract_territories` para esta obra y
+  contrato no dice World ni nombra a Argentina, y no coincide con lo que muestra el front.
+- Causa pendiente de confirmar con `diagnostico.sql` (3 consultas). La v4 ahora trae la columna
+  `texto_territorio_contratos` con el texto exacto que uso para cada contrato.
