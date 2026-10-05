@@ -4,8 +4,8 @@ Redshift no es DuckDB: el SQL se transpila con sqlglot (redshift -> duckdb).
 Sirve para verificar la LOGICA (grupos, territorios, vencimientos), no el rendimiento
 ni los detalles de Redshift. Los datos del caso 2701309 son los reales del diagnostico.
 
-Corre los chequeos sobre la version vigente (v6, script con tablas temporales) y
-verifica que de EXACTAMENTE el mismo resultado que la v5 (una sola sentencia).
+Corre los chequeos sobre la version vigente (v7, una sola sentencia optimizada) y verifica
+que v7 y v6 den EXACTAMENTE el mismo resultado que la v5.
 
 Uso:  python3 reporte_cwr/tests/test_reporte.py
 """
@@ -17,8 +17,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 def _duck(stmt_sql):
     duck = sqlglot.transpile(stmt_sql, read="redshift", write="duckdb")[0]
     # DuckDB devuelve HUGEINT en REGEXP_INSTR; Redshift no necesita este ajuste.
-    duck = duck.replace("SUBSTRING(tok, 1, pos_excl)", "SUBSTRING(tok, 1, CAST(pos_excl AS BIGINT))")
-    duck = duck.replace("SUBSTRING(tok, pos_excl)", "SUBSTRING(tok, CAST(pos_excl AS BIGINT))")
+    duck = re.sub(r"SUBSTRING\(([\w.]+), 1, ([\w.]*pos_excl)\)", r"SUBSTRING(\1, 1, CAST(\2 AS BIGINT))", duck)
+    duck = re.sub(r"SUBSTRING\(([\w.]+), ([\w.]*pos_excl)\)", r"SUBSTRING(\1, CAST(\2 AS BIGINT))", duck)
     return duck
 
 def run_file(con, name, ids):
@@ -26,6 +26,7 @@ def run_file(con, name, ids):
     text = (ROOT / name).read_text(encoding="utf-8")
     text = re.sub(r"song_id IN \(\s*[\d,\s]+\)", "song_id IN (%s)" % ",".join(map(str, ids)), text, count=1)
     text = re.sub(r"INSERT INTO cwr_ids VALUES [^;]+;", "INSERT INTO cwr_ids VALUES %s;" % ",".join(f"({i})" for i in ids), text, count=1)
+    text = re.sub(r"REGEXP_REPLACE\('\s*[\d,\s]+'", "REGEXP_REPLACE('%s'" % ",".join(map(str, ids)), text, count=1)
     cur = None
     for stmt in sqlglot.parse(text, read="redshift"):
         if stmt is None:
@@ -150,7 +151,8 @@ con.executemany("insert into dp_deal_metadata.contract_v values (?,?,?,?)", list
 
 ids = [s[0] for s in songs]
 rows_v5 = run_file(con, "reporte_cwr_x_territorio_v5.sql", ids)
-rows = run_file(con, "reporte_cwr_x_territorio_v6.sql", ids)
+rows_v6 = run_file(con, "reporte_cwr_x_territorio_v6.sql", ids)
+rows = run_file(con, "reporte_cwr_x_territorio_v7.sql", ids)
 R = {(r["song_id"], r["pais"]): r for r in rows}
 
 fails = []
@@ -201,8 +203,17 @@ check("Grupo que nombra al pais sin linea que lo cubra = NVFT", trio(1800, "ARGE
 
 key = lambda r: (r["song_id"], r["pais"])
 norm = lambda rs: [tuple(sorted(r.items())) for r in sorted(rs, key=key)]
-check("v6 da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows) == norm(rows_v5),
-      [ (a, b) for a, b in zip(norm(rows), norm(rows_v5)) if a != b ][:2])
+def difs(a, b):
+    out = []
+    for ra, rb in zip(sorted(a, key=key), sorted(b, key=key)):
+        for k in ra:
+            if ra[k] != rb.get(k):
+                out.append((key(ra), k, ra[k], rb.get(k)))
+    return out[:6]
+check("v7 da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows) == norm(rows_v5), difs(rows, rows_v5))
+check("v6 da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows_v6) == norm(rows_v5), difs(rows_v6, rows_v5))
+check("v7 tiene las mismas columnas y en el mismo orden que v5", list(rows[0].keys()) == list(rows_v5[0].keys()),
+      (list(rows[0].keys()), list(rows_v5[0].keys())))
 
 print(f"\nFallas: {len(fails)}")
 sys.exit(1 if fails else 0)

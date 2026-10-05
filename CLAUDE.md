@@ -12,8 +12,12 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   Las definiciones de esas vistas mencionan `edw.*`, pero eso es solo documentación de linaje.
 - No hay acceso a la base desde acá: las queries no se pueden ejecutar. Decirlo siempre y dar casos de validación.
 - **Rendimiento en Redshift:** una CTE se recalcula cada vez que se la nombra. No nombrar varias veces una CTE que lee
-  una vista pesada (`song_v`, `contract_v`, `song_share_detail_mv`). Para reportes con varias fuentes, leer cada
-  fuente una vez, filtrada, en tablas `TEMP` y trabajar sobre ellas (patrón de la v6). Nunca leer `contract_v` sin filtro.
+  una vista pesada (`song_v`, `contract_v`, `song_share_detail_mv`). El usuario quiere **una sola sentencia con un
+  solo resultado** (no scripts con tablas TEMP): armar la consulta como una cadena lineal donde cada CTE pesada se
+  nombra una vez, y resolver cruces con funciones de ventana sobre un flujo único (patrón de la v7). Medir con
+  `python3 reporte_cwr/tools/contar_expansiones.py <archivo.sql>` antes de entregar. Nunca leer `contract_v` sin filtro.
+- Redshift: todos los `LISTAGG` de un mismo SELECT deben tener el mismo `WITHIN GROUP (ORDER BY ...)`. No usar
+  `LISTAGG(DISTINCT ...)` (no corre en el test con DuckDB); marcar primeras apariciones con `ROW_NUMBER`.
 - Respetar el grano. Nunca sumar porcentajes de `writer_*` entre filas de publishers (se repiten por cadena).
 
 ## Hechos del modelo que importan (verificados en el DDL)
@@ -42,7 +46,7 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 - `MIN/MAX` de vencimientos ignoran NULL: contar líneas sin vencimiento por separado antes de decir "todos vencidos".
 
 ## Queries existentes
-- `reporte_cwr/reporte_cwr_x_territorio_v6.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO). Script con tablas
-  temporales; las obras se cargan en el `INSERT INTO cwr_ids`. Ver `reporte_cwr/README.md`.
+- `reporte_cwr/reporte_cwr_x_territorio_v7.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO). Una sola
+  sentencia; las obras se cargan en el bloque `lista`. Ver `reporte_cwr/README.md`.
   Antes de entregar un cambio: `python3 reporte_cwr/tests/test_reporte.py` (DuckDB + sqlglot, necesita `pip install duckdb sqlglot`).
   Agregar a ese test un caso por cada conflicto nuevo que aparezca con el front.

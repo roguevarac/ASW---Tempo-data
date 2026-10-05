@@ -1,10 +1,10 @@
 # Reporte CWR por territorio
 
-Versión vigente: **v6** (`reporte_cwr_x_territorio_v6.sql`), misma lógica que la v5 pero optimizada. Es un **script**:
-hay que correrlo completo en una sesión (DBeaver: Execute script / Alt+X; Query Editor v2: Run all). Para cambiar las
-obras se edita solo el `INSERT INTO cwr_ids`. La v3, la v4 y la v5 se conservan como referencia.
+Versión vigente: **v7** (`reporte_cwr_x_territorio_v7.sql`): **una sola sentencia y un solo resultado**, con la misma
+lógica y el mismo resultado que la v5/v6. Para cambiar las obras se edita solo la lista del bloque `lista` (números
+separados por coma). La v3 a la v6 se conservan como referencia.
 
-## Rendimiento (v6)
+## Rendimiento (v6 y v7)
 La v5 no terminaba porque Redshift recalcula una CTE cada vez que se la nombra:
 - `target_songs` salía de `song_v` (vista pesada que agrega writers, artistas, alertas y holds de todo el catálogo)
   y se nombraba ~7 veces.
@@ -16,6 +16,26 @@ La v6 lee cada fuente una sola vez, filtrada a las obras y contratos pedidos, en
 (`cwr_ids`, `cwr_song`, `cwr_iswc`, `cwr_mv`, `cwr_ct`, `cwr_ct_fallback`, `cwr_contract`), y el reporte final corre
 sobre ellas. Como cada paso es una sentencia aparte, si algo sigue lento se ve cuál paso es.
 Requiere permiso para crear tablas temporales (en Redshift suele estar dado a todos).
+
+**v7: lo mismo en una sola sentencia.** La v6 devolvía 16 resultados (uno por sentencia). La v7 arma la consulta como
+una cadena lineal: cada CTE pesada se nombra una sola vez, las participaciones (tipo M) y las líneas de control (tipo L)
+viajan en un único flujo de filas, y la elección de grupo, la cobertura y los vencimientos se calculan con funciones de
+ventana. Lecturas por ejecución (medidas con `tools/contar_expansiones.py`, que supone que Redshift recalcula cada CTE
+en cada referencia):
+
+| Fuente | v5 (1 sentencia) | v7 (1 sentencia) |
+|---|---|---|
+| `song_v` | 126 | 1 |
+| `song_share_detail_mv` | 80 | 3 |
+| `contract_territories` | 70 | 4 |
+| `contract_v` | 4 (una sin filtro) | 1 (filtrada) |
+| `identifiers_iswc_v` | 1 | 1 |
+
+Redshift exige que todos los `LISTAGG` de un mismo SELECT ordenen por la misma expresión; por eso, al final, cada fila
+se repite por tipo de lista y todas ordenan por la columna `orden`.
+
+Diferencia con la v5: la lista de obras ya no pasa por `song_v`; un ID que no esté en `song_v` aparece igual, como
+`SIN DATOS` y `Sin título`.
 Estado: v4 ejecutada (`resultados/resultado_v4.json`, 380 filas = 76 obras x 5 paises). Ver "Resultado de la v4".
 
 ## Qué agrega la v4 sobre la v3
@@ -103,13 +123,13 @@ que el front. Las filas donde el contrato asociado no cubre pero otra línea sí
   todas las líneas con su texto.
 
 ## Pruebas
-`python3 reporte_cwr/tests/test_reporte.py` ejecuta la v6 y la v5 en DuckDB (la query se transpila de Redshift con `sqlglot`) con 39
+`python3 reporte_cwr/tests/test_reporte.py` ejecuta la v7, la v6 y la v5 en DuckDB (la query se transpila de Redshift con `sqlglot`) con 39
 chequeos: el caso real 2701309, Ella Dijo, Sin Sentimientos, Te Encontre, obra ausente, vencimientos, regiones,
-acentos y `(REG)`, empates de grupos, publishers múltiples y filas duplicadas. Además verifica que la v6 dé
-exactamente el mismo resultado que la v5. Sirve para validar la lógica; no mide rendimiento ni reemplaza correr la query
+acentos y `(REG)`, empates de grupos, publishers múltiples y filas duplicadas. Además verifica que la v7 y la v6
+den exactamente el mismo resultado que la v5, columna por columna. Sirve para validar la lógica; no mide rendimiento ni reemplaza correr la query
 en Redshift. Contra la v3 el mismo caso real da NVFT, como en producción.
 
 ## Pendiente
-- Correr la v6 en Redshift y mirar las filas con la alerta `CONTROL SOSTENIDO POR OTRA LINEA DE CONTROL`: son las
+- Correr la v7 en Redshift y mirar las filas con la alerta `CONTROL SOSTENIDO POR OTRA LINEA DE CONTROL`: son las
   que cambian respecto de la v4 (se espera que pase de NVFT a un porcentaje).
 - Decisión sobre contratos vencidos (ver arriba).
