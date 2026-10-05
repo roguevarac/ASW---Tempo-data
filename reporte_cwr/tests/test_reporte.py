@@ -4,8 +4,9 @@ Redshift no es DuckDB: el SQL se transpila con sqlglot (redshift -> duckdb).
 Sirve para verificar la LOGICA (grupos, territorios, vencimientos), no el rendimiento
 ni los detalles de Redshift. Los datos del caso 2701309 son los reales del diagnostico.
 
-Corre los chequeos sobre la version vigente (v7, una sola sentencia optimizada) y verifica
-que v7 y v6 den EXACTAMENTE el mismo resultado que la v5.
+Corre los chequeos sobre la version vigente (v8: una sola sentencia, obras desde
+public.rankingdigital_song_id) y verifica que v8, el UNLOAD, v7 y v6 den EXACTAMENTE el
+mismo resultado que la v5.
 
 Uso:  python3 reporte_cwr/tests/test_reporte.py
 """
@@ -36,7 +37,7 @@ def run_file(con, name, ids):
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 con = duckdb.connect()
-for sch in ("dp_song_metadata", "dp_deal_metadata"):
+for sch in ("dp_song_metadata", "dp_deal_metadata", "public"):
     con.execute(f"create schema {sch}")
 con.execute("""create table dp_song_metadata.song_v(song_id bigint, song_title_tx varchar, tempo_create_date timestamp, song_not_ours_dt date)""")
 con.execute("""create table dp_song_metadata.identifiers_iswc_v(tempo_song_id bigint, ident_iswc_cd varchar, preferred_indicator varchar)""")
@@ -44,6 +45,7 @@ con.execute("""create table dp_song_metadata.song_share_detail_mv(song_id bigint
     smp_controlled_ind varchar, writer_id bigint, publisher_id bigint, publisher_name_tx varchar, song_ip_territory_nm varchar,
     publisher_performance_pc double, publisher_mechanical_pc double, publisher_sync_pc double)""")
 con.execute("""create table dp_song_metadata.contract_territories(song_id bigint, contract_id bigint, contract_nm varchar, inclusions varchar, exclusions varchar)""")
+con.execute("""create table public.rankingdigital_song_id(song_id bigint)""")
 con.execute("""create table dp_deal_metadata.contract_v(contract_id bigint, contract_nm varchar, orig_office_nm varchar, contract_expiration_dt date)""")
 
 songs, shares, cts, contracts = [], [], [], {}
@@ -152,7 +154,17 @@ con.executemany("insert into dp_deal_metadata.contract_v values (?,?,?,?)", list
 ids = [s[0] for s in songs]
 rows_v5 = run_file(con, "reporte_cwr_x_territorio_v5.sql", ids)
 rows_v6 = run_file(con, "reporte_cwr_x_territorio_v6.sql", ids)
-rows = run_file(con, "reporte_cwr_x_territorio_v7.sql", ids)
+rows_v7 = run_file(con, "reporte_cwr_x_territorio_v7.sql", ids)
+# v8 lee las obras de public.rankingdigital_song_id (se carga con un duplicado y un NULL a proposito)
+con.executemany("insert into public.rankingdigital_song_id values (?)", [(i,) for i in ids] + [(ids[0],), (None,)])
+rows = run_file(con, "reporte_cwr_x_territorio_v8.sql", ids)
+# el UNLOAD lleva la misma query: se des-escapa y se ejecuta
+sys.path.insert(0, str(ROOT / "tools"))
+import generar_unload
+cuerpo_unload = (ROOT / "unload_reporte_cwr_v8.sql").read_text(encoding="utf-8").split("UNLOAD ('\n", 1)[1].rsplit("\n')\nTO", 1)[0].replace("''", "'")
+cur = con.execute(_duck(cuerpo_unload))
+cols_u = [d[0] for d in cur.description]
+rows_unload = [dict(zip(cols_u, r)) for r in cur.fetchall()]
 R = {(r["song_id"], r["pais"]): r for r in rows}
 
 fails = []
@@ -210,9 +222,12 @@ def difs(a, b):
             if ra[k] != rb.get(k):
                 out.append((key(ra), k, ra[k], rb.get(k)))
     return out[:6]
-check("v7 da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows) == norm(rows_v5), difs(rows, rows_v5))
+check("v8 (tabla de obras) da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows) == norm(rows_v5), difs(rows, rows_v5))
+check("v7 da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows_v7) == norm(rows_v5), difs(rows_v7, rows_v5))
+check("La query dentro del UNLOAD da exactamente el mismo resultado que v8", norm(rows_unload) == norm(rows), difs(rows_unload, rows))
+check("unload_reporte_cwr_v8.sql esta al dia con la v8", generar_unload.cuerpo_sin_comentarios((ROOT / "reporte_cwr_x_territorio_v8.sql").read_text(encoding="utf-8")) == cuerpo_unload)
 check("v6 da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows_v6) == norm(rows_v5), difs(rows_v6, rows_v5))
-check("v7 tiene las mismas columnas y en el mismo orden que v5", list(rows[0].keys()) == list(rows_v5[0].keys()),
+check("v8 tiene las mismas columnas y en el mismo orden que v5", list(rows[0].keys()) == list(rows_v5[0].keys()),
       (list(rows[0].keys()), list(rows_v5[0].keys())))
 
 print(f"\nFallas: {len(fails)}")

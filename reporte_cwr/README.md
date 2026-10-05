@@ -1,8 +1,15 @@
 # Reporte CWR por territorio
 
-Versión vigente: **v7** (`reporte_cwr_x_territorio_v7.sql`): **una sola sentencia y un solo resultado**, con la misma
-lógica y el mismo resultado que la v5/v6. Para cambiar las obras se edita solo la lista del bloque `lista` (números
-separados por coma). La v3 a la v6 se conservan como referencia.
+Versión vigente: **v8** (`reporte_cwr_x_territorio_v8.sql`): igual a la v7 (una sola sentencia, un solo resultado),
+pero las obras se leen de la tabla **`public.rankingdigital_song_id`** (columna `song_id`) en lugar de una lista escrita
+en la query. Para cambiar las obras se carga esa tabla; la query no se toca.
+
+**Archivos grandes:** `unload_reporte_cwr_v8.sql` es la misma query dentro de un `UNLOAD` a S3 (CSV con encabezado,
+un archivo, ordenado). Antes de correrlo hay que completar `<RUTA_S3>` y `<IAM_ROLE>` con los datos del instructivo de
+acceso. No editar la query dentro del UNLOAD: se cambia el `.sql` v8 y se regenera con
+`python3 reporte_cwr/tools/generar_unload.py` (el test avisa si quedó desactualizado).
+
+La v3 a la v7 se conservan como referencia.
 
 ## Rendimiento (v6 y v7)
 La v5 no terminaba porque Redshift recalcula una CTE cada vez que se la nombra:
@@ -123,13 +130,14 @@ que el front. Las filas donde el contrato asociado no cubre pero otra línea sí
   todas las líneas con su texto.
 
 ## Pruebas
-`python3 reporte_cwr/tests/test_reporte.py` ejecuta la v7, la v6 y la v5 en DuckDB (la query se transpila de Redshift con `sqlglot`) con 39
+`python3 reporte_cwr/tests/test_reporte.py` ejecuta la v8, la query del UNLOAD, la v7, la v6 y la v5 en DuckDB (la query se transpila de Redshift con `sqlglot`) con 39
 chequeos: el caso real 2701309, Ella Dijo, Sin Sentimientos, Te Encontre, obra ausente, vencimientos, regiones,
 acentos y `(REG)`, empates de grupos, publishers múltiples y filas duplicadas. Además verifica que la v7 y la v6
 den exactamente el mismo resultado que la v5, columna por columna. Sirve para validar la lógica; no mide rendimiento ni reemplaza correr la query
 en Redshift. Contra la v3 el mismo caso real da NVFT, como en producción.
 
 ## Pendiente
-- Correr la v7 en Redshift y mirar las filas con la alerta `CONTROL SOSTENIDO POR OTRA LINEA DE CONTROL`: son las
+- Completar `<RUTA_S3>` y `<IAM_ROLE>` del UNLOAD con el instructivo de acceso.
+- Correr la v8 en Redshift y mirar las filas con la alerta `CONTROL SOSTENIDO POR OTRA LINEA DE CONTROL`: son las
   que cambian respecto de la v4 (se espera que pase de NVFT a un porcentaje).
 - Decisión sobre contratos vencidos (ver arriba).

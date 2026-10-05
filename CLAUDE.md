@@ -6,6 +6,8 @@ relaciones). El DDL completo está en `docs/tempo_schema/sa00*_create_statements
 completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, referencias).
 
 ## Reglas de trabajo
+- Las listas de Tempo ID van en una tabla (`public.rankingdigital_song_id`), no escritas en la query.
+- Usuario SSO del usuario en Redshift: `AWSReservedSSO_RedshiftQueryEditorV2_78629b54267a226f/7000042560`.
 - Dialecto: **Amazon Redshift**. Validar sintaxis con `sqlglot` (`read='redshift'`) antes de entregar.
 - El usuario **no tiene permiso sobre el esquema `edw`**. Usar solo vistas/tablas `dp_*`
   (`dp_song_metadata`, `dp_deal_metadata`, `dp_deal_financials`, `dp_statement_lines`).
@@ -46,7 +48,10 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 - `MIN/MAX` de vencimientos ignoran NULL: contar líneas sin vencimiento por separado antes de decir "todos vencidos".
 
 ## Queries existentes
-- `reporte_cwr/reporte_cwr_x_territorio_v7.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO). Una sola
-  sentencia; las obras se cargan en el bloque `lista`. Ver `reporte_cwr/README.md`.
+- `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO). Una sola
+  sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.
+- `reporte_cwr/unload_reporte_cwr_v8.sql`: la v8 dentro de un `UNLOAD` a S3 para resultados grandes. Se genera con
+  `python3 reporte_cwr/tools/generar_unload.py`; nunca editarlo a mano. Faltan `<RUTA_S3>` y `<IAM_ROLE>` (del
+  instructivo "Redshift Query Editor Instructions for Access" del usuario).
   Antes de entregar un cambio: `python3 reporte_cwr/tests/test_reporte.py` (DuckDB + sqlglot, necesita `pip install duckdb sqlglot`).
   Agregar a ese test un caso por cada conflicto nuevo que aparezca con el front.
