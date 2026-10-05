@@ -1,7 +1,7 @@
 # Reporte CWR por territorio
 
 Versión vigente: **v4** (`reporte_cwr_x_territorio_v4.sql`). La v3 se conserva como referencia.
-Estado: control previo ejecutado. **Falta correr la v4 y validar los tres casos conocidos.**
+Estado: v4 ejecutada (`resultados/resultado_v4.json`, 380 filas = 76 obras x 5 paises). Ver "Resultado de la v4".
 
 ## Qué agrega la v4 sobre la v3
 - Obra ausente de `song_share_detail_mv` (caso 7525701) sale como `SIN DATOS`, no `NVFT`, con alerta.
@@ -46,3 +46,16 @@ arbitraria. Ahora desempata prefiriendo la fila con exclusiones (más conservado
    Baba O'Riley con control en los países originales.
 3. Revisar las filas con `alertas` (texto de otra obra, contrato sin texto, varios grupos empatados).
 4. Si habilitan lectura sobre `edw`, volver a la v2, que lee el diccionario real de Tempo.
+
+## Resultado de la v4
+- 373 filas con porcentaje, 2 NVFT, 5 SIN DATOS. No hay totales > 100 ni alertas distintas de la obra ausente.
+- **Validado:** Ella Dijo en Argentina = 25 (antes 20.84). Argentina vale la mitad que los otros 4 paises en 13 obras
+  (contrato con territorio propio para Argentina).
+- **NVFT coherentes con los contratos:** Sin Sentimientos / Colombia (contrato 173392 excluye Colombia) y
+  Tan Lejos / Uruguay (contrato 1546813 excluye Uruguay).
+- **7525701 "[DELETE] Sirena":** el titulo indica que esta marcada para borrar; su ausencia en la MV es esperable.
+- **No verificables con esta lista:** Te Encontre (Colombia) y Baba O'Riley no estan entre las 76 obras.
+- **Decision pendiente:** 6 obras (30 filas) tienen todos sus contratos vencidos pero igual muestran porcentaje:
+  191014 Take On Me (1988), 1303178 Titanium (2016), 4273597 To My Love (2020), 4555478 That's What I Like (2021),
+  6686578 Your Love Diplo Remix (2024), 7710563 Velocidade (2026-06-30). La columna `estado_contrato` las marca
+  `TODOS VENCIDOS`; la query no las pasa a NVFT.
