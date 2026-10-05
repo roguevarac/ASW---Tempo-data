@@ -1,24 +1,38 @@
 """
-Prueba la query v5 con un motor local (DuckDB) y datos de ejemplo.
-Redshift no es DuckDB: la query se transpila con sqlglot (redshift -> duckdb).
+Prueba el reporte CWR con un motor local (DuckDB) y datos de ejemplo.
+Redshift no es DuckDB: el SQL se transpila con sqlglot (redshift -> duckdb).
 Sirve para verificar la LOGICA (grupos, territorios, vencimientos), no el rendimiento
 ni los detalles de Redshift. Los datos del caso 2701309 son los reales del diagnostico.
 
-Uso:  python3 reporte_cwr/tests/test_v5.py
+Corre los chequeos sobre la version vigente (v6, script con tablas temporales) y
+verifica que de EXACTAMENTE el mismo resultado que la v5 (una sola sentencia).
+
+Uso:  python3 reporte_cwr/tests/test_reporte.py
 """
 import re, sys, pathlib, datetime as dt
 import duckdb, sqlglot
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SQL = (ROOT / "reporte_cwr_x_territorio_v5.sql").read_text(encoding="utf-8")
 
-def run(sql_text, ids):
-    sql_text = re.sub(r"song_id IN \(\s*[\d,\s]+\)", "song_id IN (%s)" % ",".join(map(str, ids)), sql_text, count=1)
-    duck = sqlglot.transpile(sql_text, read="redshift", write="duckdb")[0]
+def _duck(stmt_sql):
+    duck = sqlglot.transpile(stmt_sql, read="redshift", write="duckdb")[0]
     # DuckDB devuelve HUGEINT en REGEXP_INSTR; Redshift no necesita este ajuste.
     duck = duck.replace("SUBSTRING(tok, 1, pos_excl)", "SUBSTRING(tok, 1, CAST(pos_excl AS BIGINT))")
     duck = duck.replace("SUBSTRING(tok, pos_excl)", "SUBSTRING(tok, CAST(pos_excl AS BIGINT))")
     return duck
+
+def run_file(con, name, ids):
+    """Ejecuta el archivo (una sentencia o un script) y devuelve las filas del ultimo SELECT."""
+    text = (ROOT / name).read_text(encoding="utf-8")
+    text = re.sub(r"song_id IN \(\s*[\d,\s]+\)", "song_id IN (%s)" % ",".join(map(str, ids)), text, count=1)
+    text = re.sub(r"INSERT INTO cwr_ids VALUES [^;]+;", "INSERT INTO cwr_ids VALUES %s;" % ",".join(f"({i})" for i in ids), text, count=1)
+    cur = None
+    for stmt in sqlglot.parse(text, read="redshift"):
+        if stmt is None:
+            continue
+        cur = con.execute(_duck(stmt.sql(dialect="redshift")))
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 con = duckdb.connect()
 for sch in ("dp_song_metadata", "dp_deal_metadata"):
@@ -135,10 +149,8 @@ con.executemany("insert into dp_song_metadata.contract_territories values (?,?,?
 con.executemany("insert into dp_deal_metadata.contract_v values (?,?,?,?)", list(contracts.values()))
 
 ids = [s[0] for s in songs]
-duck = run(SQL, ids)
-cur = con.execute(duck)
-cols = [d[0] for d in cur.description]
-rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+rows_v5 = run_file(con, "reporte_cwr_x_territorio_v5.sql", ids)
+rows = run_file(con, "reporte_cwr_x_territorio_v6.sql", ids)
 R = {(r["song_id"], r["pais"]): r for r in rows}
 
 fails = []
@@ -186,6 +198,11 @@ check("Filas duplicadas de territorio no duplican (50)", trio(1500, "CHILE")[0] 
 check("Empate de grupos alertado y un solo grupo (30)", trio(1600, "ARGENTINA")[0] == "30.00" and "MISMA PRIORIDAD" in (R[(1600, "ARGENTINA")]["alertas"] or ""), (trio(1600, "ARGENTINA"), R[(1600, "ARGENTINA")]["alertas"]))
 check("Grupo regional gana al generico (20)", trio(1700, "CHILE")[0] == "20.00", trio(1700, "CHILE"))
 check("Grupo que nombra al pais sin linea que lo cubra = NVFT", trio(1800, "ARGENTINA")[0] == "NVFT", trio(1800, "ARGENTINA"))
+
+key = lambda r: (r["song_id"], r["pais"])
+norm = lambda rs: [tuple(sorted(r.items())) for r in sorted(rs, key=key)]
+check("v6 da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows) == norm(rows_v5),
+      [ (a, b) for a, b in zip(norm(rows), norm(rows_v5)) if a != b ][:2])
 
 print(f"\nFallas: {len(fails)}")
 sys.exit(1 if fails else 0)
