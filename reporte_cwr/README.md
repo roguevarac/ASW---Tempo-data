@@ -4,9 +4,10 @@ Versión vigente: **v8** (`reporte_cwr_x_territorio_v8.sql`): igual a la v7 (una
 pero las obras se leen de la tabla **`public.rankingdigital_song_id`** (columna `song_id`) en lugar de una lista escrita
 en la query. Para cambiar las obras se carga esa tabla; la query no se toca.
 
-**Archivos grandes:** `unload_reporte_cwr_v8.sql` es la misma query dentro de un `UNLOAD` a S3 (CSV con encabezado,
-un archivo, ordenado). Antes de correrlo hay que completar `<RUTA_S3>` y `<IAM_ROLE>` con los datos del instructivo de
-acceso. No editar la query dentro del UNLOAD: se cambia el `.sql` v8 y se regenera con
+**Archivos grandes:** el Query Editor muestra hasta 100.000 filas o 10 MB. Para más, `unload_reporte_cwr_v8.sql` corre la
+misma query dentro de un `UNLOAD` y deja `s3://dw-export-prod/7000042560/reporte_cwr_v8_000.csv` (CSV con encabezado,
+ordenado por obra y país). Se descarga desde la consola de AWS > S3 > `dw-export-prod` > carpeta `7000042560`. El
+archivo se borra solo a los 7 días. Destino y rol según `docs/redshift/Redshift Query Editor Instructions for Access.docx`. No editar la query dentro del UNLOAD: se cambia el `.sql` v8 y se regenera con
 `python3 reporte_cwr/tools/generar_unload.py` (el test avisa si quedó desactualizado).
 
 La v3 a la v7 se conservan como referencia.
@@ -137,7 +138,6 @@ den exactamente el mismo resultado que la v5, columna por columna. Sirve para va
 en Redshift. Contra la v3 el mismo caso real da NVFT, como en producción.
 
 ## Pendiente
-- Completar `<RUTA_S3>` y `<IAM_ROLE>` del UNLOAD con el instructivo de acceso.
 - Correr la v8 en Redshift y mirar las filas con la alerta `CONTROL SOSTENIDO POR OTRA LINEA DE CONTROL`: son las
   que cambian respecto de la v4 (se espera que pase de NVFT a un porcentaje).
 - Decisión sobre contratos vencidos (ver arriba).

@@ -7,7 +7,11 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 
 ## Reglas de trabajo
 - Las listas de Tempo ID van en una tabla (`public.rankingdigital_song_id`), no escritas en la query.
-- Usuario SSO del usuario en Redshift: `AWSReservedSSO_RedshiftQueryEditorV2_78629b54267a226f/7000042560`.
+- Entorno del usuario (de `docs/redshift/Redshift Query Editor Instructions for Access.docx`): Redshift Query Editor V2,
+  conexión serverless `self-service-prod-wg`, base `selfsvcdb`. Usuario SSO
+  `AWSReservedSSO_RedshiftQueryEditorV2_78629b54267a226f/7000042560`, GID `7000042560`.
+  El editor muestra hasta 100.000 filas o 10 MB; para más, UNLOAD a `s3://dw-export-prod/7000042560/<archivo>` con
+  `IAM_ROLE 'arn:aws:iam::991042281579:role/DataWarehouse/RedShift-S3-Unload'`. Los archivos duran 7 días en S3.
 - Dialecto: **Amazon Redshift**. Validar sintaxis con `sqlglot` (`read='redshift'`) antes de entregar.
 - El usuario **no tiene permiso sobre el esquema `edw`**. Usar solo vistas/tablas `dp_*`
   (`dp_song_metadata`, `dp_deal_metadata`, `dp_deal_financials`, `dp_statement_lines`).
@@ -51,7 +55,7 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 - `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO). Una sola
   sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.
 - `reporte_cwr/unload_reporte_cwr_v8.sql`: la v8 dentro de un `UNLOAD` a S3 para resultados grandes. Se genera con
-  `python3 reporte_cwr/tools/generar_unload.py`; nunca editarlo a mano. Faltan `<RUTA_S3>` y `<IAM_ROLE>` (del
-  instructivo "Redshift Query Editor Instructions for Access" del usuario).
+  `python3 reporte_cwr/tools/generar_unload.py`; nunca editarlo a mano. Deja `reporte_cwr_v8_000.csv` en la carpeta
+  del GID.
   Antes de entregar un cambio: `python3 reporte_cwr/tests/test_reporte.py` (DuckDB + sqlglot, necesita `pip install duckdb sqlglot`).
   Agregar a ese test un caso por cada conflicto nuevo que aparezca con el front.
