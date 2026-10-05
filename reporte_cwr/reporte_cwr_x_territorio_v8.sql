@@ -2,11 +2,14 @@
 -- REPORTE CWR POR TERRITORIO — v8 (una sola sentencia; obras desde public.rankingdigital_song_id)
 --
 -- Misma lógica y mismo resultado que la v5/v6, en UNA sola consulta y con
--- un solo resultado. Una fila por obra y país (AR, CL, CO, PE, UY).
+-- un solo resultado. Una fila por obra y país (AR, CL, CO, PE, UY y US).
 --
 -- PARA CAMBIAR LAS OBRAS: cargar los Tempo ID en public.rankingdigital_song_id
 -- (columna song_id). Misma lógica y resultado que la v7, que tenía la lista
 -- escrita dentro de la query.
+-- Estados Unidos: se agregó como sexto país ('UNITED STATES'). Se reconoce por
+-- sus distintas formas de escritura (bloque alias_pais) y por las regiones que
+-- lo contienen (NORTH AMERICA, US & CANADA...).
 -- Para descargar archivos grandes usar unload_reporte_cwr_v8.sql (misma query
 -- dentro de un UNLOAD a S3).
 --
@@ -51,6 +54,24 @@ paises AS (
     UNION ALL SELECT 'PERU'
     UNION ALL SELECT 'URUGUAY'
     UNION ALL SELECT 'COLOMBIA'
+    UNION ALL SELECT 'UNITED STATES'
+),
+-- Formas en que puede aparecer escrito cada país, tanto en los nombres de grupo
+-- IP como en los textos de territorio de los contratos.
+-- EDITABLE: si aparece otra forma de escribir un país, agregar una fila.
+-- (En los grupos IP los signos se vuelven espacios: "U.S.A." se busca como "U S A".)
+alias_pais AS (
+              SELECT 'ARGENTINA' AS pais, 'ARGENTINA' AS alias
+    UNION ALL SELECT 'CHILE',         'CHILE'
+    UNION ALL SELECT 'PERU',          'PERU'
+    UNION ALL SELECT 'URUGUAY',       'URUGUAY'
+    UNION ALL SELECT 'COLOMBIA',      'COLOMBIA'
+    UNION ALL SELECT 'UNITED STATES', 'UNITED STATES'
+    UNION ALL SELECT 'UNITED STATES', 'UNITED STATES OF AMERICA'
+    UNION ALL SELECT 'UNITED STATES', 'USA'
+    UNION ALL SELECT 'UNITED STATES', 'US'
+    UNION ALL SELECT 'UNITED STATES', 'U S A'
+    UNION ALL SELECT 'UNITED STATES', 'U S'
 ),
 -- Regiones que pueden aparecer en los textos en lugar de los países.
 -- EDITABLE: una fila por región y país que la integra.
@@ -65,6 +86,11 @@ regiones AS (
     UNION ALL SELECT 'SOUTH AMERICA', 'PERU'
     UNION ALL SELECT 'SOUTH AMERICA', 'URUGUAY'
     UNION ALL SELECT 'SOUTH AMERICA', 'COLOMBIA'
+    UNION ALL SELECT 'NORTH AMERICA', 'UNITED STATES'
+    UNION ALL SELECT 'US AND CANADA', 'UNITED STATES'
+    UNION ALL SELECT 'US & CANADA',   'UNITED STATES'
+    UNION ALL SELECT 'USA AND CANADA','UNITED STATES'
+    UNION ALL SELECT 'USA & CANADA',  'UNITED STATES'
 ),
 
 -- ---------------------------------------------------------------------
@@ -232,18 +258,19 @@ u4 AS (
         CASE WHEN TRIM(u.incl_tok) = '' OR u.incl_tok LIKE ' ALL %' OR u.incl_tok LIKE '% WORLD %'
                   OR u.incl_tok LIKE '% WORLDWIDE %' OR u.incl_tok LIKE '% UNIVERSE %' OR u.incl_tok LIKE '% MUNDO %'
              THEN 1 ELSE 0 END AS es_generico,
-        MAX(CASE WHEN u.incl_tok LIKE '% ' || p.pais || ' %' THEN 1 ELSE 0 END)                           AS g_pais,
+        MAX(CASE WHEN u.incl_tok LIKE '% ' || a.alias || ' %' THEN 1 ELSE 0 END)                          AS g_pais,
         MAX(CASE WHEN r.region IS NOT NULL AND u.incl_tok LIKE '% ' || r.region || ' %' THEN 1 ELSE 0 END) AS g_region,
-        MAX(CASE WHEN u.excl_tok <> '' AND (u.excl_tok LIKE '% ' || p.pais || ' %'
+        MAX(CASE WHEN u.excl_tok <> '' AND (u.excl_tok LIKE '% ' || a.alias || ' %'
                       OR (r.region IS NOT NULL AND u.excl_tok LIKE '% ' || r.region || ' %')) THEN 1 ELSE 0 END) AS g_excluido,
         MAX(CASE WHEN u.incl LIKE '%;WORLD;%' THEN 1 ELSE 0 END)                                            AS inc_mundo,
-        MAX(CASE WHEN u.incl LIKE '%;' || p.pais || ';%' THEN 1 ELSE 0 END)                                 AS inc_pais,
+        MAX(CASE WHEN u.incl LIKE '%;' || a.alias || ';%' THEN 1 ELSE 0 END)                                AS inc_pais,
         MAX(CASE WHEN r.region IS NOT NULL AND u.incl LIKE '%;' || r.region || ';%' THEN 1 ELSE 0 END)      AS inc_region,
-        MAX(CASE WHEN u.excl LIKE '%;' || p.pais || ';%' THEN 1 ELSE 0 END)                                 AS exc_pais,
+        MAX(CASE WHEN u.excl LIKE '%;' || a.alias || ';%' THEN 1 ELSE 0 END)                                AS exc_pais,
         MAX(CASE WHEN r.region IS NOT NULL AND u.excl LIKE '%;' || r.region || ';%' THEN 1 ELSE 0 END)      AS exc_region
     FROM u3 u
     CROSS JOIN paises p
-    LEFT JOIN regiones r ON r.pais = p.pais
+    JOIN alias_pais a     ON a.pais = p.pais
+    LEFT JOIN regiones r  ON r.pais = p.pais
     GROUP BY
         u.rid, u.tipo, u.song_id, u.contract_id, u.contract_nm_mv, u.ctrl, u.publisher_name_tx, u.grupo_ip,
         u.perf, u.mech, u.sync, u.inclusions, u.exclusions, u.tiene_respaldo,

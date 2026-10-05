@@ -4,6 +4,12 @@ Versión vigente: **v8** (`reporte_cwr_x_territorio_v8.sql`): igual a la v7 (una
 pero las obras se leen de la tabla **`public.rankingdigital_song_id`** (columna `song_id`) en lugar de una lista escrita
 en la query. Para cambiar las obras se carga esa tabla; la query no se toca.
 
+**Estados Unidos (agregado a la v8):** sexto país del reporte, como `UNITED STATES`. Se reconoce por todas sus formas de
+escritura, definidas en el bloque `alias_pais` (`UNITED STATES`, `UNITED STATES OF AMERICA`, `USA`, `US`, `U.S.A.`), y por
+las regiones que lo contienen (`NORTH AMERICA`, `US & CANADA`, `USA AND CANADA`...). Los textos se siguen comparando
+elemento por elemento, así que `UNITED STATES MINOR OUTLYING ISLANDS` no cuenta como Estados Unidos. Los cinco países de
+Latam dan exactamente lo mismo que antes. Con 76 obras salen 456 filas (76 x 6).
+
 **Archivos grandes:** el Query Editor muestra hasta 100.000 filas o 10 MB. Para más, `unload_reporte_cwr_v8.sql` corre la
 misma query dentro de un `UNLOAD` y deja `s3://dw-export-prod/7000042560/reporte_cwr_v8_000.csv` (CSV con encabezado,
 ordenado por obra y país). Se descarga desde la consola de AWS > S3 > `dw-export-prod` > carpeta `7000042560`. El

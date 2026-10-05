@@ -49,13 +49,16 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   control de la obra lo cubre. Caso de referencia: Baba O'Riley 2701309 (`reporte_cwr/casos/baba_oriley/`).
 - Un contrato puede tener texto de territorio distinto al que sugiere su nombre (1525818 "ex. Philippines" = Asia).
   Confiar en `contract_territories`, no en el nombre.
+- Los países se buscan por todas sus formas de escritura (CTE `alias_pais`): Estados Unidos aparece como
+  `UNITED STATES` en los textos de contratos y como `USA`, `US`, `U.S.A.`, `US & CANADA` en grupos IP. Agregar alias ahí.
 - `MIN/MAX` de vencimientos ignoran NULL: contar líneas sin vencimiento por separado antes de decir "todos vencidos".
 
 ## Queries existentes
-- `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO). Una sola
+- `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO y UNITED STATES). Una sola
   sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.
 - `reporte_cwr/unload_reporte_cwr_v8.sql`: la v8 dentro de un `UNLOAD` a S3 para resultados grandes. Se genera con
   `python3 reporte_cwr/tools/generar_unload.py`; nunca editarlo a mano. Deja `reporte_cwr_v8_000.csv` en la carpeta
   del GID.
   Antes de entregar un cambio: `python3 reporte_cwr/tests/test_reporte.py` (DuckDB + sqlglot, necesita `pip install duckdb sqlglot`).
-  Agregar a ese test un caso por cada conflicto nuevo que aparezca con el front.
+  Agregar a ese test un caso por cada conflicto nuevo que aparezca con el front. El test agrega la opción 'g' a
+  `REGEXP_REPLACE` al pasar a DuckDB (Redshift reemplaza todas las coincidencias, DuckDB solo la primera).

@@ -16,7 +16,11 @@ import duckdb, sqlglot
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 def _duck(stmt_sql):
-    duck = sqlglot.transpile(stmt_sql, read="redshift", write="duckdb")[0]
+    tree = sqlglot.parse_one(stmt_sql, read="redshift")
+    # Redshift REGEXP_REPLACE reemplaza TODAS las coincidencias; DuckDB solo la primera salvo 'g'.
+    for node in tree.find_all(sqlglot.exp.RegexpReplace):
+        node.set("modifiers", sqlglot.exp.Literal.string("g"))
+    duck = tree.sql(dialect="duckdb")
     # DuckDB devuelve HUGEINT en REGEXP_INSTR; Redshift no necesita este ajuste.
     duck = re.sub(r"SUBSTRING\(([\w.]+), 1, ([\w.]*pos_excl)\)", r"SUBSTRING(\1, 1, CAST(\2 AS BIGINT))", duck)
     duck = re.sub(r"SUBSTRING\(([\w.]+), ([\w.]*pos_excl)\)", r"SUBSTRING(\1, CAST(\2 AS BIGINT))", duck)
@@ -146,6 +150,22 @@ ct(1700, 170, WORLD); contract(170)
 # 18) Grupo "nombra al pais" sin linea de control que lo cubra -> NVFT
 song(1800, "SIN LINEA"); share(1800, "ARGENTINA", 180, "Y", "SMP", 50, 50, 50); ct(1800, 180, "Include: JAPAN"); contract(180)
 
+# 19) Estados Unidos
+song(2000, "US GRUPO USA"); share(2000, "USA", 200, "Y", "SMP", 30, 30, 30); share(2000, "ALL OTHER CONTRACTUAL TERRITORIES", 200, "Y", "SMP", 50, 50, 50)
+ct(2000, 200, WORLD); contract(200)
+song(2001, "US GRUPO US & CANADA"); share(2001, "US & CANADA", 201, "Y", "SMP", 40, 40, 40); share(2001, "ALL OTHER CONTRACTUAL TERRITORIES", 201, "Y", "SMP", 50, 50, 50)
+ct(2001, 201, WORLD); contract(201)
+song(2002, "US EXCLUIDO"); share(2002, "ALL CONTRACTUAL TERRITORIES", 202, "Y", "SMP", 50, 50, 50)
+ct(2002, 202, WORLD, "Exclude: UNITED STATES"); contract(202)
+song(2003, "US MINOR OUTLYING"); share(2003, "ALL CONTRACTUAL TERRITORIES", 203, "Y", "SMP", 50, 50, 50)
+ct(2003, 203, "Include: UNITED STATES MINOR OUTLYING ISLANDS;CANADA"); contract(203)
+song(2004, "US NORTH AMERICA"); share(2004, "ALL CONTRACTUAL TERRITORIES", 204, "Y", "SMP", 50, 50, 50)
+ct(2004, 204, "Include: NORTH AMERICA"); contract(204)
+song(2005, "WORLD EX USA"); share(2005, "WORLD EX U.S.A.", 205, "Y", "SMP", 50, 50, 50)
+ct(2005, 205, WORLD); contract(205)
+song(2006, "US GRUPO U.S.A."); share(2006, "U.S.A.", 206, "Y", "SMP", 25, 25, 25); share(2006, "ALL OTHER CONTRACTUAL TERRITORIES", 206, "Y", "SMP", 50, 50, 50)
+ct(2006, 206, WORLD); contract(206)
+
 con.executemany("insert into dp_song_metadata.song_v values (?,?,?,?)", songs)
 con.executemany("insert into dp_song_metadata.song_share_detail_mv values (?,?,?,?,?,?,?,?,?,?,?)", shares)
 con.executemany("insert into dp_song_metadata.contract_territories values (?,?,?,?,?)", cts)
@@ -173,7 +193,7 @@ def check(name, cond, extra=""):
     if not cond: fails.append(name)
 def trio(i, p): r = R[(i, p)]; return (r["performance_pc_total"], r["mechanical_pc_total"], r["sync_pc_total"])
 
-check("filas = obras x 5 paises", len(rows) == len(songs) * 5, len(rows))
+check("filas = obras x 6 paises (5 de Latam + Estados Unidos)", len(rows) == len(songs) * 6, len(rows))
 for p in PAISES:
     check(f"Baba O'Riley {p} = 50/100/100", trio(2701309, p) == ("50.00", "100.00", "100.00"), trio(2701309, p))
 check("Baba O'Riley alerta 'otra linea'", "OTRA LINEA" in (R[(2701309, "ARGENTINA")]["alertas"] or ""))
@@ -222,13 +242,24 @@ def difs(a, b):
             if ra[k] != rb.get(k):
                 out.append((key(ra), k, ra[k], rb.get(k)))
     return out[:6]
-check("v8 (tabla de obras) da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows) == norm(rows_v5), difs(rows, rows_v5))
+rows_latam = [r for r in rows if r["pais"] != "UNITED STATES"]
+check("v8 en los 5 paises de Latam da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows_latam) == norm(rows_v5), difs(rows_latam, rows_v5))
 check("v7 da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows_v7) == norm(rows_v5), difs(rows_v7, rows_v5))
 check("La query dentro del UNLOAD da exactamente el mismo resultado que v8", norm(rows_unload) == norm(rows), difs(rows_unload, rows))
 check("unload_reporte_cwr_v8.sql esta al dia con la v8", generar_unload.cuerpo_sin_comentarios((ROOT / "reporte_cwr_x_territorio_v8.sql").read_text(encoding="utf-8")) == cuerpo_unload)
 check("v6 da exactamente el mismo resultado que v5 (todas las columnas)", norm(rows_v6) == norm(rows_v5), difs(rows_v6, rows_v5))
 check("v8 tiene las mismas columnas y en el mismo orden que v5", list(rows[0].keys()) == list(rows_v5[0].keys()),
       (list(rows[0].keys()), list(rows_v5[0].keys())))
+
+US = "UNITED STATES"
+check("US: grupo 'USA' gana al generico (30)", trio(2000, US)[0] == "30.00" and trio(2000, "ARGENTINA")[0] == "50.00", (trio(2000, US), trio(2000, "ARGENTINA")))
+check("US: grupo 'US & CANADA' nombra a US (40)", trio(2001, US)[0] == "40.00", trio(2001, US))
+check("US: contrato World excluye UNITED STATES -> NVFT", trio(2002, US)[0] == "NVFT" and trio(2002, "CHILE")[0] == "50.00", (trio(2002, US), trio(2002, "CHILE")))
+check("US: 'UNITED STATES MINOR OUTLYING ISLANDS' no cuenta como US", trio(2003, US)[0] == "NVFT", trio(2003, US))
+check("US: region NORTH AMERICA cubre US y no Latam", trio(2004, US)[0] == "50.00" and trio(2004, "ARGENTINA")[0] == "NVFT", (trio(2004, US), trio(2004, "ARGENTINA")))
+check("US: grupo 'WORLD EX U.S.A.' excluye US", trio(2005, US)[0] == "NVFT" and trio(2005, "PERU")[0] == "50.00", (trio(2005, US), trio(2005, "PERU")))
+check("US: grupo 'U.S.A.' nombra a US (25)", trio(2006, US)[0] == "25.00", trio(2006, US))
+check("US: Baba O'Riley en US (1551025 World ex..., US no excluido) = 50/100/100", trio(2701309, US) == ("50.00", "100.00", "100.00"), trio(2701309, US))
 
 print(f"\nFallas: {len(fails)}")
 sys.exit(1 if fails else 0)
