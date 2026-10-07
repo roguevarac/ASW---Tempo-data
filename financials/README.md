@@ -28,3 +28,13 @@ oficina, fuente, sub fuente e income type. Lee `dp_earnings_lines.earnings_lines
 - **Intercompany** ("SMP Latin", "SMP Argentina"...): `converted_net_am` = Gross − Affiliate NPS − WHT (lo que llegó).
 - `diagnostico_gross_intercompany.sql` busca qué columna de `statement_lines_v` da el gross en intercompany.
   Mientras tanto, `song_financials_el.sql` ya da el gross exacto para las dos.
+
+## México / EMMAC: `mexico_emmac.sql`
+Cuánto generó cada obra en México con la fuente EMMAC, en moneda local y en USD. Lee `statement_lines_v` filtrando
+oficina `Mexico%`, fuente `%EMMAC%` y líneas Finalized; obras desde `public.rankingdigital_song_id`.
+- Gross = `lc_gross_stmt_am` (lo informado por EMMAC); neto = `converted_net_am` (después de comisión y retención).
+- USD con `exchange_to_us_currency` de cada statement: si el valor es > 1 se divide, si es < 1 se multiplica.
+- `neto_sobre_gross` es un control de que gross y neto estén en la misma moneda (esperado 0,7 a 1).
+- `mexico_emmac_validacion_usa.sql`: lo que llegó a Estados Unidos (fuente SMP Mexico / sub fuente EMMAC) en USD,
+  desde líneas de ganancia. Es solo la parte de clientes de Estados Unidos: debe ser ≤ al neto USD de México.
+- Pendiente de confirmar con la primera corrida: que la oficina se llame `Mexico...` y la fuente contenga `EMMAC`.

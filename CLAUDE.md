@@ -59,9 +59,12 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 - `statement_lines_v.converted_net_am` es lo que llega a la oficina (Domestic NPS + Client Royalty), no el gross.
 - Una línea de statement genera varias de ganancia: sumar montos de la línea (`converted_net_am`) una vez por línea.
 - Montos en moneda de la oficina que procesó; el front en USD = oficina `United States`. Ver `financials/README.md`.
+- Lo recaudado en un país se mide en la oficina de ese país (ej. México: fuente local EMMAC, en MXN). En Estados Unidos
+  llega como intercompany ("SMP Mexico") solo la parte de clientes de US, neta de lo que retuvo la afiliada.
 
 ## Queries existentes
 - `financials/song_financials_el.sql`: Song Financials por obra/fuente/income type para las obras de la tabla.
+- `financials/mexico_emmac.sql`: lo generado en México (fuente EMMAC) por obra, en moneda local y USD.
 - `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO y UNITED STATES). Una sola
   sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.
 - `reporte_cwr/unload_reporte_cwr_v8.sql`: la v8 dentro de un `UNLOAD` a S3 para resultados grandes. Se genera con
