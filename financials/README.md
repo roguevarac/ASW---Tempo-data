@@ -1,12 +1,24 @@
 # Financials de obras
 
-## Caso 6101269 (Bailando Bachata), fuente SMP Latin — query vs front "Song Financials"
-- La query sobre `dp_statement_lines.statement_lines_v` (líneas Finalized) da un `converted_net_am` que coincide
-  **exacto** con *Domestic NPS + Client Royalty* del front, por income type: 18,58 / 11.583,69 / 21.171,45.
-- El *Gross Income* del front es mayor (18,29 / 12.203,02 / 22.415,47). SMP Latin es intercompany: una oficina
-  afiliada de Latinoamérica cobró primero y retuvo su parte (*Affiliate NPS*). El gross es el monto en origen, que
-  no está en `statement_lines_v`.
-- `Gross − Affiliate NPS` no da exacto el converted net (1–6 % de diferencia según el tipo): probablemente es tipo
-  de cambio, sin confirmar.
-- `song_financials_ooel.sql` lista las columnas candidatas de `dp_earnings_lines.originating_office_earnings_lines_v`
-  para identificar cuál usa el front. Pendiente: correrla y comparar. No tenemos el DDL de `dp_earnings_lines`.
+## Query vigente: `song_financials_el.sql`
+Reproduce el "Song Sub Source Summary" del front para todas las obras de `public.rankingdigital_song_id`, por
+oficina, fuente, sub fuente e income type. Lee `dp_earnings_lines.earnings_lines_v` una sola vez.
+
+| Front | Columna en `earnings_lines_v` |
+|---|---|
+| Gross Income | `gross_client_share_of_income_amt` |
+| Affiliate NPS | `foreign_nps_am` |
+| Domestic NPS | `gross_nps` |
+| Client Royalty | `gross_royalty_payable` |
+| (converted net de `statement_lines_v`) | `converted_net_am`, una vez por línea de statement |
+| Withholding Tax | no hay columna: `gross − affiliate − domestic − royalty` (exacto en fuentes locales; aproximado en intercompany) |
+
+- Montos en la moneda de la oficina que procesó. El front en USD = `processing_office_name = 'United States'`.
+- Verificado con la obra 6101269, fuente SMP Latin: 34.636,78 / 2.183,33 / 3.705,94 / 29.067,78, igual al front.
+
+## Caso 6101269 (Bailando Bachata) — por qué statement_lines_v no daba el front
+- `statement_lines_v.converted_net_am` = Domestic NPS + Client Royalty del front, exacto (32.773,72 en SMP Latin).
+- SMP Latin es intercompany: la oficina afiliada cobró y retuvo Affiliate NPS antes de girar a Estados Unidos. El
+  Gross Income es el monto antes de esa retención y solo está en las líneas de ganancia.
+- `originating_office_earnings_lines_v` no sirve para esto: no tiene filas con fuente SMP Latin para la obra.
+- Archivos del caso en `casos/6101269/`. `song_financials_ooel.sql` y `diagnostico_ooel.sql` quedan como historia.

@@ -53,7 +53,15 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   `UNITED STATES` en los textos de contratos y como `USA`, `US`, `U.S.A.`, `US & CANADA` en grupos IP. Agregar alias ahí.
 - `MIN/MAX` de vencimientos ignoran NULL: contar líneas sin vencimiento por separado antes de decir "todos vencidos".
 
+## Financials (front "Song Financials")
+- Sale de `dp_earnings_lines.earnings_lines_v`: Gross Income = `gross_client_share_of_income_amt`, Affiliate NPS =
+  `foreign_nps_am`, Domestic NPS = `gross_nps`, Client Royalty = `gross_royalty_payable`. No hay columna de retención.
+- `statement_lines_v.converted_net_am` es lo que llega a la oficina (Domestic NPS + Client Royalty), no el gross.
+- Una línea de statement genera varias de ganancia: sumar montos de la línea (`converted_net_am`) una vez por línea.
+- Montos en moneda de la oficina que procesó; el front en USD = oficina `United States`. Ver `financials/README.md`.
+
 ## Queries existentes
+- `financials/song_financials_el.sql`: Song Financials por obra/fuente/income type para las obras de la tabla.
 - `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO y UNITED STATES). Una sola
   sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.
 - `reporte_cwr/unload_reporte_cwr_v8.sql`: la v8 dentro de un `UNLOAD` a S3 para resultados grandes. Se genera con
