@@ -22,3 +22,9 @@ oficina, fuente, sub fuente e income type. Lee `dp_earnings_lines.earnings_lines
   Gross Income es el monto antes de esa retención y solo está en las líneas de ganancia.
 - `originating_office_earnings_lines_v` no sirve para esto: no tiene filas con fuente SMP Latin para la obra.
 - Archivos del caso en `casos/6101269/`. `song_financials_ooel.sql` y `diagnostico_ooel.sql` quedan como historia.
+
+## Fuentes locales vs intercompany en `statement_lines_v`
+- **Local** (ej. YouTube - USA): `converted_net_am` = Gross Income del front, exacto (118.078,88 en 6101269).
+- **Intercompany** ("SMP Latin", "SMP Argentina"...): `converted_net_am` = Gross − Affiliate NPS − WHT (lo que llegó).
+- `diagnostico_gross_intercompany.sql` busca qué columna de `statement_lines_v` da el gross en intercompany.
+  Mientras tanto, `song_financials_el.sql` ya da el gross exacto para las dos.
