@@ -1,2 +1,3 @@
-*.bat text eol=crlf
-*.ps1 text eol=crlf
+# Guardados tal cual, con fin de línea de Windows (CRLF), para que el ZIP de GitHub los traiga listos.
+*.bat -text
+*.ps1 -text
