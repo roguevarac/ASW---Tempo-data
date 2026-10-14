@@ -44,6 +44,11 @@ correr "Tarea de YouTube" env DATABASE_URL="postgresql://authenticator:prueba_lo
 base_nueva
 correr "Front en el navegador" python3 tests/test_navegador.py
 correr "Migración (exportar + importar)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_migracion.py
+if docker info >/dev/null 2>&1; then
+    correr "Scripts de Windows (PowerShell + Docker)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_windows.py
+else
+    echo "== Scripts de Windows: se saltean (no hay Docker)"
+fi
 
 echo
 [ "$FALLAS" -eq 0 ] && echo "TODAS LAS PRUEBAS OK" || { echo "$FALLAS PRUEBAS CON FALLAS"; exit 1; }

@@ -10,18 +10,19 @@ Aunque el nombre diga Claude, ese archivo vale para cualquier agente.
    de archivos, Edge Function de YouTube y front, todo en un servidor propio. Ver `sistema_ranking/README.md`.
 
 ## Estado del Sistema Ranking Digital
-Terminado y probado con `sistema_ranking/tests/correr_todo.sh`. Las 5 pruebas dan OK: estructura igual a Supabase,
-API, tarea de YouTube, front en el navegador y migración.
+Terminado y probado con `sistema_ranking/tests/correr_todo.sh`. Las 6 pruebas dan OK: estructura igual a Supabase,
+API, tarea de YouTube, front en el navegador, migración y scripts de Windows.
 
-Falta lo que solo puede hacer el usuario, en este orden:
-1. En su PC (Windows): `pip install "psycopg[binary]" httpx` y luego
-   `python sistema_ranking/migracion/exportar_supabase.py`. El script pide la conexión y la service_role key de
-   Supabase. Crea la carpeta `exportacion/`.
-2. En el servidor: `cd sistema_ranking`, `cp .env.example .env` (completar las claves) y `docker compose up -d`.
-3. Importar con el comando de la sección "Migrar los datos" del README.
-4. Copiar el horario de `exportacion/cron_jobs.csv` a `YOUTUBE_CRON` en `.env` y reiniciar con
-   `docker compose up -d`.
-5. Probar con los usuarios reales y, si todo está bien, apagar Supabase.
+Falta lo que solo puede hacer el usuario, en su PC con Windows (ver "Uso en Windows" en `sistema_ranking/README.md`):
+1. Instalar Docker Desktop.
+2. En `sistema_ranking/`: `1_INSTALAR.bat` y después `2_MIGRAR_DESDE_SUPABASE.bat`.
+   - La migración va por HTTPS, con la service_role key, que se pide en pantalla y no se guarda.
+   - Los archivos del historial se toman de las carpetas de OneDrive y, si falta alguno, se baja del bucket.
+   - Al final pide contraseñas nuevas para los usuarios y el horario de YouTube.
+3. Probar con los usuarios y, si todo está bien, apagar Supabase y rotar sus claves.
+
+Uso diario: `ABRIR_SISTEMA.bat`, `USUARIOS.bat` y `DETENER.bat`. Para que lo use todo el equipo, va en un servidor
+(sección "Servidor Linux" del README).
 
 ## Reglas para seguir trabajando
 - **No subir secretos.** Nada de contraseñas, `.env`, service_role key, anon key ni la carpeta `exportacion/`.
@@ -34,6 +35,12 @@ Falta lo que solo puede hacer el usuario, en este orden:
 - **No cambiar la lógica del front ni las funciones SQL** salvo que el usuario lo pida. Costó mucho armar cada
   función. Los errores heredados de Supabase están listados en el README y se dejaron así a propósito.
 - **Antes de dar un cambio por bueno**, correr `sistema_ranking/tests/correr_todo.sh`. Necesita Linux o WSL2 con
-  PostgreSQL 16 en el puerto 54340, y Chromium para la prueba del navegador. Si una prueba falla, se arregla el
-  código, no la prueba.
+  PostgreSQL 16 en el puerto 54340, y Chromium para la prueba del navegador. Si hay Docker, también prueba los
+  scripts de Windows con PowerShell real (`test_windows.py`).
+- Los `.ps1` de `sistema_ranking/windows/` tienen que andar en PowerShell 5.1, que es el que trae Windows:
+  - nada de sintaxis de PowerShell 7;
+  - los archivos se guardan con BOM y fin de línea CRLF;
+  - un comando que muestra algo en pantalla no se llama dentro de una expresión, porque eso esconde lo que
+    pregunta.
+- Si una prueba falla, se arregla el código, no la prueba.
 - Para las queries de Redshift, `python3 reporte_cwr/tests/test_reporte.py`.

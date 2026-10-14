@@ -79,4 +79,9 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   `front/generar_index.py`; `tempo-client.js` imita supabase-js). Ver `sistema_ranking/README.md`.
 - El esquema (`db/03`, `db/04`) se genera del CSV `migracion_supabase/origen/esquema_supabase.csv`; no editarlo a mano.
 - Comportamientos heredados de Supabase se mantienen a propósito (listados en el README); `anon` no tiene permisos.
-- Antes de entregar un cambio: `sistema_ranking/tests/correr_todo.sh` (Postgres local en el puerto 54340).
+- Antes de entregar un cambio: `sistema_ranking/tests/correr_todo.sh` (Postgres local en el puerto 54340; con Docker
+  también prueba los scripts de Windows con PowerShell real).
+- El usuario lo usa en Windows con doble clic: `1_INSTALAR.bat`, `2_MIGRAR_DESDE_SUPABASE.bat`, `ABRIR_SISTEMA.bat`,
+  `USUARIOS.bat`, `DETENER.bat` (scripts en `windows/`, PowerShell 5.1, BOM + CRLF). La migración va por la API de
+  Supabase (HTTPS), porque en la red de la empresa el 5432 está bloqueado. El historial de archivos se toma de OneDrive
+  `...\Latam\Backoffice\Charts historicos Youtube` y `Charts historicos_spotify`.

@@ -12,13 +12,44 @@ navegador ──► API propia (FastAPI) ──► PostgreSQL 16
 | Supabase | Acá |
 |---|---|
 | Base de datos | `db/` instala lo mismo, generado del CSV del esquema. `tests/comparar_con_supabase.py` lo compara contra el CSV: 151 objetos idénticos. |
-| Auth (email + contraseña) | `auth.users` con bcrypt, `auth.uid()`, `auth.jwt()`. Los usuarios migrados **conservan su contraseña**. |
+| Auth (email + contraseña) | `auth.users` con bcrypt, `auth.uid()`, `auth.jwt()`. Los usuarios migrados conservan su id, email y rol. |
 | PostgREST + supabase-js | `api/app.py` + `front/tempo-client.js`, que imita los métodos de supabase-js que usa el front. |
 | Bucket `csv-uploads` | Archivos en disco (`STORAGE_DIR`) y registro en `storage.objects`, con RLS y links firmados. |
 | Edge Function de YouTube + pg_cron | `api/youtube_job.py`: misma lógica y mismos 8 países, programada con `YOUTUBE_CRON`. |
-| Dashboard > Users | `admin/usuarios.py` |
+| Dashboard > Users | `USUARIOS.bat` (o `admin/usuarios.py`) |
 
-## Poner en marcha
+## Uso en Windows (doble clic)
+
+Lo único que hay que instalar es **Docker Desktop** (https://www.docker.com/products/docker-desktop/). En una PC de
+la empresa, quizás tengas que pedírselo a IT. Después de instalarlo, reiniciá la PC y abrilo una vez.
+
+1. Bajá el ZIP de la rama desde GitHub. Antes de descomprimirlo: clic derecho > Propiedades > tildá
+   **Desbloquear** > Aceptar. Después descomprimilo y entrá a la carpeta `sistema_ranking`.
+2. **`1_INSTALAR.bat`**. Arma el sistema y lo deja funcionando en http://localhost:8000. La primera vez tarda
+   unos minutos. Las claves internas las genera solo, al azar, en el archivo `.env`.
+3. **`2_MIGRAR_DESDE_SUPABASE.bat`**. Trae de Supabase los datos, los usuarios y el historial de cargas. Te pide:
+   - la URL del proyecto: Enter para usar la tuya;
+   - la service_role key: Supabase > Project Settings > API Keys > service_role > Reveal;
+   - una contraseña nueva para cada usuario, porque Supabase no entrega las contraseñas;
+   - el horario de la carga de YouTube, que se saca en el SQL Editor con `select schedule from cron.job;`.
+
+   Los archivos del historial los toma de tus carpetas de OneDrive `Charts historicos Youtube` y
+   `Charts historicos_spotify`, buscándolos por nombre y tamaño exactos. Los que no estén ahí, los baja del bucket.
+   Antes de correrlo, en OneDrive hacé clic derecho en esas carpetas > **Mantener siempre en este dispositivo**.
+   Todo viaja por HTTPS, así que funciona desde la red de la empresa. La clave no se guarda en ningún archivo.
+4. Para usarlo todos los días: **`ABRIR_SISTEMA.bat`**. Para apagarlo: **`DETENER.bat`** (los datos quedan
+   guardados). Para administrar usuarios: **`USUARIOS.bat`**.
+
+Hay dos diferencias con Supabase que tenés que tener en cuenta:
+- **Solo funciona mientras la PC está prendida y con Docker Desktop abierto.** Eso incluye la carga automática de
+  YouTube: si la PC está apagada a esa hora, esa semana no se carga sola.
+- **Solo entra quien usa esa PC.** Para que lo usen otras personas, tiene que instalarse en un servidor de la
+  empresa (ver la sección siguiente).
+
+Si `1_INSTALAR.bat` falla con un mensaje de `SSL`, `certificate` o `proxy`, es la red de la empresa bloqueando la
+descarga de componentes. Corré solo ese paso conectado a otra red (por ejemplo, el celular).
+
+## Servidor Linux (para que lo use todo el equipo)
 
 Hace falta un servidor con Docker.
 
@@ -28,38 +59,34 @@ cp .env.example .env        # completar las 3 claves (cada una larga y distinta)
 docker compose up -d        # la primera vez instala la base; después no la toca
 ```
 
-El sistema queda en `http://servidor:8000`. Para usarlo fuera de la red interna, poné adelante un proxy con HTTPS
-(nginx, Caddy o el balanceador de la empresa), porque el login viaja en cada pedido. La base no se publica fuera
-del servidor.
+El sistema queda en `http://servidor:8000`. Si se va a usar fuera de la red interna, poné adelante un proxy con
+HTTPS (nginx, Caddy o el balanceador de la empresa), porque el login viaja en cada pedido. La base no se publica
+fuera del servidor.
 
-## Migrar los datos de Supabase
+### Migrar los datos de Supabase en el servidor
 
-1. **En tu computadora**: `pip install "psycopg[binary]" httpx` y luego `python migracion/exportar_supabase.py`.
-   El script pide la cadena de conexión (Dashboard > Connect > Session pooler), la URL del proyecto y la
-   service_role key. No guarda nada de eso. Crea la carpeta `exportacion/` con:
-   - las 11 tablas;
-   - los usuarios;
-   - los 4.594 archivos del bucket (unos 68 MB);
-   - las tareas de pg_cron;
-   - un manifiesto con la cantidad de filas y el hash de cada archivo.
-
-   Si se corta, volvé a correrlo: solo baja lo que falta.
-2. **Llevá `exportacion/` al servidor** (junto a `docker-compose.yml`) y corré:
+1. Exportá (en el servidor o en cualquier PC con Python: `pip install "psycopg[binary]" httpx`):
+   `python migracion/exportar_supabase.py exportacion --sin-archivos`. Las opciones:
+   - Sin `--sin-archivos`, también baja el bucket entero (unos 68 MB).
+   - Con `--via-db` (cadena de conexión, puerto 5432), además conserva las contraseñas y saca una foto exacta de un
+     mismo instante. En redes corporativas ese puerto suele estar bloqueado.
+2. Importá:
    ```sh
-   docker compose run --rm -v ./exportacion:/exportacion \
+   docker compose run --rm -v ./exportacion:/exportacion -v "/ruta/charts:/charts:ro" \
      -e PGURL=postgresql://postgres:<POSTGRES_PASSWORD>@db:5432/ranking \
-     api python /app/migracion/importar.py /exportacion
+     api python /app/migracion/importar.py /exportacion --archivos-desde /charts
    ```
-   La importación va en una sola transacción y no dispara triggers, así que los datos quedan exactamente como
-   estaban. Al terminar compara filas y archivos contra el manifiesto, y si algo no coincide no importa nada.
-   Para volver a cargar sobre datos existentes, agregá `--reemplazar`.
-3. **Horario de YouTube**: copiá en `YOUTUBE_CRON` del `.env` el `schedule` que figura en
-   `exportacion/cron_jobs.csv`. Después corré `docker compose up -d`. Ese horario está en UTC en pg_cron: si
-   lo copiás tal cual, poné `YOUTUBE_CRON_TZ=UTC`.
-4. Entrá con tu usuario de siempre. Revisá la tabla principal, la de territorios y el historial de cargas.
-   Cuando esté todo bien, apagá Supabase.
+   - Va todo en una sola transacción y sin disparar triggers, así que los datos quedan exactamente como estaban.
+   - Compara las filas contra el manifiesto; si algo no coincide, no importa nada.
+   - Si falta algún archivo del historial, lo lista en `exportacion/archivos_faltantes.txt`. Para esos archivos:
+     `exportar_supabase.py exportacion --bajar-faltantes` los baja del bucket, y `--permitir-faltantes` importa
+     igual, sin ellos.
+   - `--reemplazar` carga sobre datos que ya existen.
+3. Contraseñas: `admin/usuarios.py clave <email>` para cada usuario.
+4. Horario de YouTube: `YOUTUBE_CRON=<schedule de cron.job>` y `YOUTUBE_CRON_TZ=UTC` en `.env`, y después
+   `docker compose up -d`.
 
-## Usuarios
+## Usuarios (servidor Linux)
 
 ```sh
 docker compose exec -e PGURL=postgresql://postgres:<POSTGRES_PASSWORD>@db:5432/ranking api \
@@ -105,7 +132,8 @@ aparte:
 | `test_e2e.py` | Por HTTP, cada operación del front: login, cargas, ediciones, reportes, historial, archivos, exportaciones, permisos por rol y bloqueo. |
 | `test_youtube.py` | La tarea de YouTube con respuestas simuladas, incluidos los errores por país. |
 | `test_navegador.py` | El front real en Chromium: login, cargar CSV, editar, descargar, historial, reporte BO, sesión y auditor en solo lectura. |
-| `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo; que se mantengan las contraseñas; protecciones ante datos existentes o archivos alterados. |
+| `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
+| `test_windows.py` | Los scripts de Windows con PowerShell real, como los usa una persona: instalar, migrar, poner contraseñas, programar YouTube, administrar usuarios, apagar y volver a abrir. Solo corre si hay Docker. |
 
 ## Archivos
 
@@ -114,7 +142,9 @@ db/          instalar.sh + SQL (03 y 04 se generan del CSV con generar_esquema.p
 api/         app.py (API) y youtube_job.py
 front/       index.html (generado de ../frontend_ranking_digital.html con generar_index.py), tempo-client.js
 admin/       usuarios.py
-migracion/   exportar_supabase.py (en tu PC) e importar.py (en el servidor)
+migracion/   exportar_supabase.py e importar.py
+windows/     los scripts que corren los .bat (PowerShell 5.1 o superior)
+*.bat        doble clic en Windows: 1_INSTALAR, 2_MIGRAR_DESDE_SUPABASE, ABRIR_SISTEMA, USUARIOS, DETENER
 tests/       correr_todo.sh y las pruebas
 ```
 
