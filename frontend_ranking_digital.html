@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ranking Digital Regional — Panel operativo</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2212%22%20fill%3D%22%230E1520%22/%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2252%22%20height%3D%2252%22%20rx%3D%228%22%20fill%3D%22none%22%20stroke%3D%22%230f4bab%22%20stroke-width%3D%224%22/%3E%3Ctext%20x%3D%2232%22%20y%3D%2242%22%20font-family%3D%22Arial%2C%20sans-serif%22%20font-size%3D%2222%22%20font-weight%3D%22700%22%20fill%3D%22%230f4bab%22%20text-anchor%3D%22middle%22%3ERD%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+:root{
+  --void:#0E1520; --panel:#161F2C; --panel-raised:#1D2836; --line:#2B3A4C; --line-soft:#22303F;
+  --text-primary:#E8E6DF; --text-muted:#8A97A8; --brass:#0f4bab; --brass-dim:#0b3785;
+  --green:#5FA980; --green-bg:#1B2B23; --red:#C15C51; --red-bg:#2C1D1A; --blue:#FFFFFF; --blue-bg:#1A2530;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--void);color:var(--text-primary);font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased;}
+.mono{font-family:'IBM Plex Mono',monospace;}
+.display{font-family:'Space Grotesk',sans-serif;}
+.app{max-width:1180px;margin:0 auto;padding:28px 24px 60px;}
+
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;}
+.login-card{width:340px;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:28px 26px;}
+.login-card h1{font-size:16px;margin:0 0 4px;font-family:'Space Grotesk',sans-serif;}
+.login-card p{font-size:12.5px;color:var(--text-muted);margin:0 0 20px;}
+.login-card label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:5px;}
+.login-card input{width:100%;background:var(--panel-raised);border:1px solid var(--line);border-radius:3px;padding:9px 10px;color:var(--text-primary);font-size:13px;margin-bottom:14px;}
+.login-card input:focus{outline:none;border-color:var(--brass-dim);}
+.login-card .err{color:var(--red);font-size:12px;margin:-6px 0 12px;min-height:14px;}
+
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:20px;border-bottom:1px solid var(--line);}
+.wordmark{display:flex;align-items:center;gap:12px;}
+.wordmark .mark{width:34px;height:34px;border:1.5px solid var(--brass);border-radius:2px;display:flex;align-items:center;justify-content:center;color:var(--brass);font-size:13px;font-weight:600;font-family:'Space Grotesk',sans-serif;flex-shrink:0;}
+.wordmark h1{font-size:17px;letter-spacing:0.02em;margin:0;font-weight:600;}
+.wordmark p{margin:2px 0 0;font-size:12.5px;color:var(--text-muted);}
+.session{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+.session .who{font-size:12.5px;}
+.session .who .mono{color:var(--brass);}
+.session button{background:none;border:1px solid var(--line);color:var(--text-muted);font-size:11.5px;padding:5px 10px;border-radius:3px;cursor:pointer;}
+.session button:hover{border-color:var(--brass-dim);color:var(--brass);}
+.last-chart{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.last-chart .mono{color:var(--brass);}
+
+.tabs{display:flex;gap:2px;margin-top:22px;border-bottom:1px solid var(--line);}
+.tab{padding:10px 16px;font-size:13px;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;position:relative;user-select:none;}
+.tab.active{color:var(--brass);border-bottom-color:var(--brass);}
+.tab:not(.active):hover{color:var(--text-primary);}
+.tab .lock{font-size:10px;margin-left:5px;color:var(--text-muted);}
+
+.panel-body{padding-top:18px;}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
+.toolbar-left{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.search{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:8px 10px;color:var(--text-primary);font-size:13px;width:240px;}
+.search::placeholder{color:var(--text-muted);}
+.search:focus{outline:none;border-color:var(--brass-dim);}
+select{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:8px 10px;color:var(--text-primary);font-size:13px;}
+select:focus{outline:none;border-color:var(--brass-dim);}
+.btn{background:transparent;border:1px solid var(--line);color:var(--text-primary);padding:8px 13px;font-size:12.5px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+.btn:hover{border-color:var(--brass-dim);color:var(--brass);}
+.btn.primary{background:var(--brass);border-color:var(--brass);color:#FFFFFF;font-weight:500;}
+.btn.primary:hover{background:#1a5cc4;color:#FFFFFF;}
+.btn:disabled{opacity:0.35;cursor:not-allowed;}
+.check{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);}
+
+table{width:100%;border-collapse:collapse;font-size:12.5px;}
+thead th{text-align:left;color:var(--text-muted);font-weight:500;font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--void);z-index:5;}
+tbody td{padding:7px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle;}
+tbody tr:hover{background:var(--panel);}
+tbody tr.is-deleted{opacity:0.45;}
+.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
+.tempo{font-family:'IBM Plex Mono',monospace;color:var(--text-muted);}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:500;}
+.badge.ok{background:var(--green-bg);color:var(--green);}
+.badge.dup{background:var(--red-bg);color:var(--red);}
+.badge.unc{background:var(--blue-bg);color:var(--blue);}
+.badge.pct{background:var(--red-bg);color:var(--red);}
+.rowbtn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:11.5px;padding:3px 6px;}
+.rowbtn:hover{color:var(--red);}
+.empty{padding:40px 10px;text-align:center;color:var(--text-muted);font-size:13px;}
+.locked{padding:40px 20px;text-align:center;color:var(--text-muted);font-size:13px;max-width:420px;margin:0 auto;}
+.locked .lk{font-size:11px;color:var(--brass);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;}
+.drop{border:1.5px dashed var(--line);border-radius:4px;padding:34px 20px;text-align:center;margin-bottom:18px;background:var(--panel);}
+.drop.over{border-color:var(--brass);background:var(--panel-raised);}
+.drop p{margin:0 0 4px;font-size:13px;}
+.drop .hint{font-size:11.5px;color:var(--text-muted);}
+.drop input{display:none;}
+.summary-row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.metric{background:var(--panel);border-radius:3px;padding:10px 14px;flex:1;min-width:120px;}
+.metric .n{font-size:20px;font-weight:500;font-family:'IBM Plex Mono',monospace;}
+.metric .l{font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;}
+.metric.err .n{color:var(--red);}
+.metric.ok .n{color:var(--green);}
+.metric.new .n{color:var(--blue);}
+footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--line);font-size:11px;color:var(--text-muted);display:flex;justify-content:space-between;}
+
+.edit-field{background:var(--panel-raised);border:1px solid var(--line);border-radius:3px;padding:4px 6px;color:var(--text-primary);font-size:12px;font-family:'IBM Plex Mono',monospace;width:100%;}
+.edit-field:focus{outline:none;border-color:var(--brass-dim);}
+.edit-field.empty-flag{border-color:var(--red);}
+select.edit-field{font-family:'IBM Plex Sans',sans-serif;}
+.control-country{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:12.5px;color:var(--text-muted);}
+.format-tag{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10.5px;background:var(--panel-raised);color:var(--brass);margin-left:8px;}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:100;}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:4px;width:min(1500px,96vw);max-height:88vh;overflow:auto;padding:22px 24px;}
+.modal h2{font-size:15px;margin:0 0 4px;font-family:'Space Grotesk',sans-serif;}
+.modal .sub{font-size:12px;color:var(--text-muted);margin:0 0 16px;}
+.modal .close{position:sticky;top:0;float:right;background:none;border:1px solid var(--line);color:var(--text-muted);border-radius:3px;padding:4px 9px;cursor:pointer;font-size:12px;}
+.modal .close:hover{border-color:var(--brass-dim);color:var(--brass);}
+.modal table{font-size:12px;}
+.modal tbody td{padding:6px 8px;}
+.modal thead th{padding:7px 8px;background:var(--panel);}
+.val-old{color:var(--red);}
+.val-new{color:var(--green);}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+  CONFIGURACIÓN — completar con los datos de tu proyecto Supabase
+  (Settings > API). Usar siempre la anon public key acá.
+============================================================= -->
+<script>
+const SUPABASE_URL = 'https://ltosqbvzlnncxijzodvd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0b3NxYnZ6bG5uY3hpanpvZHZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MjExOTksImV4cCI6MjEwMzA5NzE5OX0.K2jcB3FXlrfB98-wiZ9Qqr0zLj2EdJaHcOMBkCieY2o';
+</script>
+
+<div id="root"></div>
+
+<script>
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const COUNTRIES = ['AR','CL','PE','UY','PY','CO','EC','MX'];
+const COUNTRY_ALIASES = { ar:'AR', arg:'AR', cl:'CL', chl:'CL', pe:'PE', per:'PE', uy:'UY', ury:'UY', py:'PY', pry:'PY', co:'CO', col:'CO', ec:'EC', ecu:'EC', mx:'MX', mex:'MX' };
+const ESTADO_TRABAJO_OPTIONS = ['REVISAR','OK BO-Tempo','duplicada','dif de split'];
+const ESTADOS = ['ok','duplicada','uncontrolled','porcentaje_incorrecto'];
+
+let state = {
+  session: null, profile: null, loginError: '',
+  activeTab: 'master', search: '', territoryCountry: '', reclamosFilter: '', estadoTrabajoFilter: '', showDeleted: false,
+  dateFrom: '', dateTo: '', masterCountry: '', history: null, historyLoading: false,
+  master: [], territoryControl: [], uploads: [], loading: true,
+  uploadResults: [], uploadProgress: null, uploading: false, controlCountry: '', lastChartLoad: null, lastSpotify: null, lastYoutube: null,
+};
+
+function fmtNum(n){ return n===null || n===undefined ? '—' : Number(n).toLocaleString('es-AR'); }
+function canWrite(){ return state.profile?.app_role==='admin' || state.profile?.app_role==='usuario_estandar'; }
+function canUpload(){ return canWrite(); }
+
+function badgeFor(estado){
+  const map = {ok:['ok','ok'], duplicada:['dup','duplicada'], uncontrolled:['unc','uncontrolled'], porcentaje_incorrecto:['pct','% incorrecto']};
+  const [cls,label] = map[estado] || ['unc', estado||'—'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function detectCountry(sourceName){
+  const text = `${sourceName||''}`.toLowerCase();
+  for(const [alias, code] of Object.entries(COUNTRY_ALIASES)){
+    const re = new RegExp(`(^|[^a-z])${alias}([^a-z]|$)`);
+    if(re.test(text)) return code;
+  }
+  return null;
+}
+
+// ---------- Datos reales desde Postgres (vía Supabase) ----------
+async function loadProfile(){
+  const { data, error } = await sb.from('app_users').select('app_role,oficina').eq('user_id', state.session.user.id).single();
+  state.profile = error ? { app_role:'usuario_estandar', oficina:null } : data;
+}
+async function fetchAll(fn, params){
+  const PAGE = 1000;
+  let from = 0;
+  const all = [];
+  while(true){
+    const { data, error } = await sb.rpc(fn, params).range(from, from + PAGE - 1);
+    if(error) return { data: all, error };
+    all.push(...(data || []));
+    if(!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return { data: all, error: null };
+}
+
+async function loadAll(){
+  state.loading = true; render();
+  const isAdmin = state.profile.app_role === 'admin';
+  const incDeleted = isAdmin && state.showDeleted;
+
+  const [m, t] = await Promise.all([
+    fetchAll('fn_master_view', {
+      p_date_from: state.dateFrom || null,
+      p_date_to: state.dateTo || null,
+      p_pais: state.masterCountry || null,
+      p_include_deleted: incDeleted,
+    }),
+    fetchAll('fn_territory_view', {
+      p_date_from: state.dateFrom || null,
+      p_date_to: state.dateTo || null,
+      p_pais: state.territoryCountry || null,
+      p_include_deleted: incDeleted,
+    }),
+  ]);
+  if(m.error) console.error('fn_master_view:', m.error.message);
+  if(t.error) console.error('fn_territory_view:', t.error.message);
+  state.master = m.data || [];
+  state.territoryControl = t.data || [];
+
+  const u = await sb.from('csv_uploads').select('*').order('uploaded_at',{ascending:false}).limit(50);
+  state.uploads = u.data || [];
+  await loadLastChartLoad();
+
+  state.loading = false;
+  render();
+}
+
+async function updateMasterField(id, field, value){
+  if(field === 'tempo_id'){
+    // Pasa por la función que, si ese tempo_id numérico ya estaba en
+    // otra obra, fusiona las dos en una sola.
+    const { data, error } = await sb.rpc('fn_set_tempo_id', { p_track_id: id, p_tempo_id: value });
+    if(error){ alert('No se pudo guardar el tempo_id: ' + error.message); }
+    else if(data > 0){
+      alert(`Ese tempo_id ya estaba en otra obra: se fusionaron ${data === 1 ? '2 obras' : (data+1)+' obras'} en una sola.`);
+    }
+    loadAll();
+    return;
+  }
+  const patch = {}; patch[field] = value === '' ? null : value;
+  await sb.from('tracks_master').update(patch).eq('id', id);
+  loadAll();
+}
+
+async function updateBoReportField(id, field, value){
+  const patch = {}; patch[field] = value === '' ? null : value;
+  await sb.from('territory_bo_report').update(patch).eq('id', id);
+  loadAll();
+}
+
+async function openHistory(trackId, pais){
+  const row = state.territoryControl.find(r => r.track_master_id===trackId && r.pais_code===pais);
+  state.history = { trackId, pais, titulo: row?.track_artist_concat || '', rows: [] };
+  state.historyLoading = true; render();
+
+  const { data, error } = await sb.rpc('fn_obra_history', {
+    p_track_master_id: trackId, p_pais: pais
+  });
+  state.history.rows = data || [];
+  state.history.error = error?.message || null;
+  state.historyLoading = false;
+  render();
+}
+
+function renderHistoryModal(){
+  if(!state.history) return '';
+  const h = state.history;
+  return `
+  <div class="modal-bg" id="historyBg">
+    <div class="modal">
+      <button class="close" id="closeHistory">Cerrar</button>
+      <h2 class="display">Histórico de cambios</h2>
+      <p class="sub">${h.titulo} · ${h.pais}</p>
+      ${state.historyLoading ? `<div class="empty">Cargando...</div>`
+        : h.error ? `<div class="empty">Error: ${h.error}</div>`
+        : !h.rows.length ? `<div class="empty">Sin modificaciones registradas todavía.</div>`
+        : `<table><thead><tr>
+             <th>Fecha</th><th>BO</th><th>C/A</th>
+             <th class="num">% Perf Tempo</th><th class="num">% Mech Tempo</th>
+             <th>Estado</th><th>Reclamos</th><th class="num">% Mech BO</th>
+             <th>Estado de trabajo</th><th>Estado obra</th><th>Created date</th>
+           </tr></thead>
+           <tbody>${h.rows.map(r=>`
+             <tr>
+               <td class="mono">${(r.changed_at||'').replace('T',' ').slice(0,16)}</td>
+               <td class="tempo">${r.bo ?? '—'}</td>
+               <td>${r.ca ?? '—'}</td>
+               <td class="num">${r.perf_tempo==null||r.perf_tempo===''?'—':/^[0-9.]+$/.test(r.perf_tempo)?r.perf_tempo+'%':r.perf_tempo}</td>
+               <td class="num">${r.mech_tempo==null||r.mech_tempo===''?'—':/^[0-9.]+$/.test(r.mech_tempo)?r.mech_tempo+'%':r.mech_tempo}</td>
+               <td>${r.estado ?? '—'}</td>
+               <td>${r.reclamos ?? '—'}</td>
+               <td class="num">${r.mech_bo!=null?r.mech_bo+'%':'—'}</td>
+               <td>${r.estado_trabajo ?? '—'}</td>
+               <td>${r.estado_obra ?? '—'}</td>
+               <td class="mono">${r.created_date ?? '—'}</td>
+             </tr>`).join('')}
+           </tbody></table>`}
+    </div>
+  </div>`;
+}
+
+async function softDelete(kind, id){
+  const table = kind==='master' ? 'tracks_master' : 'territory_tracks';
+  await sb.from(table).update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  loadAll();
+}
+async function restore(kind, id){
+  const table = kind==='master' ? 'tracks_master' : 'territory_tracks';
+  await sb.from(table).update({ deleted_at: null }).eq('id', id);
+  loadAll();
+}
+
+async function downloadBoReport(){
+  const n = await sb.rpc('fn_next_bo_carga');
+  if(n.error){ alert('No se pudo generar el reporte: ' + n.error.message); return; }
+  const carga = n.data;
+  const rows = state.master.filter(r => /^\d+$/.test(String(r.tempo_id || '').trim()));
+  if(!rows.length){ alert('No hay obras con tempo_id cargado para incluir en el reporte.'); return; }
+
+  const sinTitulo = rows.filter(r => !r.track_name_clean).length;
+  if(sinTitulo){
+    alert(`${sinTitulo} obra(s) no tienen título disponible y quedarían vacías en el reporte. Revisá que esté aplicada la última migración.`);
+  }
+
+  // Sin fila de encabezado: el archivo se sube directo.
+  // En los títulos se sacan "," y ";" porque Excel (y algunos sistemas)
+  // los toman como separador y parten el nombre en otra columna.
+  const lines = [];
+  rows.forEach(r => {
+    const track = (r.track_name_clean || '')
+      .replace(/[;,]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    lines.push(`${String(r.tempo_id).trim()};${track};BOcarga${carga}`);
+  });
+
+  const filename = `reporte_bo_carga${carga}.csv`;
+  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+
+  // Archivar una copia de lo que se mandó a BO, y dejarlo en el historial.
+  const hoy = new Date().toISOString().slice(0,10);
+  const path = `bo_generado/${hoy}/${Date.now()}_${filename}`;
+  const { error: upErr } = await sb.storage.from('csv-uploads').upload(path, blob);
+  await sb.from('csv_uploads').insert({
+    filename, format: 'bo_generado',
+    total_rows: rows.length, updated_rows: rows.length, created_tracks: 0,
+    error_count: upErr ? 1 : 0,
+    errors: upErr ? [`No se pudo archivar en Storage: ${upErr.message}`] : null,
+    file_path: upErr ? null : path,
+  });
+  if(upErr) alert('El reporte se descargó, pero no se pudo guardar la copia en Storage: ' + upErr.message);
+
+  const u = await sb.from('csv_uploads').select('*').order('uploaded_at',{ascending:false}).limit(50);
+  state.uploads = u.data || [];
+  render();
+}
+
+async function downloadFilteredCsv(fn, params, filename, columns){
+  const PAGE = 1000;
+  let from = 0;
+  const partes = [];
+  while(true){
+    let q = sb.rpc(fn, params);
+    if(columns) q = q.select(columns);
+    const { data, error } = await q.range(from, from + PAGE - 1).csv();
+    if(error){ alert('No se pudo generar el CSV: ' + error.message); return; }
+    const lineas = (data || '').split('\n').filter(l => l !== '');
+    const encabezado = lineas.shift();
+    if(!partes.length && encabezado !== undefined) partes.push(encabezado);
+    partes.push(...lineas);
+    if(lineas.length < PAGE) break;
+    from += PAGE;
+  }
+  const blob = new Blob([partes.join('\n')], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+
+async function downloadCsv(view, filters){
+  let q = sb.from(view).select('*');
+  if(filters?.pais_code) q = q.eq('pais_code', filters.pais_code);
+  const { data, error } = await q.csv();
+  if(error){ alert('No se pudo generar el CSV: ' + error.message); return; }
+  const blob = new Blob([data], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filters?.filename || 'export.csv';
+  a.click();
+}
+
+// Traduce cualquier variante de encabezado (con espacios, puntos, %, mayúsculas)
+// a una clave canónica común entre los tres formatos de CSV soportados.
+const HEADER_ALIASES = {
+  source_name:'source_name', rank:'rank', previous_rank:'previous_rank', peak_rank:'peak_rank',
+  track_name:'track_name', artist_names:'artist_names', artist_name:'artist_names',
+  weeks_on_chart:'weeks_on_chart', periods_on_chart:'weeks_on_chart',
+  streams:'streams', views:'streams',
+  weekly_growth:'weekly_growth', growth:'weekly_growth',
+  uri:'uri', youtube_url:'uri', source:'source',
+  tempo_id:'tempo_id', bo_id:'bo_id', ctrl:'percent_ctrl', percent_ctrl:'percent_ctrl',
+  collect_mec:'collect_mec', collect_ejec:'collect_ejec', control:'control', cwr:'cwr', nota:'nota',
+  submitters_song_code:'tempo_id', internal_song_code:'bo_id',
+  song_owners:'ca', song_owner:'ca', songowners:'ca', owners:'ca',
+  bointernal_status:'bo_status', internal_status:'bo_status', counterclaim_status:'reclamos',
+  song_id:'tempo_id', song_title_tx:'song_title', pais:'pais_nombre',
+  performance_pc_total:'perf_pc', mechanical_pc_total:'mech_pc', sync_pc_total:'sync_pc',
+  publishers:'publishers', contratos_del_pais:'contratos',
+  song_tempo_create_date:'created_date', estado_obra:'estado_obra',
+  track_artista:'track_artist_concat', track_artist:'track_artist_concat',
+  tipo_de_distribucion:'tipo_distribucion',
+  numero_de_distribucion:'numero_distribucion',
+  fase_distribucion:'fase_distribucion',
+  dsp:'dsp',
+  periodo:'periodo',
+  codigo_obra:'codigo_obra',
+  titulo_obra:'titulo_obra',
+  traduccion_subtitulo_interprete:'interprete',
+  numero_cae_derechohabiente:'cae_derechohabiente',
+  nombre_derechohabiente:'nombre_derechohabiente',
+  sociedad_derechohabiente:'sociedad_derechohabiente',
+  tipo_participacion_derechohabiente:'tipo_participacion',
+  porcentaje_derechohabiente:'porcentaje_derechohabiente',
+  monto_radio:'monto_radio',
+  monto_variedades_tv_abierta:'monto_tv_abierta',
+  monto_tv_cable:'monto_tv_cable',
+  monto_usos_ugp:'monto_ugp',
+  monto_online:'monto_online',
+  monto_total:'monto_total',
+};
+function canonicalHeader(h){
+  const key = stripAccents(h.replace(/^\uFEFF/, '')).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if(HEADER_ALIASES[key]) return HEADER_ALIASES[key];
+  if(key.startsWith('mechanicall_collect_share')) return 'mech_bo';
+  if(key.includes('owner')) return 'ca';
+  if(key.includes('status') && !key.includes('claim')) return 'bo_status';
+  return key;
+}
+
+const COUNTRY_NAME_ALIASES = { ARGENTINA:'AR', CHILE:'CL', PERU:'PE', URUGUAY:'UY', PARAGUAY:'PY', COLOMBIA:'CO', ECUADOR:'EC', MEXICO:'MX' };
+function stripAccents(s){ return s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function detectCountryFromFilename(filename){
+  if(!filename) return null;
+  const clean = stripAccents(filename).toUpperCase();
+  const afterPais = clean.match(/PAIS_([A-Z]+)/);
+  if(afterPais && COUNTRY_NAME_ALIASES[afterPais[1]]) return COUNTRY_NAME_ALIASES[afterPais[1]];
+  for(const [name, code] of Object.entries(COUNTRY_NAME_ALIASES)){
+    if(clean.includes(name)) return code;
+  }
+  return null;
+}
+
+// Fecha del chart, sacada del nombre del archivo.
+// Spotify: regional-uy-weekly-2024-01-04.csv
+// YouTube: youtube-charts-top-songs-uy-weekly-20240104.csv
+function detectDateFromFilename(filename){
+  if(!filename) return null;
+  let m = filename.match(/(20\d{2})-(\d{2})-(\d{2})/);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = filename.match(/(20\d{2})(\d{2})(\d{2})/);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return null;
+}
+
+function detectFormat(row, filename){
+  if('track_artist_concat' in row && 'tempo_id' in row) return 'master_tempo';
+  if('perf_pc' in row || 'mech_pc' in row || 'estado_obra' in row) return 'tempo_report';
+  if('mech_bo' in row || 'bo_status' in row || 'reclamos' in row || 'ca' in row) return 'bo_report';
+  if('track_name' in row && 'artist_names' in row){
+    // La plataforma se decide primero por el nombre del archivo y la URI,
+    // que son señales fiables; "weekly_growth" queda como último recurso
+    // porque no todos los export de YouTube traen esa columna.
+    const fname = (filename || '').toLowerCase();
+    const uri = String(row.uri || '').toLowerCase();
+    if(fname.includes('youtube') || uri.includes('youtube.com') || uri.includes('youtu.be')) return 'youtube';
+    if(fname.includes('spotify') || uri.startsWith('spotify:')) return 'spotify';
+    return 'weekly_growth' in row ? 'youtube' : 'spotify';
+  }
+  return null;
+}
+
+// Procesa varios CSV en secuencia (uno detrás de otro, no en paralelo,
+// para que no se pisen entre ellos al crear las mismas canciones).
+async function handleFiles(fileList){
+  const files = Array.from(fileList || []);
+  if(!files.length) return;
+  state.uploadResults = [];
+  state.uploading = true;
+  state.uploadProgress = { done: 0, total: files.length };
+  render();
+
+  for(const file of files){
+    state.uploadProgress.done++;
+    render();
+    await handleCsv(file);
+  }
+
+  state.uploading = false;
+  state.uploadProgress = null;
+  await loadLastChartLoad();
+  loadAll();
+}
+
+// Lee el CSV respetando el encoding real. Muchos export vienen en
+// Windows-1252 (Excel en español): si se leen como UTF-8, los caracteres
+// como "¿" o "ñ" se rompen. Si detectamos el carácter de reemplazo,
+// releemos el archivo con el otro encoding.
+async function readFileText(file){
+  const buf = await file.arrayBuffer();
+  let text = new TextDecoder('utf-8').decode(buf);
+  if(text.includes('\uFFFD')){
+    try { text = new TextDecoder('windows-1252').decode(buf); } catch(e){ /* se deja el UTF-8 */ }
+  }
+  return text;
+}
+
+function handleCsv(file){
+  return new Promise(async (resolve) => {
+    let text;
+    try { text = await readFileText(file); }
+    catch(err){ await finishUpload(file, 0, 0, 0, [`No se pudo leer el archivo: ${err}`], null, null); return resolve(); }
+
+    Papa.parse(text, {
+      header:true, skipEmptyLines:true,
+      transformHeader: canonicalHeader,
+      complete: async (res) => {
+        try {
+          if(!res.data.length){
+            await finishUpload(file, 0, 0, 0, ['CSV vacío'], null, null);
+            return resolve();
+          }
+          const format = detectFormat(res.data[0], file.name);
+
+          if(format === 'master_tempo'){
+            await processMasterTempoCsv(file, res.data);
+          } else if(format === 'tempo_report'){
+            await processTempoReportCsv(file, res.data);
+          } else if(format === 'bo_report'){
+            const pais = detectCountryFromFilename(file.name) || state.controlCountry;
+            if(!pais){
+              await finishUpload(file, res.data.length, 0, 0,
+                ['No se pudo determinar el país por el nombre de archivo, y no elegiste uno en el selector.'],
+                format, null);
+            } else {
+              await processBoReportCsv(file, res.data, pais);
+            }
+          } else if(format === 'spotify' || format === 'youtube'){
+            await processRankingCsv(file, res.data, format);
+          } else {
+            await finishUpload(file, res.data.length, 0, 0,
+              ['No se reconoce el formato del CSV.'], null, null);
+          }
+        } catch (err) {
+          await finishUpload(file, 0, 0, 0, [String(err)], null, null);
+        }
+        resolve();
+      }
+    });
+  });
+}
+
+function chunkArray(arr, size){
+  const out = [];
+  for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i, i+size));
+  return out;
+}
+
+async function processRankingCsv(file, rows, format){
+  const prepared = [];
+  let errors = [];
+
+  // Spotify: el país sale del nombre del archivo que se sube (una sola
+  // vez, vale para todas las filas) — ya no viene como columna dentro
+  // del CSV. YouTube (carga manual, poco usada) sigue leyendo el país
+  // por fila desde Source.Name, por si esos archivos sí lo traen.
+  // El país sale del nombre del archivo (vale para Spotify y para
+  // YouTube). Si el archivo no lo trae en el nombre, se usa la columna
+  // Source.Name fila por fila, para los export viejos que sí la tenían.
+  const fileCountry = detectCountryFromFilename(file.name) || detectCountry(file.name);
+  if(!fileCountry && !('source_name' in rows[0])){
+    await finishUpload(file, rows.length, 0, 0,
+      [`No se pudo determinar el país: el nombre "${file.name}" no lo incluye y el archivo no trae columna Source.Name.`],
+      format, null);
+    return;
+  }
+
+  // Fecha del chart: del nombre del archivo. Si no viene, hoy.
+  const fileDate = detectDateFromFilename(file.name);
+
+  for(const row of rows){
+    // Solo el título es obligatorio. Si falta el artista (pasa en algunos
+    // videos de YouTube), la base lo guarda como "Sin artista".
+    const trackName = row.track_name?.trim();
+    const artistNames = row.artist_names?.trim() || '';
+    if(!trackName){ errors.push('Fila sin título'); continue; }
+
+    const pais = fileCountry || detectCountry(row.source_name);
+    if(!pais){ errors.push(`No se pudo determinar país en: ${row.source_name || '(sin Source.Name)'}`); continue; }
+
+    let weeklyGrowth = null;
+    if(row.weekly_growth){
+      const n = parseFloat(String(row.weekly_growth).replace('%','').replace(',','.'));
+      if(!isNaN(n)) weeklyGrowth = n;
+    }
+
+    prepared.push({
+      track_name: trackName, artist_names: artistNames, pais_code: pais,
+      rank: row.rank || null, peak_rank: row.peak_rank || null, previous_rank: row.previous_rank || null,
+      weeks_on_chart: row.weeks_on_chart || null, streams: row.streams || null,
+      source: row.source || null, uri: row.uri || null, weekly_growth: weeklyGrowth,
+      snapshot_date: fileDate,
+    });
+  }
+
+  let updated=0, created_tracks=0;
+  for(const chunk of chunkArray(prepared, 250)){
+    const { data, error } = await sb.rpc('fn_upsert_ranking_batch', { p_rows: chunk, p_platform: format });
+    if(error){ errors.push(`Error de lote: ${error.message}`); continue; }
+    for(const r of data){
+      if(r.error_message) errors.push(`${chunk[r.idx-1]?.track_name || 'fila'}: ${r.error_message}`);
+      else { updated++; if(r.track_created) created_tracks++; }
+    }
+  }
+  await finishUpload(file, rows.length, updated, created_tracks, errors, format, fileCountry);
+}
+
+async function processMasterTempoCsv(file, rows){
+  const prepared = [];
+  let errors = [];
+  for(const row of rows){
+    const track = (row.track_artist_concat || '').trim();
+    if(!track){ errors.push('Fila sin track_artist_concat'); continue; }
+    prepared.push({ track_artist: track, tempo_id: (row.tempo_id || '').trim() });
+  }
+
+  let updated = 0;
+  for(const chunk of chunkArray(prepared, 250)){
+    const { data, error } = await sb.rpc('fn_upsert_master_tempo_batch', { p_rows: chunk });
+    if(error){ errors.push(`Error de lote: ${error.message}`); continue; }
+    for(const r of data){
+      if(r.error_message) errors.push(r.error_message);
+      else updated++;
+    }
+  }
+  await finishUpload(file, rows.length, updated, 0, errors, 'master_tempo');
+}
+
+async function processTempoReportCsv(file, rows){
+  const prepared = [];
+  let errors = [];
+  for(const row of rows){
+    const tempoId = row.tempo_id?.trim();
+    if(!tempoId){ errors.push('Fila sin song_id (tempo_id)'); continue; }
+
+    // El país sale de la columna "pais" del propio archivo, fila por fila.
+    const pais = detectCountryFromFilename(row.pais_nombre || '');
+    if(!pais){ errors.push(`${tempoId}: país no reconocido "${row.pais_nombre || ''}"`); continue; }
+
+    prepared.push({
+      tempo_id: tempoId,
+      pais_code: pais,
+      created_date: row.created_date || null,
+      perf_pc: row.perf_pc ? String(row.perf_pc).replace('%','').replace(',','.') : null,
+      mech_pc: row.mech_pc ? String(row.mech_pc).replace('%','').replace(',','.') : null,
+      sync_pc: row.sync_pc ? String(row.sync_pc).replace('%','').replace(',','.') : null,
+      publishers: row.publishers || null,
+      contratos: row.contratos || null,
+      estado_obra: row.estado_obra || null,
+      song_title: row.song_title || null,
+    });
+  }
+
+  let updated=0;
+  for(const chunk of chunkArray(prepared, 250)){
+    const { data, error } = await sb.rpc('fn_upsert_tempo_report_batch', { p_rows: chunk });
+    if(error){ errors.push(`Error de lote: ${error.message}`); continue; }
+    for(const r of data){
+      if(r.error_message) errors.push(`${chunk[r.idx-1]?.tempo_id || 'fila'}: ${r.error_message}`);
+      else updated++;
+    }
+  }
+  await finishUpload(file, rows.length, updated, 0, errors, 'tempo_report');
+}
+
+async function processBoReportCsv(file, rows, pais){
+  const prepared = [];
+  let errors = [];
+  for(const row of rows){
+    const tempoId = row.tempo_id?.trim();
+    if(!tempoId){ errors.push('Fila sin Submitters_Song_Code (tempo_id)'); continue; }
+    prepared.push({
+      tempo_id: tempoId,
+      bo_id: row.bo_id || null,
+      ca: row.ca ? row.ca.split('/')[0].trim() : null,
+      bo_status: row.bo_status || null,
+      reclamos: row.reclamos || null,
+      mech_bo: row.mech_bo ? String(row.mech_bo).replace('%','').replace(',','.') : null,
+    });
+  }
+
+  let updated=0;
+  for(const chunk of chunkArray(prepared, 250)){
+    const { data, error } = await sb.rpc('fn_upsert_bo_report_batch', { p_rows: chunk, p_pais_code: pais });
+    if(error){ errors.push(`Error de lote: ${error.message}`); continue; }
+    for(const r of data){
+      if(r.error_message) errors.push(`${chunk[r.idx-1]?.tempo_id || 'fila'}: ${r.error_message}`);
+      else updated++;
+    }
+  }
+  await finishUpload(file, rows.length, updated, 0, errors, 'bo_report', pais);
+}
+
+// Supabase Storage no admite acentos ni caracteres especiales en la
+// ruta. Se limpia solo para guardar; el nombre original se conserva en
+// csv_uploads.filename, que es lo que se muestra en el historial.
+function sanitizeStorageName(name){
+  return stripAccents(name)
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '') || 'archivo.csv';
+}
+
+// Carpeta donde se archiva cada tipo de CSV dentro del bucket.
+// Los que corresponden a un solo país se guardan por país; los que
+// mezclan países (Reporte Tempo) o no aplican, por fecha.
+function storageFolder(format){
+  const hoy = new Date().toISOString().slice(0,10);
+  switch(format){
+    case 'spotify':      return `spotify/${hoy}`;
+    case 'youtube':      return `youtube/${hoy}`;
+    case 'bo_report':    return `bo_report/${hoy}`;
+    case 'tempo_report': return `tempo_report/${hoy}`;
+    case 'master_tempo': return `tempo_ids/${hoy}`;
+    default:             return `otros/${hoy}`;
+  }
+}
+
+async function finishUpload(file, total, updated, created_tracks, errors, format, pais){
+  const storagePath = `${storageFolder(format)}/${Date.now()}_${sanitizeStorageName(file.name)}`;
+  let filePath = null;
+  const { error: upErr } = await sb.storage.from('csv-uploads').upload(storagePath, file);
+  if(!upErr) filePath = storagePath;
+  else errors = [...errors, `No se pudo guardar el archivo en Storage: ${upErr.message}`];
+
+  state.uploadResults = state.uploadResults || [];
+  state.uploadResults.push({ filename: file.name, format, total, updated, created_tracks, errors });
+
+  await sb.from('csv_uploads').insert({
+    filename: file.name, total_rows: total, created_tracks,
+    updated_rows: updated, error_count: errors.length, errors: errors.slice(0, 100),
+    file_path: filePath, format,
+  });
+}
+
+async function loadLastChartLoad(){
+  // Semana del chart más reciente cargado por plataforma (no la fecha
+  // de subida): así un histórico de 2021 subido hoy no la pisa.
+  const ultima = async (plataforma) => {
+    const { data } = await sb.from('territory_tracks').select('snapshot_date')
+      .eq('platform', plataforma).is('deleted_at', null)
+      .order('snapshot_date', { ascending: false }).limit(1);
+    return data?.[0]?.snapshot_date || null;
+  };
+  const [sp, yt] = await Promise.all([ultima('spotify'), ultima('youtube')]);
+  state.lastSpotify = sp;
+  state.lastYoutube = yt;
+}
+
+// ---------- Login ----------
+async function doLogin(email, password){
+  state.loginError = '';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ state.loginError = error.message; render(); return; }
+  state.session = data.session;
+  await loadProfile();
+  await loadAll();
+}
+async function doLogout(){
+  await sb.auth.signOut();
+  state.session = null; state.profile = null; state.master=[]; state.territoryControl=[]; state.uploads=[];
+  render();
+}
+
+// ---------- Render ----------
+function renderLogin(){
+  return `
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1 class="display">Ranking Digital Regional</h1>
+      <p>Acceso sólo para usuarios verificados</p>
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="usuario@oficina.com">
+      <label>Contraseña</label>
+      <input type="password" id="loginPass">
+      <div class="err">${state.loginError}</div>
+      <button class="btn primary" style="width:100%;justify-content:center" id="loginBtn">Ingresar</button>
+    </div>
+  </div>`;
+}
+
+function renderTopbar(){
+  return `
+  <div class="topbar">
+    <div class="wordmark">
+      <div class="mark">RD</div>
+      <div><h1 class="display">Ranking Digital Regional</h1>
+      <p>Último Spotify cargado: <span class="mono">${state.lastSpotify || '—'}</span></p>
+      <p class="last-chart">Último YouTube cargado: <span class="mono">${state.lastYoutube || '—'}</span></p>
+      </div>
+    </div>
+    <div class="session">
+      <div class="who">${state.session.user.email} · <span class="mono">${state.profile.app_role}</span></div>
+      <button id="logoutBtn">Cerrar sesión</button>
+    </div>
+  </div>`;
+}
+
+function renderTabs(){
+  const tabs = [['master','Tabla principal', true],['territory','Tabla por territorio', true],
+    ['upload','Carga CSV', canUpload()],['history','Historial CSV', true]];
+  return `<div class="tabs">${tabs.map(([k,l,en]) =>
+    `<div class="tab ${state.activeTab===k?'active':''}" data-tab="${k}">${l}${!en?'<span class="lock">solo lectura</span>':''}</div>`).join('')}</div>`;
+}
+
+function renderMaster(){
+  let rows = state.master;
+  if(state.search) rows = rows.filter(r => ((r.track_artist_concat||'')+' '+(r.tempo_id||'')).toLowerCase().includes(state.search.toLowerCase()));
+  const canToggleDeleted = state.profile.app_role==='admin';
+  return `
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <input class="search" placeholder="Buscar por track, artista o tempo_id" value="${state.search}" id="searchMaster">
+      <select id="masterCountry">
+        <option value="">Todos los países</option>
+        ${COUNTRIES.map(c=>`<option value="${c}" ${state.masterCountry===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <label class="check">Desde <input type="date" class="edit-field" style="width:auto" id="dateFrom" value="${state.dateFrom}"></label>
+      <label class="check">Hasta <input type="date" class="edit-field" style="width:auto" id="dateTo" value="${state.dateTo}"></label>
+      ${(state.dateFrom||state.dateTo||state.masterCountry)?`<button class="btn" id="clearFilters">Limpiar</button>`:''}
+      ${canToggleDeleted?`<label class="check"><input type="checkbox" id="toggleDeleted" ${state.showDeleted?'checked':''}> Ver eliminados</label>`:''}
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="btn" id="exportBo">Descargar reporte BO</button>
+      <button class="btn primary" id="exportMaster"><i>&#8595;</i> Descargar CSV</button>
+    </div>
+  </div>
+  <table><thead><tr><th style="width:60%">Track - Artista</th><th>Tempo ID</th><th></th></tr></thead>
+  <tbody>${rows.length ? rows.map(r=>`
+    <tr class="${r.deleted_at?'is-deleted':''}">
+      <td>${r.track_artist_concat}</td>
+      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—">` : (r.tempo_id||'—')}</td>
+    </tr>`).join('') : `<tr><td colspan="3"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
+  </tbody></table>`;
+}
+
+function renderTerritory(){
+  let rows = state.territoryControl;
+  if(state.territoryCountry) rows = rows.filter(r => r.pais_code===state.territoryCountry);
+  if(state.reclamosFilter) rows = rows.filter(r => (r.reclamos || '—') === state.reclamosFilter);
+  if(state.estadoTrabajoFilter) rows = rows.filter(r => (r.estado_trabajo || '—') === state.estadoTrabajoFilter);
+  if(state.search) rows = rows.filter(r => (r.tempo_id+' '+r.track_artist_concat).toLowerCase().includes(state.search.toLowerCase()));
+  const canToggleDeleted = state.profile.app_role==='admin';
+
+  // Opciones "como en Excel": todos los valores distintos que existen hoy en la columna.
+  const reclamosOptions = [...new Set(state.territoryControl.map(r => r.reclamos || '—'))].sort();
+  const estadoTrabajoOptions = [...new Set(state.territoryControl.map(r => r.estado_trabajo || '—'))].sort();
+
+  // % del Reporte Tempo: se muestra exactamente lo que dice el reporte.
+  // Si es un número se le agrega "%"; si es texto (NVFT, NOP) va tal cual.
+  const pctTempo = (valor) =>
+      valor == null || valor === ''   ? '—'
+    : /^[0-9.]+$/.test(valor)         ? valor + '%'
+    : valor;
+
+  return `
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <select id="countryFilter">
+        <option value="">Todos los países</option>
+        ${COUNTRIES.map(c=>`<option value="${c}" ${state.territoryCountry===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <label class="check">Desde <input type="date" class="edit-field" style="width:auto" id="dateFromT" value="${state.dateFrom}"></label>
+      <label class="check">Hasta <input type="date" class="edit-field" style="width:auto" id="dateToT" value="${state.dateTo}"></label>
+      ${(state.dateFrom||state.dateTo)?`<button class="btn" id="clearFiltersT">Limpiar fechas</button>`:''}
+      <select id="reclamosFilter">
+        <option value="">Reclamos: todos</option>
+        ${reclamosOptions.map(v=>`<option value="${v}" ${state.reclamosFilter===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+      <select id="estadoTrabajoFilter">
+        <option value="">Estado de trabajo: todos</option>
+        ${estadoTrabajoOptions.map(v=>`<option value="${v}" ${state.estadoTrabajoFilter===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+      <input class="search" placeholder="Buscar por tempo_id o track" value="${state.search}" id="searchTerritory">
+      ${canToggleDeleted?`<label class="check"><input type="checkbox" id="toggleDeletedT" ${state.showDeleted?'checked':''}> Ver eliminados</label>`:''}
+    </div>
+    <button class="btn primary" id="exportTerritory"><i>&#8595;</i> Descargar CSV${state.territoryCountry?` (${state.territoryCountry})`:''}</button>
+  </div>
+  <table><thead><tr>
+    <th>País</th><th>Track - Artista</th><th>Created date</th><th>Tempo ID</th><th>BO</th><th>C/A</th>
+    <th class="num">% Perf Tempo</th><th class="num">% Mech Tempo</th>
+    <th>Estado</th><th>Reclamos</th><th class="num">% Mech BO</th><th>Estado de trabajo</th><th></th>
+  </tr></thead>
+  <tbody>${rows.length ? rows.map(r=>`
+    <tr class="${r.deleted_at?'is-deleted':''}">
+      <td class="mono">${r.pais_code}</td>
+      <td>${r.track_artist_concat}</td>
+      <td class="mono">${r.created_date || '—'}</td>
+      <td class="tempo">${r.tempo_id || '—'}</td>
+      <td class="tempo">${r.bo || '—'}</td>
+      <td>${r.ca || '—'}</td>
+      <td class="num">${pctTempo(r.perf_raw)}</td>
+      <td class="num">${pctTempo(r.mech_raw)}</td>
+      <td>${r.estado || '—'}</td>
+      <td>${r.reclamos || '—'}</td>
+      <td class="num">${r.mech_bo!==null && r.mech_bo!==undefined?r.mech_bo+'%':'—'}</td>
+      <td>${(canWrite() && r.bo_report_id)
+            ? `<select class="edit-field" data-field-bo="estado_trabajo" data-id="${r.bo_report_id}">
+                 <option value=""${!r.estado_trabajo?' selected':''}>—</option>
+                 ${ESTADO_TRABAJO_OPTIONS.map(o=>`<option value="${o}"${r.estado_trabajo===o?' selected':''}>${o}</option>`).join('')}
+               </select>`
+            : (r.estado_trabajo || '—')}</td>
+      <td><button class="rowbtn" data-history-track="${r.track_master_id}" data-history-pais="${r.pais_code}">Show prior</button></td>
+    </tr>`).join('') : `<tr><td colspan="13"><div class="empty">${state.loading?'Cargando...':'Sin registros para este filtro'}</div></td></tr>`}
+  </tbody></table>`;
+}
+
+function renderUpload(){
+  if(!canUpload()) return `<div class="locked"><div class="lk">Acceso restringido</div>Tu rol (${state.profile.app_role}) no tiene permiso de escritura.</div>`;
+  return `
+  <div class="control-country">
+    <span>País (solo para el Reporte BO — lo detecta del nombre del archivo, ej. "..._PAIS_PARAGUAY"; si no puede, usa lo que elijas acá. El Reporte Tempo trae el país en cada fila):</span>
+    <select id="controlCountry">
+      <option value="">Elegir país...</option>
+      ${COUNTRIES.map(c=>`<option value="${c}" ${state.controlCountry===c?'selected':''}>${c}</option>`).join('')}
+    </select>
+  </div>
+  <div class="drop" id="dropzone">
+    <p>${state.uploading
+        ? `Procesando ${state.uploadProgress?.done||0} de ${state.uploadProgress?.total||0}...`
+        : 'Arrastrá uno o varios CSV, o hacé click para elegirlos'}</p>
+    <p class="hint">
+      Se reconoce automáticamente el formato de cada archivo:<br>
+      <span class="format-tag">Spotify</span> rank, uri, artist_names, track_name, source, peak_rank, previous_rank, weeks_on_chart, streams (país y fecha salen del nombre del archivo)<br>
+      <span class="format-tag">YouTube</span> Source.Name, Rank, Previous Rank, Track Name, Artist Name, Weeks on Chart, Views, Weekly Growth, YouTube URL<br>
+      <span class="format-tag">Reporte Tempo</span> song_id, song_title_tx, pais, performance_pc_total, mechanical_pc_total, sync_pc_total, publishers, contratos_del_pais, song_tempo_create_date, estado_obra<br>
+      <span class="format-tag">Reporte BO</span> Submitters_Song_Code, Internal_Song_Code, Song_Owners, Internal_Status, CounterClaim_Status, Mechanicall_Collect_Share<br>
+      <span class="format-tag">Tempo IDs</span> track_artist_concat, tempo_id (carga masiva: completa el tempo_id de obras ya existentes, buscándolas por título)
+    </p>
+    <input type="file" id="fileInput" accept=".csv" multiple>
+  </div>
+  ${(state.uploadResults && state.uploadResults.length) ? (() => {
+    const rs = state.uploadResults;
+    const sum = (k) => rs.reduce((a,x) => a + (k==='errors' ? x.errors.length : x[k]), 0);
+    return `<div class="summary-row">
+      <div class="metric"><div class="n mono">${rs.length}</div><div class="l">Archivos</div></div>
+      <div class="metric"><div class="n mono">${sum('total')}</div><div class="l">Filas leídas</div></div>
+      <div class="metric ok"><div class="n mono">${sum('updated')}</div><div class="l">Cargadas</div></div>
+      <div class="metric new"><div class="n mono">${sum('created_tracks')}</div><div class="l">Canciones nuevas</div></div>
+      <div class="metric err"><div class="n mono">${sum('errors')}</div><div class="l">Errores</div></div>
+    </div>
+    ${sum('created_tracks') ? `<p style="font-size:12.5px;color:var(--text-muted);margin:-4px 0 14px;">Las canciones nuevas se crearon en <b>Tabla principal</b> con tempo_id vacío — completalo ahí a mano.</p>` : ''}
+    <table><thead><tr><th>Archivo</th><th>Formato</th><th class="num">Filas</th><th class="num">Cargadas</th><th class="num">Nuevas</th><th class="num">Errores</th></tr></thead>
+    <tbody>${rs.map(x=>`
+      <tr>
+        <td>${x.filename}</td>
+        <td class="mono">${x.format || '—'}</td>
+        <td class="num">${x.total}</td>
+        <td class="num">${x.updated}</td>
+        <td class="num">${x.created_tracks}</td>
+        <td class="num">${x.errors.length ? `<span class="badge dup">${x.errors.length}</span>` : '0'}</td>
+      </tr>`).join('')}
+    </tbody></table>
+    ${rs.some(x=>x.errors.length) ? `<table style="margin-top:14px"><thead><tr><th>Detalle de errores</th></tr></thead><tbody>${
+      rs.flatMap(x => x.errors.map(e => `<tr><td><b>${x.filename}:</b> ${e}</td></tr>`)).join('')
+    }</tbody></table>` : ''}`;
+  })() : ''}`;
+}
+
+async function downloadStoredFile(path, filename){
+  const { data, error } = await sb.storage.from('csv-uploads').createSignedUrl(path, 300);
+  if(error){ alert('No se pudo generar el link: ' + error.message); return; }
+  const a = document.createElement('a');
+  a.href = data.signedUrl;
+  a.download = filename;
+  a.click();
+}
+
+function renderHistory(){
+  if(!state.uploads.length) return `<div class="empty">${state.loading?'Cargando...':'Todavía no se subió ningún CSV'}</div>`;
+  return `<table><thead><tr>
+    <th>Archivo</th><th>Subido por</th><th>Fecha</th><th class="num">Filas</th>
+    <th class="num">Cargadas</th><th class="num">Nuevas</th><th class="num">Errores</th><th></th>
+  </tr></thead>
+  <tbody>${state.uploads.map(u=>`
+    <tr>
+      <td>${u.filename}</td>
+      <td class="mono">${u.uploaded_by||''}</td>
+      <td class="mono">${(u.uploaded_at||'').replace('T',' ').slice(0,16)}</td>
+      <td class="num">${fmtNum(u.total_rows)}</td>
+      <td class="num">${fmtNum(u.updated_rows)}</td>
+      <td class="num">${fmtNum(u.created_tracks)}</td>
+      <td class="num">${u.error_count ? `<span class="badge dup">${u.error_count}</span>` : '0'}</td>
+      <td>${u.file_path ? `<button class="rowbtn" data-download-upload="${u.file_path}" data-download-name="${u.filename}">Descargar</button>` : '—'}</td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+function renderBody(){
+  if(state.activeTab==='master') return renderMaster();
+  if(state.activeTab==='territory') return renderTerritory();
+  if(state.activeTab==='upload') return renderUpload();
+  if(state.activeTab==='history') return renderHistory();
+}
+
+function render(){
+  const root = document.getElementById('root');
+  if(!state.session){ root.innerHTML = renderLogin(); attachLoginEvents(); return; }
+  root.innerHTML = `<div class="app">
+    ${renderTopbar()}${renderTabs()}
+    <div class="panel-body">${renderBody()}</div>
+    <footer><span>Supabase · PostgreSQL 15 · RLS activo</span><span>${rows_count()}</span></footer>
+  </div>${renderHistoryModal()}`;
+  attachAppEvents();
+}
+function rows_count(){
+  if(state.activeTab==='master') return `${state.master.length} canciones`;
+  if(state.activeTab==='territory') return `${state.territoryControl.length} registros de territorio`;
+  return '';
+}
+
+function attachLoginEvents(){
+  document.getElementById('loginBtn').onclick = () => {
+    doLogin(document.getElementById('loginEmail').value, document.getElementById('loginPass').value);
+  };
+}
+
+function attachAppEvents(){
+  document.getElementById('logoutBtn').onclick = doLogout;
+  document.querySelectorAll('[data-tab]').forEach(t => t.onclick = () => { state.activeTab = t.dataset.tab; state.uploadResults=[]; state.search=''; render(); });
+
+  const sM = document.getElementById('searchMaster');
+  if(sM) sM.oninput = (e) => { state.search = e.target.value; render(); const el=document.getElementById('searchMaster'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+  const sT = document.getElementById('searchTerritory');
+  if(sT) sT.oninput = (e) => { state.search = e.target.value; render(); const el=document.getElementById('searchTerritory'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+
+  const cf = document.getElementById('countryFilter');
+  if(cf) cf.onchange = (e) => { state.territoryCountry = e.target.value; loadAll(); };
+  const mc = document.getElementById('masterCountry');
+  if(mc) mc.onchange = (e) => { state.masterCountry = e.target.value; loadAll(); };
+
+  ['dateFrom','dateFromT'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.onchange = (e) => { state.dateFrom = e.target.value; loadAll(); };
+  });
+  ['dateTo','dateToT'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.onchange = (e) => { state.dateTo = e.target.value; loadAll(); };
+  });
+  ['clearFilters','clearFiltersT'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.onclick = () => { state.dateFrom=''; state.dateTo=''; state.masterCountry=''; loadAll(); };
+  });
+  const rf = document.getElementById('reclamosFilter');
+  if(rf) rf.onchange = (e) => { state.reclamosFilter = e.target.value; render(); };
+  const etf = document.getElementById('estadoTrabajoFilter');
+  if(etf) etf.onchange = (e) => { state.estadoTrabajoFilter = e.target.value; render(); };
+  const cc = document.getElementById('controlCountry');
+  if(cc) cc.onchange = (e) => { state.controlCountry = e.target.value; };
+
+  const td = document.getElementById('toggleDeleted');
+  if(td) td.onchange = (e) => { state.showDeleted = e.target.checked; loadAll(); };
+  const tdT = document.getElementById('toggleDeletedT');
+  if(tdT) tdT.onchange = (e) => { state.showDeleted = e.target.checked; loadAll(); };
+
+  document.querySelectorAll('[data-field-master]').forEach(el => {
+    const handler = () => updateMasterField(el.dataset.id, el.dataset.fieldMaster, el.value);
+    if(el.tagName==='SELECT') el.onchange = handler; else el.onblur = handler;
+  });
+  document.querySelectorAll('[data-field-bo]').forEach(el => {
+    const handler = () => updateBoReportField(el.dataset.id, el.dataset.fieldBo, el.value);
+    if(el.tagName === 'SELECT') el.onchange = handler; else el.onblur = handler;
+  });
+
+  document.querySelectorAll('[data-del-master]').forEach(b => b.onclick = () => softDelete('master', b.dataset.delMaster));
+  document.querySelectorAll('[data-restore-master]').forEach(b => b.onclick = () => restore('master', b.dataset.restoreMaster));
+  document.querySelectorAll('[data-del-territory]').forEach(b => b.onclick = () => softDelete('territory', b.dataset.delTerritory));
+  document.querySelectorAll('[data-restore-territory]').forEach(b => b.onclick = () => restore('territory', b.dataset.restoreTerritory));
+
+  document.querySelectorAll('[data-download-upload]').forEach(b => b.onclick = () => downloadStoredFile(b.dataset.downloadUpload, b.dataset.downloadName));
+
+  document.querySelectorAll('[data-history-track]').forEach(b => b.onclick = () =>
+    openHistory(b.dataset.historyTrack, b.dataset.historyPais));
+  const closeH = document.getElementById('closeHistory');
+  if(closeH) closeH.onclick = () => { state.history = null; render(); };
+  const bgH = document.getElementById('historyBg');
+  if(bgH) bgH.onclick = (e) => { if(e.target === bgH){ state.history = null; render(); } };
+
+  const exM = document.getElementById('exportMaster');
+  if(exM) exM.onclick = () => downloadFilteredCsv('fn_master_export', {
+    p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null,
+    p_pais: state.masterCountry || null,
+  }, 'tabla_principal.csv');
+  const exBo = document.getElementById('exportBo');
+  if(exBo) exBo.onclick = downloadBoReport;
+  const exT = document.getElementById('exportTerritory');
+  if(exT) exT.onclick = () => downloadFilteredCsv('fn_territory_export', {
+    p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null,
+    p_pais: state.territoryCountry || null,
+  }, `tabla_territorio${state.territoryCountry?'_'+state.territoryCountry:''}.csv`);
+
+  const dz = document.getElementById('dropzone'); const fi = document.getElementById('fileInput');
+  if(dz){
+    dz.onclick = () => fi.click();
+    dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
+    dz.ondragleave = () => dz.classList.remove('over');
+    dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('over'); handleFiles(e.dataTransfer.files); };
+    fi.onchange = (e) => { handleFiles(e.target.files); };
+  }
+}
+
+// ---------- Arranque ----------
+(async function init(){
+  const { data } = await sb.auth.getSession();
+  if(data.session){
+    state.session = data.session;
+    await loadProfile();
+    await loadAll();
+  } else {
+    render();
+  }
+})();
+</script>
+</body>
+</html>
