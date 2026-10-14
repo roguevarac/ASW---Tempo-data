@@ -73,3 +73,10 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   Antes de entregar un cambio: `python3 reporte_cwr/tests/test_reporte.py` (DuckDB + sqlglot, necesita `pip install duckdb sqlglot`).
   Agregar a ese test un caso por cada conflicto nuevo que aparezca con el front. El test agrega la opción 'g' a
   `REGEXP_REPLACE` al pasar a DuckDB (Redshift reemplaza todas las coincidencias, DuckDB solo la primera).
+
+## Sistema Ranking Digital (reemplazo de Supabase) — `sistema_ranking/`
+- PostgreSQL 16 + API FastAPI propia + el mismo front (`frontend_ranking_digital.html` -> `front/index.html` con
+  `front/generar_index.py`; `tempo-client.js` imita supabase-js). Ver `sistema_ranking/README.md`.
+- El esquema (`db/03`, `db/04`) se genera del CSV `migracion_supabase/origen/esquema_supabase.csv`; no editarlo a mano.
+- Comportamientos heredados de Supabase se mantienen a propósito (listados en el README); `anon` no tiene permisos.
+- Antes de entregar un cambio: `sistema_ranking/tests/correr_todo.sh` (Postgres local en el puerto 54340).

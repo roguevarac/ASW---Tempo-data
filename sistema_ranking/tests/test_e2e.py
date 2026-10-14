@@ -211,5 +211,13 @@ check("función inexistente: 404", r.status_code == 404, r.text)
 r = est.get("tracks_master", {"select": "id;drop table x"})
 check("nombres de columna inválidos: rechazados", r.status_code == 400, r.text)
 
+# ------------------------------------------------------------------ bloqueo de usuario (admin/usuarios.py bloquear)
+sqlq("update auth.users set banned_until = 'infinity' where email like 'auditor%'")
+r = aud.get("tracks_master", {"select": "id"})
+check("usuario bloqueado pierde la sesión en el acto (401)", r.status_code == 401, r.text)
+check("usuario bloqueado no puede volver a entrar", login("auditor@prueba.local", "clave-auditor-123").status_code == 400)
+sqlq("update auth.users set banned_until = null where email like 'auditor%'")
+check("al desbloquearlo vuelve a funcionar la misma sesión", aud.get("tracks_master", {"select": "id"}).status_code == 200)
+
 print(f"\nFallas: {len(fallas)}")
 sys.exit(1 if fallas else 0)

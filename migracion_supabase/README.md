@@ -29,9 +29,10 @@ Supabase que no existe en un Postgres común:
 - Roles `anon`, `authenticated`, `service_role`: se crean como roles propios con los mismos permisos.
 - `storage` (archivos), `realtime`, Edge Functions, `pg_net`, `pg_cron`: solo si el CSV muestra que se usan.
 
-## Paso 3 — datos
-Con el tamaño de cada tabla (filas 12 del CSV) se elige: `COPY ... TO STDOUT CSV` tabla por tabla desde el SQL
-Editor, o `pg_dump --data-only` si se tiene la cadena de conexión.
+## Paso 3 — datos y archivos (hecho)
+El sistema propio está en `sistema_ranking/` (ver su README). Los datos, los usuarios con sus contraseñas y los
+archivos del bucket se migran con `sistema_ranking/migracion/exportar_supabase.py` (en tu PC) e `importar.py`
+(en el servidor).
 
 ## Edge Functions
 `descargar_edge_functions.ps1` (Windows/PowerShell): lista y descarga el código de todas las funciones con la CLI de

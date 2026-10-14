@@ -1,0 +1,53 @@
+# Todo el sistema en un servidor propio: base PostgreSQL 16 + API/front.
+#   cp .env.example .env   (completar las claves)
+#   docker compose up -d
+# La primera vez el servicio "instalador" crea la base; las siguientes no toca nada si ya existe.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ranking
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}
+    volumes:
+      - datos_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ranking"]
+      interval: 5s
+      retries: 20
+    # Sin "ports": la base no queda expuesta fuera del servidor.
+
+  instalador:
+    image: postgres:16
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      PGURL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/ranking
+      AUTHENTICATOR_PASSWORD: ${AUTHENTICATOR_PASSWORD:?Falta AUTHENTICATOR_PASSWORD en .env}
+    volumes:
+      - ./db:/db:ro
+    entrypoint: ["sh", "-c", "if psql \"$$PGURL\" -Atc \"select to_regclass('public.tracks_master') is not null\" | grep -q t; then echo 'Base ya instalada'; else sh /db/instalar.sh; fi"]
+    restart: "no"
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      instalador: { condition: service_completed_successfully }
+    environment:
+      DATABASE_URL: postgresql://authenticator:${AUTHENTICATOR_PASSWORD}@db:5432/ranking
+      JWT_SECRET: ${JWT_SECRET:?Falta JWT_SECRET en .env}
+      SESSION_HOURS: ${SESSION_HOURS:-8}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+      STATEMENT_TIMEOUT: ${STATEMENT_TIMEOUT:-120s}
+      DB_POOL: ${DB_POOL:-10}
+      YOUTUBE_CRON: ${YOUTUBE_CRON:-}
+      YOUTUBE_CRON_TZ: ${YOUTUBE_CRON_TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - archivos:/data/storage
+    ports:
+      - "${PUERTO:-8000}:8000"
+
+volumes:
+  datos_db:
+  archivos:

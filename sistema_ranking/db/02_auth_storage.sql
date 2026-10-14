@@ -11,7 +11,7 @@ SET search_path = public;
 CREATE TABLE auth.users (
     id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     email              text NOT NULL,
-    encrypted_password text NOT NULL,          -- bcrypt (compatible con los hash de Supabase)
+    encrypted_password text,                   -- bcrypt (compatible con los hash de Supabase); NULL = sin contraseña, no entra
     created_at         timestamptz NOT NULL DEFAULT now(),
     last_sign_in_at    timestamptz,
     banned_until       timestamptz
@@ -46,6 +46,12 @@ BEGIN
     END IF;
     RETURN v_id;
 END $$;
+
+-- La API lo consulta en cada pedido: un usuario bloqueado o borrado pierde la sesión en el acto.
+CREATE FUNCTION auth.usuario_activo(p_id uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = p_id AND (u.banned_until IS NULL OR u.banned_until < now()))
+$$;
 
 -- Alta o cambio de contraseña (uso administrativo, desde la consola).
 CREATE FUNCTION auth.set_password(p_email text, p_password text) RETURNS uuid

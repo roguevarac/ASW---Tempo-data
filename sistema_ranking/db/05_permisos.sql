@@ -43,3 +43,5 @@ REVOKE ALL ON auth.users FROM PUBLIC, authenticated, anon;
 REVOKE EXECUTE ON FUNCTION auth.login(text, text), auth.set_password(text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION auth.login(text, text) TO authenticator;
 GRANT USAGE ON SCHEMA auth TO authenticator;
+REVOKE EXECUTE ON FUNCTION auth.usuario_activo(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION auth.usuario_activo(uuid) TO authenticated, service_role;

@@ -173,8 +173,12 @@ def transaccion(claims=None, rol="authenticated"):
                 if claims:
                     cur.execute("SELECT set_config('request.jwt.claims', %s, true), "
                                 "set_config('request.jwt.claim.sub', %s, true), "
-                                "set_config('app.current_user_id', %s, true)",
-                                (json.dumps(claims), claims["sub"], claims["sub"]))
+                                "set_config('app.current_user_id', %s, true), "
+                                "auth.usuario_activo(%s::uuid) AS activo",
+                                (json.dumps(claims), claims["sub"], claims["sub"], claims["sub"]))
+                    if rol == "authenticated" and not cur.fetchone()["activo"]:
+                        # Usuario bloqueado o borrado: la sesión deja de valer en el acto.
+                        raise ErrorApi(401, "Sesión inválida")
                 yield cur
 
 

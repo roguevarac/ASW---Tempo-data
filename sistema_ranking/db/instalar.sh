@@ -2,6 +2,7 @@
 # Crea la base completa. Uso: PGURL=postgresql://postgres:...@host:5432/ranking ./instalar.sh
 # Variables: PGURL (superusuario), AUTHENTICATOR_PASSWORD (contraseña del rol de la API).
 set -eu
+export PGOPTIONS="-c client_min_messages=warning"
 cd "$(dirname "$0")"
 : "${PGURL:?Falta PGURL}"; : "${AUTHENTICATOR_PASSWORD:?Falta AUTHENTICATOR_PASSWORD}"
 psql "$PGURL" -v ON_ERROR_STOP=1 -q -f 01_roles_extensiones.sql

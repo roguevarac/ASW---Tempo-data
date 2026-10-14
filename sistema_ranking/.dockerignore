@@ -1,0 +1,4 @@
+.env
+exportacion/
+tests/
+**/__pycache__
