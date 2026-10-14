@@ -8,6 +8,11 @@
 -- Esquemas incluidos: los del usuario (public y otros creados por ustedes).
 -- Se excluyen los internos de Postgres y de Supabase, salvo las referencias que
 -- las tablas propias hagan a auth.users (aparecen en las claves foráneas).
+-- Además trae lo que usan de Supabase y hay que reemplazar: buckets de storage y
+-- sus políticas, cantidad de archivos por bucket, proveedores de login usados y
+-- tablas publicadas en realtime. No trae contraseñas, tokens ni contenido de
+-- archivos. Las Edge Functions no están en la base: se bajan con
+-- descargar_edge_functions.ps1.
 -- =====================================================================
 WITH esquemas AS (
     SELECT n.oid, n.nspname
@@ -104,4 +109,39 @@ SELECT 12, 'tamano', s.nspname || '.' || c.relname,
        '-- filas estimadas: ' || c.reltuples::bigint || ' | tamano: ' || pg_size_pretty(pg_total_relation_size(c.oid))
 FROM pg_class c JOIN esquemas s ON s.oid = c.relnamespace
 WHERE c.relkind IN ('r', 'p')
+UNION ALL
+-- 13. Storage: buckets
+SELECT 13, 'bucket', b.id,
+       '-- bucket ' || b.name || ' | publico: ' || b.public::text
+       || ' | limite por archivo: ' || COALESCE(b.file_size_limit::text, 'sin limite')
+       || ' | tipos permitidos: ' || COALESCE(array_to_string(b.allowed_mime_types, ', '), 'todos')
+FROM storage.buckets b
+UNION ALL
+-- 14. Storage: archivos por bucket (cantidad y tamaño total)
+SELECT 14, 'bucket_contenido', o.bucket_id,
+       '-- archivos: ' || COUNT(*) || ' | tamano total: '
+       || pg_size_pretty(COALESCE(SUM((o.metadata ->> 'size')::bigint), 0))
+FROM storage.objects o
+GROUP BY o.bucket_id
+UNION ALL
+-- 15. Storage: políticas de acceso a los archivos
+SELECT 15, 'politica_storage', pol.tablename || '.' || pol.policyname,
+       'CREATE POLICY ' || quote_ident(pol.policyname) || ' ON ' || pol.schemaname || '.' || pol.tablename
+       || ' AS ' || pol.permissive || ' FOR ' || pol.cmd || ' TO ' || array_to_string(pol.roles, ', ')
+       || COALESCE(' USING (' || pol.qual || ')', '') || COALESCE(' WITH CHECK (' || pol.with_check || ')', '') || ';'
+FROM pg_policies pol
+WHERE pol.schemaname = 'storage'
+UNION ALL
+-- 16. Auth: cuántos usuarios hay y con qué proveedor de login (email, google...)
+SELECT 16, 'auth_proveedor', i.provider,
+       '-- usuarios: ' || COUNT(DISTINCT i.user_id)
+FROM auth.identities i
+GROUP BY i.provider
+UNION ALL
+SELECT 16, 'auth_total', 'auth.users', '-- usuarios totales: ' || COUNT(*) FROM auth.users
+UNION ALL
+-- 17. Realtime: tablas que emiten cambios en vivo
+SELECT 17, 'realtime', pt.schemaname || '.' || pt.tablename, '-- publicacion: ' || pt.pubname
+FROM pg_publication_tables pt
+WHERE pt.pubname LIKE 'supabase_realtime%'
 ORDER BY 1, 3;
