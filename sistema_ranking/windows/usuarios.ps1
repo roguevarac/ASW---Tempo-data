@@ -1,8 +1,7 @@
 ﻿# Menu de usuarios (reemplaza Authentication > Users de Supabase). Se corre con USUARIOS.bat.
 . "$PSScriptRoot\comun.ps1"
-Verificar-Docker
-docker compose up -d *> $null
-Esperar-Sistema
+Verificar-Instalado
+Iniciar-Base
 while ($true) {
     Titulo "Usuarios"
     Usuarios listar

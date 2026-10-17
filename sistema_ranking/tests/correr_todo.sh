@@ -1,7 +1,7 @@
 #!/bin/sh
 # Corre todas las pruebas del sistema contra un Postgres local (por defecto el del entorno, puerto 54340).
 # Cada prueba arranca con la base recién instalada. Uso: tests/correr_todo.sh
-# Requiere: psql, python3 con fastapi uvicorn psycopg[binary,pool] pyjwt httpx croniter playwright.
+# Requiere: psql, python3 con fastapi uvicorn psycopg[binary,pool] pyjwt httpx croniter playwright pexpect packaging.
 set -eu
 cd "$(dirname "$0")/.."
 SERVIDOR="${PGHOST_URL:-postgresql://postgres@localhost:54340}"
@@ -44,10 +44,16 @@ correr "Tarea de YouTube" env DATABASE_URL="postgresql://authenticator:prueba_lo
 base_nueva
 correr "Front en el navegador" python3 tests/test_navegador.py
 correr "Migración (exportar + importar)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_migracion.py
-if docker info >/dev/null 2>&1; then
-    correr "Scripts de Windows (PowerShell + Docker)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_windows.py
+correr "Paquetes de Python para Windows" python3 tests/test_paquetes_windows.py
+# Versión portable de Windows: necesita PowerShell (PWSH, en el PATH, en la caché o en la imagen de Docker).
+CACHE="${CACHE_PRUEBAS:-/var/tmp/rk_pruebas_cache}"
+if [ -n "${PWSH:-}" ] || command -v pwsh >/dev/null 2>&1 || [ -x "$CACHE/pwsh/pwsh" ] || \
+   docker image inspect mcr.microsoft.com/powershell:lts-7.4-ubuntu-22.04 >/dev/null 2>&1; then
+    [ -z "${PWSH:-}" ] && command -v pwsh >/dev/null 2>&1 && export PWSH="$(command -v pwsh)"
+    correr "Versión portable de Windows (de punta a punta)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_portable.py
+    correr "Componentes reales de Windows (bajar, verificar, descomprimir)" python3 tests/test_componentes_windows.py
 else
-    echo "== Scripts de Windows: se saltean (no hay Docker)"
+    echo "== Versión portable de Windows: se saltea (no hay PowerShell)"
 fi
 
 echo

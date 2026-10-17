@@ -47,6 +47,19 @@ COLS_OBJETOS = ["bucket_id", "name", "owner", "metadata", "created_at"]
 POR_PAGINA = int(os.environ.get("POR_PAGINA", "1000"))  # máximo que devuelve la API de Supabase por pedido
 
 
+
+def verificacion_tls():
+    """En Windows usa los certificados del sistema (así funciona detrás del proxy de la empresa, que inspecciona
+    HTTPS con su propio certificado). En los demás sistemas, los de certifi, como siempre."""
+    if sys.platform == "win32":
+        try:
+            import ssl
+            import truststore
+            return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        except ImportError:
+            pass
+    return True
+
 def dato(nombre, texto, secreto=False):
     v = os.environ.get(nombre, "").strip()
     if not v:
@@ -225,7 +238,7 @@ def bajar_archivos(sb_url, clave, objetos, manifiesto):
             return nombre, sha256(destino)
         destino.parent.mkdir(parents=True, exist_ok=True)
         ruta = "/".join(urllib.parse.quote(p, safe="") for p in nombre.split("/"))
-        with httpx.Client(timeout=120, headers=cabeceras) as cli:
+        with httpx.Client(timeout=120, headers=cabeceras, verify=verificacion_tls()) as cli:
             r = cli.get(f"{sb_url}/storage/v1/object/{BUCKET}/{ruta}")
         if r.status_code != 200:
             raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
@@ -279,7 +292,7 @@ def main():
         sb_url = dato("SUPABASE_URL", "URL del proyecto (https://xxxx.supabase.co)").rstrip("/")
         clave = dato("SUPABASE_SERVICE_KEY", "service_role key (Project Settings > API Keys)", secreto=True)
     if not VIA_DB:
-        with httpx.Client(base_url=sb_url, timeout=120,
+        with httpx.Client(base_url=sb_url, timeout=120, verify=verificacion_tls(),
                           headers={"Authorization": f"Bearer {clave}", "apikey": clave}) as cli:
             try:
                 objetos = exportar_via_api(cli, manifiesto)

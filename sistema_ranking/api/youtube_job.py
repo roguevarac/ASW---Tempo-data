@@ -19,6 +19,7 @@ import io
 import json
 import logging
 import os
+import sys
 import threading
 import time
 import uuid
@@ -32,6 +33,19 @@ import app as api
 log = logging.getLogger("ranking.youtube")
 
 COUNTRIES = ["ar", "cl", "pe", "uy", "py", "co", "ec", "mx"]  # minúscula = como los pide YouTube
+
+def verificacion_tls():
+    """En Windows usa los certificados del sistema (así funciona detrás del proxy de la empresa, que inspecciona
+    HTTPS con su propio certificado). En los demás sistemas, los de certifi, como siempre."""
+    if sys.platform == "win32":
+        try:
+            import ssl
+            import truststore
+            return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        except ImportError:
+            pass
+    return True
+
 BROWSE_URL = "https://charts.youtube.com/youtubei/v1/browse?alt=json"
 BUCKET = "csv-uploads"
 
@@ -172,7 +186,7 @@ def correr(client=None):
                 return [{"error": "ya hay una carga de YouTube en curso en otro proceso"}]
             try:
                 propio = client is None
-                client = client or httpx.Client(headers={"Content-Type": "application/json"})
+                client = client or httpx.Client(headers={"Content-Type": "application/json"}, verify=verificacion_tls())
                 try:
                     resumen = [process_country(c, client) for c in COUNTRIES]
                 finally:

@@ -18,15 +18,21 @@ navegador ──► API propia (FastAPI) ──► PostgreSQL 16
 | Edge Function de YouTube + pg_cron | `api/youtube_job.py`: misma lógica y mismos 8 países, programada con `YOUTUBE_CRON`. |
 | Dashboard > Users | `USUARIOS.bat` (o `admin/usuarios.py`) |
 
-## Uso en Windows (doble clic)
+## Uso en Windows (doble clic, sin Docker)
 
-Lo único que hay que instalar es **Docker Desktop** (https://www.docker.com/products/docker-desktop/). En una PC de
-la empresa, quizás tengas que pedírselo a IT. Después de instalarlo, reiniciá la PC y abrilo una vez.
+No hay que instalar nada ni tener permisos de administrador. PostgreSQL 17 y Python 3.12 corren desde una carpeta
+de tu usuario (`%LOCALAPPDATA%\RankingDigital`), como cualquier programa portable.
 
 1. Bajá el ZIP de la rama desde GitHub. Antes de descomprimirlo: clic derecho > Propiedades > tildá
    **Desbloquear** > Aceptar. Después descomprimilo y entrá a la carpeta `sistema_ranking`.
-2. **`1_INSTALAR.bat`**. Arma el sistema y lo deja funcionando en http://localhost:8000. La primera vez tarda
-   unos minutos. Las claves internas las genera solo, al azar, en el archivo `.env`.
+2. **`1_INSTALAR.bat`**. La primera vez baja unos 50 MB de componentes oficiales:
+   - Python 3.12, de NuGet (lo publica la Python Software Foundation);
+   - PostgreSQL 17, del paquete de npm `@embedded-postgres/windows-x64`.
+
+   Cada archivo se verifica por su sha256 antes de usarlo. Los paquetes de Python ya vienen en el ZIP
+   (`windows\paquetes`). Después arma la base, deja el sistema funcionando en http://localhost:8000 (o el siguiente
+   puerto libre) y crea el acceso directo **Ranking Digital** en el escritorio. También te pregunta si querés que
+   arranque solo al prender la PC.
 3. **`2_MIGRAR_DESDE_SUPABASE.bat`**. Trae de Supabase los datos, los usuarios y el historial de cargas. Te pide:
    - la URL del proyecto: Enter para usar la tuya;
    - la service_role key: Supabase > Project Settings > API Keys > service_role > Reveal;
@@ -35,19 +41,34 @@ la empresa, quizás tengas que pedírselo a IT. Después de instalarlo, reinici�
 
    Los archivos del historial los toma de tus carpetas de OneDrive `Charts historicos Youtube` y
    `Charts historicos_spotify`, buscándolos por nombre y tamaño exactos. Los que no estén ahí, los baja del bucket.
-   Antes de correrlo, en OneDrive hacé clic derecho en esas carpetas > **Mantener siempre en este dispositivo**.
-   Todo viaja por HTTPS, así que funciona desde la red de la empresa. La clave no se guarda en ningún archivo.
-4. Para usarlo todos los días: **`ABRIR_SISTEMA.bat`**. Para apagarlo: **`DETENER.bat`** (los datos quedan
-   guardados). Para administrar usuarios: **`USUARIOS.bat`**.
+   Todo viaja por HTTPS y usa los certificados de Windows, así que funciona detrás del proxy de la empresa. La clave
+   no se guarda en ningún archivo.
+4. Para el día a día:
+   - el acceso directo del escritorio, o **`ABRIR_SISTEMA.bat`**;
+   - **`USUARIOS.bat`** para crear usuarios, cambiar contraseñas, cambiar roles y bloquear;
+   - **`DETENER.bat`** para apagarlo (los datos quedan guardados).
 
-Hay dos diferencias con Supabase que tenés que tener en cuenta:
-- **Solo funciona mientras la PC está prendida y con Docker Desktop abierto.** Eso incluye la carga automática de
-  YouTube: si la PC está apagada a esa hora, esa semana no se carga sola.
-- **Solo entra quien usa esa PC.** Para que lo usen otras personas, tiene que instalarse en un servidor de la
-  empresa (ver la sección siguiente).
+**Si el paso 2 no puede bajar algo** (la red de la empresa bloquea esa dirección), el mensaje muestra el link. Bajá
+el archivo con el navegador; queda en tu carpeta Descargas. Después volvé a correr `1_INSTALAR.bat`: lo encuentra
+ahí solo y lo verifica. Los dos links son:
+- https://api.nuget.org/v3-flatcontainer/python/3.12.10/python.3.12.10.nupkg
+- https://registry.npmjs.org/@embedded-postgres/windows-x64/-/windows-x64-17.10.0-beta.17.tgz
 
-Si `1_INSTALAR.bat` falla con un mensaje de `SSL`, `certificate` o `proxy`, es la red de la empresa bloqueando la
-descarga de componentes. Corré solo ese paso conectado a otra red (por ejemplo, el celular).
+Hay dos diferencias con Supabase:
+- **Solo funciona mientras la PC está prendida.** Eso incluye la carga automática de YouTube: si la PC está apagada
+  a esa hora, esa semana no se carga sola.
+- **Solo entra quien usa esa PC.** El sistema escucha solo en esa PC. Para que lo use todo el equipo, tiene que
+  instalarse en un servidor (sección siguiente).
+
+**Dónde queda cada cosa** (todo en `%LOCALAPPDATA%\RankingDigital`, fuera de OneDrive a propósito, porque OneDrive
+puede dañar una base de datos mientras la sincroniza):
+- `datos\`: la base y los archivos del historial;
+- `logs\`: los registros, para ver qué pasó si algo falla;
+- `config.env`: las claves internas, generadas al azar;
+- `app\`: la copia del programa.
+
+**Para actualizar:** bajá el ZIP nuevo y corré `1_INSTALAR.bat`. Reemplaza el programa y conserva los datos, los
+usuarios y las claves.
 
 ## Servidor Linux (para que lo use todo el equipo)
 
@@ -133,17 +154,19 @@ aparte:
 | `test_youtube.py` | La tarea de YouTube con respuestas simuladas, incluidos los errores por país. |
 | `test_navegador.py` | El front real en Chromium: login, cargar CSV, editar, descargar, historial, reporte BO, sesión y auditor en solo lectura. |
 | `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
-| `test_windows.py` | Los scripts de Windows con PowerShell real, como los usa una persona: instalar, migrar, poner contraseñas, programar YouTube, administrar usuarios, apagar y volver a abrir. Solo corre si hay Docker. |
+| `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, programar YouTube, administrar usuarios, apagar, volver a abrir y actualizar. |
+| `test_componentes_windows.py` | Los componentes reales de Windows (Python y PostgreSQL): verificación por sha256, archivos alterados, descarga caída y que al descomprimir esté todo lo necesario. |
+| `test_paquetes_windows.py` | Que los paquetes de Python incluidos alcancen para Windows sin internet (dependencias evaluadas como en Windows). |
 
 ## Archivos
 
 ```
-db/          instalar.sh + SQL (03 y 04 se generan del CSV con generar_esquema.py)
+db/          instalar.sh (Docker/servidor) e instalar.py (Windows portable, sin psql) + SQL (03 y 04 se generan del CSV con generar_esquema.py)
 api/         app.py (API) y youtube_job.py
 front/       index.html (generado de ../frontend_ranking_digital.html con generar_index.py), tempo-client.js
 admin/       usuarios.py
 migracion/   exportar_supabase.py e importar.py
-windows/     los scripts que corren los .bat (PowerShell 5.1 o superior)
+windows/     los scripts que corren los .bat (PowerShell 5.1 o superior) y paquetes/ (Python para Windows, sin internet)
 *.bat        doble clic en Windows: 1_INSTALAR, 2_MIGRAR_DESDE_SUPABASE, ABRIR_SISTEMA, USUARIOS, DETENER
 tests/       correr_todo.sh y las pruebas
 ```

@@ -79,9 +79,12 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   `front/generar_index.py`; `tempo-client.js` imita supabase-js). Ver `sistema_ranking/README.md`.
 - El esquema (`db/03`, `db/04`) se genera del CSV `migracion_supabase/origen/esquema_supabase.csv`; no editarlo a mano.
 - Comportamientos heredados de Supabase se mantienen a propósito (listados en el README); `anon` no tiene permisos.
-- Antes de entregar un cambio: `sistema_ranking/tests/correr_todo.sh` (Postgres local en el puerto 54340; con Docker
-  también prueba los scripts de Windows con PowerShell real).
-- El usuario lo usa en Windows con doble clic: `1_INSTALAR.bat`, `2_MIGRAR_DESDE_SUPABASE.bat`, `ABRIR_SISTEMA.bat`,
-  `USUARIOS.bat`, `DETENER.bat` (scripts en `windows/`, PowerShell 5.1, BOM + CRLF). La migración va por la API de
-  Supabase (HTTPS), porque en la red de la empresa el 5432 está bloqueado. El historial de archivos se toma de OneDrive
-  `...\Latam\Backoffice\Charts historicos Youtube` y `Charts historicos_spotify`.
+- Antes de entregar un cambio: `sistema_ranking/tests/correr_todo.sh` (Postgres local: `PGHOST_URL`, por defecto el
+  puerto 54340; con PowerShell también prueba la versión portable de Windows de punta a punta).
+- El usuario lo usa en Windows con doble clic, **sin Docker** (no puede instalarlo): versión portable con PostgreSQL 17
+  (npm `@embedded-postgres/windows-x64`, locale builtin C.UTF-8 = misma semántica que Supabase) y Python 3.12 (NuGet)
+  en `%LOCALAPPDATA%\RankingDigital`, sin admin. Bats: `1_INSTALAR`, `2_MIGRAR_DESDE_SUPABASE`, `ABRIR_SISTEMA`,
+  `USUARIOS`, `DETENER` (scripts en `windows/`, PowerShell 5.1, BOM + CRLF; paquetes de Python en `windows/paquetes`).
+  La migración va por la API de Supabase (HTTPS, `truststore` en Windows por el proxy de la empresa). El historial de
+  archivos se toma de OneDrive `...\Latam\Backoffice\Charts historicos Youtube` y `Charts historicos_spotify`.
+  Docker (`docker-compose.yml`) queda para un servidor Linux.
