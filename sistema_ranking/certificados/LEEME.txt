@@ -1,0 +1,4 @@
+Certificados raíz de la empresa (archivos .crt, formato PEM), para trabajar detrás de un proxy que inspecciona HTTPS.
+Se agregan a la imagen del sistema (pip al armarla, y las conexiones a Supabase y YouTube).
+No hace falta copiarlos a mano: "bash ranking.sh certificados" los exporta desde Windows.
+Los .crt no se suben al repositorio.

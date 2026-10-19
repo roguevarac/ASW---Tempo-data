@@ -44,6 +44,12 @@ correr "Tarea de YouTube" env DATABASE_URL="postgresql://authenticator:prueba_lo
 base_nueva
 correr "Front en el navegador" python3 tests/test_navegador.py
 correr "Migración (exportar + importar)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_migracion.py
+correr "Comando de certificados de la empresa" python3 tests/test_certificados.py
+if docker info >/dev/null 2>&1; then
+    correr "Linux / WSL2 con Docker Engine (ranking.sh de punta a punta)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_docker_linux.py
+else
+    echo "== Linux / WSL2 con Docker Engine: se saltea (Docker no está corriendo)"
+fi
 correr "Paquetes de Python para Windows" python3 tests/test_paquetes_windows.py
 # Versión portable de Windows: necesita PowerShell (PWSH, en el PATH, en la caché o en la imagen de Docker).
 CACHE="${CACHE_PRUEBAS:-/var/tmp/rk_pruebas_cache}"

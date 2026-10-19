@@ -1,4 +1,7 @@
 .env
 exportacion/
 tests/
+windows/
+respaldos/
 **/__pycache__
+*.bat

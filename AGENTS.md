@@ -13,17 +13,25 @@ Aunque el nombre diga Claude, ese archivo vale para cualquier agente.
 Terminado y probado con `sistema_ranking/tests/correr_todo.sh`. Todas las pruebas dan OK: estructura igual a Supabase,
 API, tarea de YouTube, front en el navegador, migración y versión portable de Windows (también con PostgreSQL 17).
 
-Falta lo que solo puede hacer el usuario, en su PC con Windows (ver "Uso en Windows" en `sistema_ranking/README.md`).
-No usa Docker: es la versión portable (PostgreSQL 17 y Python 3.12 en `%LOCALAPPDATA%\RankingDigital`, sin admin).
-1. En `sistema_ranking/`: `1_INSTALAR.bat` y después `2_MIGRAR_DESDE_SUPABASE.bat`.
+**Entorno del usuario:** Windows corporativo sin admin, con WSL2 Ubuntu 26.04 y Docker Engine dentro de Ubuntu
+(`docker compose` v5, sin Docker Desktop). Todo desde bash, proyectos en `~/proyectos`, navegador de Windows a
+`http://localhost:PUERTO`, red corporativa con posible proxy. Instrucciones: sección "En tu PC: Ubuntu (WSL2) +
+Docker Engine" de `sistema_ranking/README.md`. Todo pasa por `sistema_ranking/ranking.sh`:
+1. `bash ranking.sh instalar` y después `bash ranking.sh migrar`.
    - La migración va por HTTPS, con la service_role key, que se pide en pantalla y no se guarda.
-   - Los archivos del historial se toman de las carpetas de OneDrive y, si falta alguno, se baja del bucket.
-   - Al final pide contraseñas nuevas para los usuarios y el horario de YouTube.
+   - Los archivos del historial se toman de OneDrive (`/mnt/c/Users/...`) y, si falta alguno, se baja del bucket.
+   - Al final pide contraseñas nuevas y el horario de YouTube.
 2. Probar con los usuarios y, si todo está bien, apagar Supabase y rotar sus claves.
 
-Uso diario: el acceso directo "Ranking Digital", `USUARIOS.bat` y `DETENER.bat`. Si algo falla, los registros están
-en `%LOCALAPPDATA%\RankingDigital\logs`. Para que lo use todo el equipo, va en un servidor con Docker (sección
-"Servidor Linux" del README).
+Uso diario: `bash ranking.sh abrir | detener | usuarios | respaldo | restaurar | logs | estado`. La configuración
+está en `~/.config/ranking-digital/ranking.env`, fuera del proyecto. El nombre del proyecto de compose es fijo
+(`ranking-digital`), así que una versión nueva en otra carpeta usa los mismos datos.
+
+Red corporativa:
+- `ranking.sh certificados` exporta los certificados raíz de Windows a Ubuntu, a Docker y a la imagen.
+- Si Docker Hub falla, se usan los espejos `mirror.gcr.io` y `public.ecr.aws`.
+
+La versión portable de Windows (`*.bat`, `windows/`) queda como alternativa para una PC sin WSL.
 
 ## Reglas para seguir trabajando
 - **No subir secretos.** Nada de contraseñas, `.env`, service_role key, anon key ni la carpeta `exportacion/`.
@@ -46,5 +54,7 @@ en `%LOCALAPPDATA%\RankingDigital\logs`. Para que lo use todo el equipo, va en u
   - los archivos se guardan con BOM y fin de línea CRLF;
   - un comando que muestra algo en pantalla no se llama dentro de una expresión, porque eso esconde lo que
     pregunta.
+- `ranking.sh` es bash para Ubuntu. No usa Python del sistema; todo corre en los contenedores. Probarlo con
+  `tests/test_docker_linux.py`, que necesita Docker Engine.
 - Si una prueba falla, se arregla el código, no la prueba.
 - Para las queries de Redshift, `python3 reporte_cwr/tests/test_reporte.py`.

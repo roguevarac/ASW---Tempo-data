@@ -1,53 +1,93 @@
-# Todo el sistema en un servidor propio: base PostgreSQL 16 + API/front.
-#   cp .env.example .env   (completar las claves)
-#   docker compose up -d
+# Ranking Digital: base PostgreSQL 17 + API/front, con Docker Engine (Linux o WSL2).
+# En la PC de trabajo se maneja con "bash ranking.sh ..." (ver README). En un servidor:
+#   cp .env.example .env   (completar las claves)   y   docker compose up -d
 # La primera vez el servicio "instalador" crea la base; las siguientes no toca nada si ya existe.
+# Nombre fijo: los datos (volúmenes) son los mismos aunque el proyecto se descomprima en otra carpeta.
+name: ranking-digital
+
+x-proxy: &proxy
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  http_proxy: ${http_proxy:-}
+  https_proxy: ${https_proxy:-}
+
+x-sin-proxy: &sin-proxy
+  NO_PROXY: db,localhost,127.0.0.1,${NO_PROXY:-}
+  no_proxy: db,localhost,127.0.0.1,${no_proxy:-}
+
 services:
   db:
-    image: postgres:16
+    image: ${IMAGEN_POSTGRES:-postgres:17}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ranking
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD}
+      # C.UTF-8 "builtin": ordena y pasa a minúsculas igual que la base de Supabase.
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8 --locale=C
     volumes:
       - datos_db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ranking"]
       interval: 5s
-      retries: 20
-    # Sin "ports": la base no queda expuesta fuera del servidor.
+      retries: 30
+    # Sin "ports": la base no queda expuesta fuera de Docker.
 
   instalador:
-    image: postgres:16
+    image: ${IMAGEN_POSTGRES:-postgres:17}
     depends_on:
       db: { condition: service_healthy }
     environment:
       PGURL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/ranking
-      AUTHENTICATOR_PASSWORD: ${AUTHENTICATOR_PASSWORD:?Falta AUTHENTICATOR_PASSWORD en .env}
+      AUTHENTICATOR_PASSWORD: ${AUTHENTICATOR_PASSWORD:?Falta AUTHENTICATOR_PASSWORD}
     volumes:
       - ./db:/db:ro
     entrypoint: ["sh", "-c", "if psql \"$$PGURL\" -Atc \"select to_regclass('public.tracks_master') is not null\" | grep -q t; then echo 'Base ya instalada'; else sh /db/instalar.sh; fi"]
     restart: "no"
 
   api:
-    build: .
+    image: ${IMAGEN_API:-ranking-digital-api:local}
+    build:
+      context: .
+      # Arma la imagen con la red de Ubuntu (mismo proxy y DNS que la terminal: suele ser lo que anda con VPN).
+      network: host
+      args:
+        IMAGEN_PYTHON: ${IMAGEN_PYTHON:-python:3.12-slim}
+        <<: *proxy
     restart: unless-stopped
     depends_on:
       instalador: { condition: service_completed_successfully }
     environment:
+      <<: [*proxy, *sin-proxy]
       DATABASE_URL: postgresql://authenticator:${AUTHENTICATOR_PASSWORD}@db:5432/ranking
-      JWT_SECRET: ${JWT_SECRET:?Falta JWT_SECRET en .env}
+      JWT_SECRET: ${JWT_SECRET:?Falta JWT_SECRET}
       SESSION_HOURS: ${SESSION_HOURS:-8}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
       STATEMENT_TIMEOUT: ${STATEMENT_TIMEOUT:-120s}
       DB_POOL: ${DB_POOL:-10}
       YOUTUBE_CRON: ${YOUTUBE_CRON:-}
-      YOUTUBE_CRON_TZ: ${YOUTUBE_CRON_TZ:-America/Argentina/Buenos_Aires}
+      YOUTUBE_CRON_TZ: ${YOUTUBE_CRON_TZ:-UTC}
     volumes:
       - archivos:/data/storage
     ports:
-      - "${PUERTO:-8000}:8000"
+      # 127.0.0.1: solo esta PC (en WSL2 se abre igual desde el navegador de Windows). En un servidor: ESCUCHAR=0.0.0.0
+      - "${ESCUCHAR:-127.0.0.1}:${PUERTO:-8000}:8000"
+
+  # Herramientas de administración (migración, usuarios, respaldo). No arranca sola: se usa con "docker compose run".
+  herramientas:
+    image: ${IMAGEN_API:-ranking-digital-api:local}
+    profiles: ["herramientas"]
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      <<: [*proxy, *sin-proxy]
+      PGURL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/ranking
+      STORAGE_DIR: /data/storage
+    volumes:
+      - archivos:/data/storage
+      - exportacion:/exportacion
+    working_dir: /app
 
 volumes:
   datos_db:
   archivos:
+  exportacion:

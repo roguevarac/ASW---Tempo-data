@@ -75,16 +75,24 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   `REGEXP_REPLACE` al pasar a DuckDB (Redshift reemplaza todas las coincidencias, DuckDB solo la primera).
 
 ## Sistema Ranking Digital (reemplazo de Supabase) — `sistema_ranking/`
-- PostgreSQL 16 + API FastAPI propia + el mismo front (`frontend_ranking_digital.html` -> `front/index.html` con
+- PostgreSQL (17 en la PC; también probado con 16) + API FastAPI propia + el mismo front (`frontend_ranking_digital.html` -> `front/index.html` con
   `front/generar_index.py`; `tempo-client.js` imita supabase-js). Ver `sistema_ranking/README.md`.
 - El esquema (`db/03`, `db/04`) se genera del CSV `migracion_supabase/origen/esquema_supabase.csv`; no editarlo a mano.
 - Comportamientos heredados de Supabase se mantienen a propósito (listados en el README); `anon` no tiene permisos.
 - Antes de entregar un cambio: `sistema_ranking/tests/correr_todo.sh` (Postgres local: `PGHOST_URL`, por defecto el
   puerto 54340; con PowerShell también prueba la versión portable de Windows de punta a punta).
-- El usuario lo usa en Windows con doble clic, **sin Docker** (no puede instalarlo): versión portable con PostgreSQL 17
-  (npm `@embedded-postgres/windows-x64`, locale builtin C.UTF-8 = misma semántica que Supabase) y Python 3.12 (NuGet)
-  en `%LOCALAPPDATA%\RankingDigital`, sin admin. Bats: `1_INSTALAR`, `2_MIGRAR_DESDE_SUPABASE`, `ABRIR_SISTEMA`,
-  `USUARIOS`, `DETENER` (scripts en `windows/`, PowerShell 5.1, BOM + CRLF; paquetes de Python en `windows/paquetes`).
-  La migración va por la API de Supabase (HTTPS, `truststore` en Windows por el proxy de la empresa). El historial de
-  archivos se toma de OneDrive `...\Latam\Backoffice\Charts historicos Youtube` y `Charts historicos_spotify`.
-  Docker (`docker-compose.yml`) queda para un servidor Linux.
+- **Entorno real del usuario:** WSL2 Ubuntu 26.04 + Docker Engine dentro de Ubuntu (`docker compose`, sin Docker
+  Desktop, sin admin en Windows). Trabaja desde bash, en `~/proyectos`, y abre `http://localhost:PUERTO` en el
+  navegador de Windows. Red corporativa con posible proxy.
+  - Todo pasa por `sistema_ranking/ranking.sh` (`instalar`, `migrar`, `abrir`, `detener`, `usuarios`, `respaldo`,
+    `restaurar`, `certificados`). Las instrucciones son para bash/apt, sin pasos de Windows ni de Docker Desktop.
+  - La base es PostgreSQL 17, con locale builtin C.UTF-8 y codificación UTF8, la misma semántica que Supabase.
+  - La configuración está en `~/.config/ranking-digital/ranking.env`, el nombre de compose es fijo
+    (`ranking-digital`) y la API solo escucha en 127.0.0.1.
+  - Si Docker Hub falla, se usan los espejos `mirror.gcr.io` y `public.ecr.aws`. Los certificados de la empresa van
+    en `certificados/`.
+  - La migración va por la API de Supabase (HTTPS). El historial de archivos se toma de OneDrive
+    (`/mnt/c/Users/7000042560/OneDrive - Sony/.../Backoffice/Charts historicos Youtube` y `Charts historicos_spotify`).
+- Alternativa sin WSL (Windows portable, `*.bat` + `windows/`): PostgreSQL 17 de npm `@embedded-postgres/windows-x64`
+  y Python 3.12 de NuGet en `%LOCALAPPDATA%\RankingDigital`. Usa PowerShell 5.1 (archivos con BOM + CRLF) y los
+  paquetes de `windows/paquetes`.

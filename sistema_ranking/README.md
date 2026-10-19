@@ -18,7 +18,110 @@ navegador ──► API propia (FastAPI) ──► PostgreSQL 16
 | Edge Function de YouTube + pg_cron | `api/youtube_job.py`: misma lógica y mismos 8 países, programada con `YOUTUBE_CRON`. |
 | Dashboard > Users | `USUARIOS.bat` (o `admin/usuarios.py`) |
 
-## Uso en Windows (doble clic, sin Docker)
+## En tu PC: Ubuntu (WSL2) + Docker Engine
+
+Todo se hace desde la terminal de Ubuntu, con Docker Engine instalado dentro de Ubuntu. No hace falta Docker
+Desktop ni ningún permiso de administrador en Windows. El sistema se abre en el navegador de Windows, en
+`http://localhost:PUERTO`.
+
+### Una sola vez
+
+```bash
+sudo apt update && sudo apt install -y git curl unzip openssl
+cd ~/proyectos
+```
+
+Bajá el proyecto de una de estas dos formas:
+
+- **Con git.** Si el repositorio es privado, git te pide tu usuario de GitHub y, como contraseña, un token
+  personal:
+  ```bash
+  git clone -b claude/funny-bell-bbdz84 https://github.com/roguevarac/ASW---Tempo-data.git ranking
+  cd ~/proyectos/ranking/sistema_ranking
+  ```
+- **Con el ZIP.** En GitHub, elegí la rama `claude/funny-bell-bbdz84` > Code > Download ZIP. Queda en Descargas de
+  Windows, y desde Ubuntu lo descomprimís así:
+  ```bash
+  unzip /mnt/c/Users/7000042560/Downloads/ASW---Tempo-data-claude-funny-bell-bbdz84.zip -d ~/proyectos
+  cd ~/proyectos/ASW---Tempo-data-claude-funny-bell-bbdz84/sistema_ranking
+  ```
+  `7000042560` es tu usuario de Windows. Si el archivo tiene otro nombre, `ls /mnt/c/Users/7000042560/Downloads/*.zip`
+  lo muestra.
+
+Después, en la carpeta `sistema_ranking`:
+
+```bash
+bash ranking.sh instalar     # arma y arranca el sistema; la primera vez tarda unos minutos
+bash ranking.sh migrar       # trae de Supabase los datos, los usuarios y el historial
+```
+
+`instalar`:
+- genera las claves internas al azar en `~/.config/ranking-digital/ranking.env`, fuera del proyecto. No compartas
+  ese archivo.
+- baja PostgreSQL 17 y Python. Si Docker Hub está bloqueado o limitado, usa solo los espejos públicos de las mismas
+  imágenes oficiales: `mirror.gcr.io`, de Google, y `public.ecr.aws`, de Amazon.
+- arma la imagen y deja el sistema en `http://localhost:8000`, o en el siguiente puerto libre.
+
+`migrar` te pide:
+- la URL del proyecto de Supabase: Enter para usar la tuya;
+- la service_role key: Supabase > Project Settings > API Keys > service_role > Reveal. No se guarda en ningún lado.
+- las carpetas con los CSV del historial. Las de OneDrive (`Charts historicos Youtube` y `Charts historicos_spotify`)
+  las encuentra solas. También podés pegar una ruta de Windows (`C:\...`) o de Ubuntu.
+- contraseñas nuevas para los usuarios, porque Supabase no entrega las contraseñas por la API;
+- el horario de la carga de YouTube, que se saca en el SQL Editor de Supabase con `select schedule from cron.job;`.
+
+Los archivos del historial que no estén en esas carpetas los baja del bucket. Antes de importar, todo se compara
+contra lo que había en Supabase; si algo no coincide, no se importa nada.
+
+### Día a día
+
+| Comando | Para qué |
+|---|---|
+| `bash ranking.sh abrir` | Lo arranca si estaba apagado (incluso Docker) y lo abre en el navegador de Windows |
+| `bash ranking.sh detener` | Lo apaga; los datos quedan guardados |
+| `bash ranking.sh usuarios` | Crear usuarios, cambiar contraseñas, roles y oficina, bloquear y desbloquear |
+| `bash ranking.sh estado` / `logs` | Qué está corriendo / últimos mensajes, si algo falla |
+| `bash ranking.sh respaldo` | Copia de la base y de los archivos en `~/proyectos/ranking-respaldos` |
+| `bash ranking.sh restaurar NOMBRE` | Vuelve a ese respaldo |
+
+Hay dos cosas que tenés que saber:
+- **Después de reiniciar Windows**, abrí la terminal de Ubuntu y corré `bash ranking.sh abrir`. Si Docker no está
+  corriendo, lo arranca solo; puede pedirte la contraseña de Ubuntu.
+- **La carga automática de YouTube** solo corre mientras Ubuntu y Docker están prendidos. Si querés que no se
+  pierda ninguna, dejá la terminal de Ubuntu abierta (minimizada).
+
+**Respaldos:** los datos viven dentro de Ubuntu (en volúmenes de Docker). Hacé `bash ranking.sh respaldo` cada
+tanto y copiá los dos archivos a OneDrive, por ejemplo con `cp ~/proyectos/ranking-respaldos/ranking_* "/mnt/c/Users/TU_USUARIO/OneDrive - Sony/"`.
+Si algún día se reinstala Ubuntu, alcanza con `instalar` y `restaurar`.
+
+**Versión nueva del proyecto:** bajala en otra carpeta y corré `bash ranking.sh instalar` desde ahí. Usa la misma
+configuración y los mismos datos, y actualiza el programa.
+
+### Red de la empresa (proxy y certificados)
+
+`ranking.sh` reconoce los errores típicos de una red corporativa y te dice cuál de estos pasos hace falta:
+
+- **Error de certificado (`x509`, `certificate`, `SSL`).** El proxy de la empresa revisa el HTTPS. Corré
+  `bash ranking.sh certificados`. Copia los certificados raíz de Windows (sin permisos de administrador) a Ubuntu, a
+  Docker y a la imagen del sistema. Después volvé a correr el paso que falló.
+- **No hay salida a internet (`timeout`, `no such host`).** Si en la empresa se usa un proxy, ponelo en
+  `~/.bashrc` (`export HTTPS_PROXY=http://proxy:puerto HTTP_PROXY=http://proxy:puerto`) y abrí una terminal nueva.
+  Para que Docker también baje imágenes por el proxy:
+  ```bash
+  sudo mkdir -p /etc/docker
+  echo '{ "proxies": { "http-proxy": "http://proxy:puerto", "https-proxy": "http://proxy:puerto", "no-proxy": "localhost,127.0.0.1" } }' | sudo tee /etc/docker/daemon.json
+  sudo service docker restart
+  ```
+  Si `/etc/docker/daemon.json` ya existía, agregale la parte `"proxies"` en lugar de reemplazarlo.
+- **Docker Hub limitado o bloqueado.** No hay que hacer nada: usa solo los espejos públicos. Si la empresa tiene su
+  propio espejo, ponelo en `IMAGEN_POSTGRES` e `IMAGEN_PYTHON` dentro de `~/.config/ranking-digital/ranking.env`.
+
+La imagen se arma con la red de Ubuntu (`network: host`), así que usa el mismo proxy y el mismo DNS que la
+terminal.
+
+## Alternativa: Windows sin WSL (doble clic, versión portable)
+
+Para una PC con Windows sin WSL ni Docker. Usa la misma base y el mismo programa, con PostgreSQL y Python portables.
 
 No hay que instalar nada ni tener permisos de administrador. PostgreSQL 17 y Python 3.12 corren desde una carpeta
 de tu usuario (`%LOCALAPPDATA%\RankingDigital`), como cualquier programa portable.
@@ -154,6 +257,7 @@ aparte:
 | `test_youtube.py` | La tarea de YouTube con respuestas simuladas, incluidos los errores por país. |
 | `test_navegador.py` | El front real en Chromium: login, cargar CSV, editar, descargar, historial, reporte BO, sesión y auditor en solo lectura. |
 | `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
+| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, detener, abrir y versión nueva en otra carpeta. |
 | `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, programar YouTube, administrar usuarios, apagar, volver a abrir y actualizar. |
 | `test_componentes_windows.py` | Los componentes reales de Windows (Python y PostgreSQL): verificación por sha256, archivos alterados, descarga caída y que al descomprimir esté todo lo necesario. |
 | `test_paquetes_windows.py` | Que los paquetes de Python incluidos alcancen para Windows sin internet (dependencias evaluadas como en Windows). |
@@ -167,6 +271,8 @@ front/       index.html (generado de ../frontend_ranking_digital.html con genera
 admin/       usuarios.py
 migracion/   exportar_supabase.py e importar.py
 windows/     los scripts que corren los .bat (PowerShell 5.1 o superior) y paquetes/ (Python para Windows, sin internet)
+ranking.sh   todo en Linux / WSL2 con Docker Engine (instalar, migrar, abrir, usuarios, respaldo...)
+certificados/ certificados raíz de la empresa para la imagen (los deja "ranking.sh certificados"; no se suben)
 *.bat        doble clic en Windows: 1_INSTALAR, 2_MIGRAR_DESDE_SUPABASE, ABRIR_SISTEMA, USUARIOS, DETENER
 tests/       correr_todo.sh y las pruebas
 ```
