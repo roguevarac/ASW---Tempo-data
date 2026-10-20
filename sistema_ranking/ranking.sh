@@ -11,6 +11,7 @@
 #   bash ranking.sh respaldo        copia de la base y los archivos en ~/proyectos/ranking-respaldos
 #   bash ranking.sh restaurar F     vuelve a un respaldo (F = el nombre que mostró "respaldo")
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
+#   bash ranking.sh acceso-directo  crea el ícono "Ranking Digital" en el escritorio de Windows
 #
 # Las claves internas quedan en ~/.config/ranking-digital/ranking.env (fuera del proyecto: una versión nueva del
 # proyecto, en otra carpeta, sigue usando la misma base). No compartas ese archivo.
@@ -58,6 +59,16 @@ direccion() { echo "http://localhost:$(valor PUERTO)"; }
 instalado() { [ -f "$CONFIG" ] || fallar "El sistema no está instalado todavía. Corré: bash ranking.sh instalar"; }
 
 # ---------------------------------------------------------------- Docker
+# Archivos copiados desde Windows/OneDrive pueden quedar con fin de línea de Windows (\r\n): sh y bash no los leen.
+arreglar_fin_de_linea() {
+    local f arreglados=0
+    while IFS= read -r -d '' f; do
+        if grep -q $'\r' "$f"; then sed -i 's/\r$//' "$f"; arreglados=$((arreglados + 1)); fi
+    done < <(find "$DIR" \( -name '*.sh' -o -name '*.sql' -o -name '*.py' -o -name '*.yml' -o -name 'Dockerfile' -o -name '*.env.example' \) \
+             -not -path '*/windows/*' -print0)
+    [ "$arreglados" -gt 0 ] && aviso "Arreglé el fin de línea de $arreglados archivos copiados desde Windows."
+    return 0
+}
 verificar_docker() {
     command -v docker > /dev/null 2>&1 || fallar "No encuentro docker. Instalá Docker Engine en Ubuntu (ver README)."
     if ! docker info > /dev/null 2>&1; then
@@ -68,7 +79,9 @@ verificar_docker() {
     fi
     docker compose version > /dev/null 2>&1 || fallar "Falta el plugin de Docker Compose: sudo apt install docker-compose-plugin"
     command -v curl > /dev/null 2>&1 || fallar "Falta curl: sudo apt install -y curl"
-    case "$DIR" in /mnt/*) aviso "Aviso: el proyecto está en $DIR (disco de Windows). Anda más rápido y seguro dentro de Ubuntu (~/proyectos).";; esac
+    case "$DIR" in /mnt/*) aviso "Aviso: el proyecto está en $DIR (disco de Windows u OneDrive). Copialo dentro de Ubuntu:
+  cp -r \"$DIR/..\" ~/proyectos/ranking   y corré los comandos desde ~/proyectos/ranking/sistema_ranking";; esac
+    arreglar_fin_de_linea
 }
 explicar_error_red() {   # $1 = archivo con la salida del comando que falló
     if grep -qiE 'x509|certificate|CERTIFICATE_VERIFY|SSL' "$1"; then
@@ -167,6 +180,9 @@ EOF
             echo "Escribí la contraseña (mínimo 10 caracteres; no se ve mientras escribís)."
             usuarios_py crear "$email" admin ${oficina:+"$oficina"} || aviso "No se pudo crear. Reintentá con: bash ranking.sh usuarios"
         fi
+    fi
+    if command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ]; then
+        si "¿Crear el ícono 'Ranking Digital' en el escritorio de Windows?" && cmd_acceso_directo
     fi
     ok $'\n'"Listo. Entrá desde el navegador de Windows: $(direccion)"
     echo "Para los próximos días:  bash ranking.sh abrir   (y  bash ranking.sh detener  para apagarlo)."
@@ -295,6 +311,15 @@ cmd_abrir() {
     esperar_sistema
     ok "Ranking Digital funcionando: $(direccion)"
     abrir_navegador "$(direccion)"
+    if [ "${1:-}" = "--mantener" ]; then
+        # Lo usa el ícono del escritorio: mientras esta ventana esté abierta, Ubuntu (y con él Docker, el sistema y la
+        # carga automática de YouTube) sigue prendido. Windows apaga Ubuntu cuando no queda ninguna ventana suya abierta.
+        echo
+        echo "Dejá esta ventana abierta (podés minimizarla): mientras esté abierta, el sistema y la carga"
+        echo "automática de YouTube siguen funcionando. Para volver a abrir la página: $(direccion)"
+        echo "Para apagar todo, cerrá esta ventana."
+        while true; do sleep 3600; done
+    fi
 }
 
 cmd_detener() {
@@ -408,12 +433,52 @@ Pedile a IT el certificado raíz de la empresa (.crt) y copialo a $DIR/certifica
     ok "Listo. Ahora volvé a correr el paso que falló (por ejemplo: bash ranking.sh instalar)."
 }
 
-ayuda() { sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+cmd_acceso_directo() {
+    command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ] \
+        || fallar "El ícono del escritorio es para WSL (Ubuntu dentro de Windows). Acá no encuentro Windows."
+    instalado
+    case "$DIR" in /mnt/*) fallar "Primero copiá el proyecto dentro de Ubuntu (~/proyectos) y corré este comando desde ahí.";; esac
+    titulo "Creando el ícono 'Ranking Digital'"
+    local win_local carpeta_win carpeta cmd_win ico_win
+    win_local="$(cd /mnt/c 2>/dev/null || true; powershell.exe -NoProfile -Command '$env:LOCALAPPDATA' 2>/dev/null | tr -d '\r')"
+    [ -n "$win_local" ] || fallar "No pude leer la carpeta de Windows del usuario."
+    carpeta_win="$win_local\RankingDigital"
+    carpeta="$(wslpath -u "$carpeta_win")"
+    mkdir -p "$carpeta" || fallar "No pude crear $carpeta_win"
+    cp "$DIR/windows/ranking.ico" "$carpeta/ranking.ico"
+    # El lanzador: arranca Docker como root de Ubuntu (sin pedir contraseña) y después el sistema, con la ventana abierta.
+    printf '%s\r\n' '@echo off' 'title Ranking Digital' \
+        "wsl.exe -d \"$WSL_DISTRO_NAME\" -u root -- service docker start >nul 2>&1" \
+        "wsl.exe -d \"$WSL_DISTRO_NAME\" --cd \"$DIR\" -- bash ranking.sh abrir --mantener" \
+        'if errorlevel 1 pause' > "$carpeta/Ranking Digital.cmd"
+    cmd_win="$carpeta_win\Ranking Digital.cmd"; ico_win="$carpeta_win\ranking.ico"
+    local inicio=0
+    si "¿Que también arranque solo cada vez que entrás a Windows? (así la carga de YouTube no se pierde)" && inicio=1
+    local ps="
+        \$s = New-Object -ComObject WScript.Shell
+        \$lugares = @([Environment]::GetFolderPath('Desktop'))
+        if ($inicio -eq 1) { \$lugares += [Environment]::GetFolderPath('Startup') }
+        foreach (\$l in \$lugares) {
+            \$a = \$s.CreateShortcut((Join-Path \$l 'Ranking Digital.lnk'))
+            \$a.TargetPath = '${cmd_win//\'/\'\'}'
+            \$a.IconLocation = '${ico_win//\'/\'\'},0'
+            \$a.WorkingDirectory = '${carpeta_win//\'/\'\'}'
+            \$a.Description = 'Ranking Digital'
+            \$a.Save()
+            Write-Output \$l
+        }"
+    local donde; donde="$(cd /mnt/c 2>/dev/null || true; powershell.exe -NoProfile -Command "$ps" 2>&1 | tr -d '\r')" \
+        || fallar "No pude crear el ícono: $donde"
+    ok "Listo: ícono 'Ranking Digital' en:"; printf '  %s\n' "$donde"
+    echo "Doble clic: arranca Docker y el sistema, y abre el navegador. Dejá abierta la ventana negra (minimizada)."
+}
+
+ayuda() { sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 case "${1:-}" in
     instalar) cmd_instalar ;;
     migrar) cmd_migrar ;;
-    abrir|iniciar) cmd_abrir ;;
+    abrir|iniciar) shift; cmd_abrir "$@" ;;
     detener|apagar) cmd_detener ;;
     usuarios) cmd_usuarios ;;
     estado) cmd_estado ;;
@@ -421,5 +486,6 @@ case "${1:-}" in
     respaldo) cmd_respaldo ;;
     restaurar) shift; cmd_restaurar "$@" ;;
     certificados) cmd_certificados ;;
+    acceso-directo|icono) cmd_acceso_directo ;;
     *) ayuda ;;
 esac

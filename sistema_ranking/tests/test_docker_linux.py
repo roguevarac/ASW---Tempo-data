@@ -47,6 +47,9 @@ def sql(url, q):
 base = pathlib.Path(tempfile.mkdtemp(prefix="rk_docker_"))
 proyecto = base / "proyectos" / "ASW---Tempo-data-claude-funny-bell-bbdz84" / "sistema_ranking"   # el ZIP descomprimido
 shutil.copytree(RAIZ, proyecto, ignore=shutil.ignore_patterns(".env", "exportacion", "__pycache__", "tests", "*.crt"))
+# Como si el proyecto se hubiera copiado desde Windows/OneDrive con fin de línea de Windows: ranking.sh lo arregla solo.
+for f in [proyecto / "db" / "instalar.sh", proyecto / "db" / "05_permisos.sql", proyecto / "docker-compose.yml"]:
+    f.write_bytes(f.read_bytes().replace(b"\n", b"\r\n"))
 config = base / "config" / "ranking.env"
 respaldos = base / "respaldos"
 # Proyecto e imagen propios de la prueba: nunca toca los datos ni la imagen de un sistema real en la misma máquina.
@@ -157,6 +160,8 @@ try:
     codigo = fin(p)
     log = texto("instalar.log")
     check("instalar: termina bien", codigo == 0 and "Listo. Entrá desde el navegador" in log, log[-2000:])
+    check("instalar: arregla los archivos copiados con fin de línea de Windows",
+          "Arreglé el fin de línea de 3 archivos" in log and b"\r" not in (proyecto / "db" / "instalar.sh").read_bytes(), log[:1500])
     check("instalar: claves al azar fuera del proyecto, solo legibles por el usuario",
           all(len(valor(k) or "") == 64 for k in ("POSTGRES_PASSWORD", "AUTHENTICATOR_PASSWORD", "JWT_SECRET"))
           and oct(config.stat().st_mode)[-3:] == "600" and not (proyecto / ".env").exists())
@@ -260,9 +265,12 @@ try:
     # ================================================================ detener y abrir
     codigo = fin(ranking("detener"))
     check("detener: apaga el sistema", codigo == 0 and login("admin@prueba.local", "clave-migrada-123").status_code == 599)
-    codigo = fin(ranking("abrir"))
-    check("abrir: vuelve a levantar todo y los datos siguen", codigo == 0 and login("admin@prueba.local", "clave-migrada-123").status_code == 200,
-          texto("abrir.log")[-800:])
+    # Lo que corre el ícono del escritorio: levanta todo y deja la ventana abierta (mantiene Ubuntu prendido).
+    p = ranking("abrir", "--mantener")
+    p.expect("Dejá esta ventana abierta", timeout=300)
+    check("abrir (ícono): vuelve a levantar todo, los datos siguen y la ventana queda abierta",
+          p.isalive() and login("admin@prueba.local", "clave-migrada-123").status_code == 200, texto("abrir.log")[-800:])
+    p.terminate(force=True)
 
     # ================================================================ versión nueva del ZIP en otra carpeta
     nueva = base / "proyectos" / "version-nueva" / "sistema_ranking"

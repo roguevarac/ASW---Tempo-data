@@ -48,6 +48,16 @@ Bajá el proyecto de una de estas dos formas:
   `7000042560` es tu usuario de Windows. Si el archivo tiene otro nombre, `ls /mnt/c/Users/7000042560/Downloads/*.zip`
   lo muestra.
 
+- **Desde una copia en OneDrive** (por ejemplo `...\Backoffice\RANKING DIGITAL REGIONAL`). Esperá a que OneDrive
+  termine de sincronizar (tilde verde) y copiala dentro de Ubuntu. No la uses directo desde `/mnt/c`: OneDrive la
+  sincroniza mientras Docker la usa, y desde el disco de Windows todo anda más lento.
+  ```bash
+  cp -r "/mnt/c/Users/7000042560/OneDrive - Sony/SMP-Administration Argentina - Documents/Latam/Backoffice/RANKING DIGITAL REGIONAL" ~/proyectos/ranking
+  cd ~/proyectos/ranking/sistema_ranking
+  ```
+  Si algún archivo quedó con fin de línea de Windows, `ranking.sh` lo arregla solo. Si el que quedó así es el propio
+  `ranking.sh` (el error menciona `$'\r'`), corré una vez `sed -i 's/\r$//' ranking.sh`.
+
 Después, en la carpeta `sistema_ranking`:
 
 ```bash
@@ -73,11 +83,25 @@ bash ranking.sh migrar       # trae de Supabase los datos, los usuarios y el his
 Los archivos del historial que no estén en esas carpetas los baja del bucket. Antes de importar, todo se compara
 contra lo que había en Supabase; si algo no coincide, no se importa nada.
 
+### Ícono en el escritorio
+
+Al final de `instalar` te ofrece crear el ícono **Ranking Digital** en el escritorio de Windows. También lo podés
+crear después con `bash ranking.sh acceso-directo`. No hace falta ser administrador.
+
+Con doble clic:
+- arranca Docker sin pedir contraseña (como root de Ubuntu);
+- levanta el sistema y abre el navegador;
+- deja una ventana negra abierta, que podés minimizar. Mientras esa ventana esté abierta, Ubuntu sigue prendido, y
+  con él el sistema y la carga automática de YouTube. Al cerrarla, Windows apaga Ubuntu.
+
+Si aceptás que arranque al iniciar Windows, se pone también en la carpeta Inicio y no se pierde ninguna carga de
+YouTube.
+
 ### Día a día
 
 | Comando | Para qué |
 |---|---|
-| `bash ranking.sh abrir` | Lo arranca si estaba apagado (incluso Docker) y lo abre en el navegador de Windows |
+| Ícono **Ranking Digital** o `bash ranking.sh abrir` | Lo arranca si estaba apagado (incluso Docker) y lo abre en el navegador de Windows |
 | `bash ranking.sh detener` | Lo apaga; los datos quedan guardados |
 | `bash ranking.sh usuarios` | Crear usuarios, cambiar contraseñas, roles y oficina, bloquear y desbloquear |
 | `bash ranking.sh estado` / `logs` | Qué está corriendo / últimos mensajes, si algo falla |
@@ -85,10 +109,9 @@ contra lo que había en Supabase; si algo no coincide, no se importa nada.
 | `bash ranking.sh restaurar NOMBRE` | Vuelve a ese respaldo |
 
 Hay dos cosas que tenés que saber:
-- **Después de reiniciar Windows**, abrí la terminal de Ubuntu y corré `bash ranking.sh abrir`. Si Docker no está
-  corriendo, lo arranca solo; puede pedirte la contraseña de Ubuntu.
-- **La carga automática de YouTube** solo corre mientras Ubuntu y Docker están prendidos. Si querés que no se
-  pierda ninguna, dejá la terminal de Ubuntu abierta (minimizada).
+- **Después de reiniciar Windows**, usá el ícono, o corré `bash ranking.sh abrir` en la terminal de Ubuntu.
+- **La carga automática de YouTube** solo corre mientras Ubuntu está prendido, es decir, mientras la ventana del
+  ícono (o una terminal de Ubuntu) esté abierta.
 
 **Respaldos:** los datos viven dentro de Ubuntu (en volúmenes de Docker). Hacé `bash ranking.sh respaldo` cada
 tanto y copiá los dos archivos a OneDrive, por ejemplo con `cp ~/proyectos/ranking-respaldos/ranking_* "/mnt/c/Users/TU_USUARIO/OneDrive - Sony/"`.

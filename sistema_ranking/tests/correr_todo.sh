@@ -45,6 +45,7 @@ base_nueva
 correr "Front en el navegador" python3 tests/test_navegador.py
 correr "Migración (exportar + importar)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_migracion.py
 correr "Comando de certificados de la empresa" python3 tests/test_certificados.py
+correr "Ícono del escritorio (WSL)" python3 tests/test_acceso_directo.py
 if docker info >/dev/null 2>&1; then
     correr "Linux / WSL2 con Docker Engine (ranking.sh de punta a punta)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_docker_linux.py
 else
