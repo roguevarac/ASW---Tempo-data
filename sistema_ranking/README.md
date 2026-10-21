@@ -124,7 +124,8 @@ servidor.
 | `bash ranking.sh actualizar` | Respaldo, versión nueva desde GitHub y reinicio, sin perder datos (si falla, vuelve sola a la anterior) |
 | `bash ranking.sh respaldo` | Copia de la base y de los archivos en `~/proyectos/ranking-respaldos`, y también en OneDrive (`RANKING DIGITAL REGIONAL\respaldos`) |
 | `bash ranking.sh restaurar NOMBRE` | Vuelve a ese respaldo |
-| `bash ranking.sh vaciar-historial` | Borra los archivos del historial para empezar a cargar de cero (antes hace un respaldo) |
+| `bash ranking.sh vaciar-historial` | Borra solo los archivos del historial (antes hace un respaldo) |
+| `bash ranking.sh empezar-de-cero` | Borra todos los datos menos los usuarios, para empezar a cargar de cero (antes hace un respaldo) |
 
 Hay dos cosas que tenés que saber:
 - **Después de reiniciar Windows**, si aceptaste el arranque automático, el servidor ya está prendido: abrí la
@@ -132,13 +133,19 @@ Hay dos cosas que tenés que saber:
 - **Los charts se cargan a mano.** Spotify y YouTube se suben desde **Carga CSV**; no hay cargas automáticas. Arriba
   se ve la fecha del último chart de Spotify y de YouTube del país elegido, porque cada país se carga por separado.
 
-**Empezar el historial de cero:** `bash ranking.sh vaciar-historial`. Lo confirma una persona y antes hace un
-respaldo. Hace dos cosas:
-- borra los archivos guardados (el bucket `csv-uploads`);
-- vacía la lista de la pestaña **Historial CSV**.
+**Manual de uso:** en la aplicación, botón **Manual de uso** (arriba a la derecha), o `http://localhost:8000/manual.html`.
+Explica cada pestaña, las cargas, la limpieza de títulos, el reporte BO y el estado de trabajo.
 
-La tabla principal, la tabla por territorio, las fechas de última carga y los usuarios no cambian. Para volver
-atrás: `bash ranking.sh restaurar <respaldo>`.
+**Empezar de cero.** Hay dos comandos. Los dos los confirma una persona (no corren con `--automatico`) y antes
+hacen un respaldo; para volver atrás: `bash ranking.sh restaurar <respaldo>`.
+- `bash ranking.sh empezar-de-cero` vacía todo para volver a cargar desde ahora:
+  - la tabla principal;
+  - la tabla por territorio (charts, Reporte Tempo, Reporte BO y estados de trabajo);
+  - el historial de cambios y el seguimiento de envíos;
+  - el historial de archivos.
+
+  Quedan los usuarios y el número de la próxima carga del reporte BO, para no repetir números que BO ya recibió.
+- `bash ranking.sh vaciar-historial` borra solo los archivos guardados y la lista de la pestaña **Historial CSV**.
 
 **Respaldos:** los datos viven dentro de Ubuntu (en volúmenes de Docker). `bash ranking.sh respaldo` los copia
 también a OneDrive (`...\Backoffice\RANKING DIGITAL REGIONAL\respaldos`), y `actualizar` hace uno antes de cada
@@ -285,6 +292,14 @@ Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
 - Las rutas de archivos están validadas, así que no se puede salir de la carpeta del bucket.
 - Un `PATCH` sin filtro se rechaza: no se puede modificar la tabla entera por error.
 - Un usuario bloqueado pierde la sesión en el acto.
+- **Seguimiento de envíos** (`db/mejoras/01_seguimiento.sql`): el sistema registra qué obras salieron en cada
+  reporte BO y en cada descarga del CSV de la tabla principal. Al descargar se elige **Solo las nuevas** (las que
+  nunca salieron en ese tipo de descarga, para el seguimiento semanal) o **Todas** (la revisión completa, por
+  ejemplo trimestral). La tabla principal muestra la columna y el filtro **Seguimiento**, y cada descarga queda en el
+  Historial CSV.
+- **Charts solo de carga manual:** Spotify y YouTube se suben desde Carga CSV; ya no hay carga automática.
+- **Fecha de última carga por país**, arriba en la aplicación.
+- **Manual de uso** dentro de la aplicación (`front/manual.html`).
 
 ## Comportamientos heredados de Supabase (se mantuvieron a propósito)
 
@@ -305,9 +320,9 @@ aparte:
 |---|---|
 | `comparar_con_supabase.py` | Estructura idéntica a la del CSV de Supabase. |
 | `test_e2e.py` | Por HTTP, cada operación del front: login, cargas, ediciones, reportes, historial, archivos, exportaciones, permisos por rol y bloqueo. |
-| `test_navegador.py` | El front real en Chromium: login, cargar CSV de Spotify y de YouTube, fecha de última carga por país, editar, descargar, historial, reporte BO, sesión y auditor en solo lectura. |
+| `test_navegador.py` | El front real en Chromium: login, cargar CSV de Spotify y de YouTube, fecha de última carga por país, reporte BO y CSV con solo nuevas o todas, seguimiento, manual, editar, descargar, historial, reporte BO, sesión y auditor en solo lectura. |
 | `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
-| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
+| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
 | `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, administrar usuarios, apagar, volver a abrir y actualizar. |
 | `test_componentes_windows.py` | Los componentes reales de Windows (Python y PostgreSQL): verificación por sha256, archivos alterados, descarga caída y que al descomprimir esté todo lo necesario. |
 | `test_paquetes_windows.py` | Que los paquetes de Python incluidos alcancen para Windows sin internet (dependencias evaluadas como en Windows). |
@@ -316,8 +331,9 @@ aparte:
 
 ```
 db/          instalar.sh (Docker/servidor) e instalar.py (Windows portable, sin psql) + SQL (03 y 04 se generan del CSV con generar_esquema.py)
+             mejoras/ + mejoras.sh: cambios propios, idempotentes; se aplican en cada arranque, también a una base ya instalada
 api/         app.py (API)
-front/       index.html (generado de ../frontend_ranking_digital.html con generar_index.py), tempo-client.js
+front/       index.html (generado de ../frontend_ranking_digital.html con generar_index.py), tempo-client.js, manual.html
 admin/       usuarios.py
 migracion/   exportar_supabase.py e importar.py
 windows/     los scripts que corren los .bat (PowerShell 5.1 o superior) y paquetes/ (Python para Windows, sin internet)

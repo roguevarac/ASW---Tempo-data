@@ -41,7 +41,7 @@ services:
       AUTHENTICATOR_PASSWORD: ${AUTHENTICATOR_PASSWORD:?Falta AUTHENTICATOR_PASSWORD}
     volumes:
       - ./db:/db:ro
-    entrypoint: ["sh", "-c", "if psql \"$$PGURL\" -Atc \"select to_regclass('public.tracks_master') is not null\" | grep -q t; then echo 'Base ya instalada'; else sh /db/instalar.sh; fi"]
+    entrypoint: ["sh", "-c", "if psql \"$$PGURL\" -Atc \"select to_regclass('public.tracks_master') is not null\" | grep -q t; then echo 'Base ya instalada'; sh /db/mejoras.sh; else sh /db/instalar.sh; fi"]
     restart: "no"
 
   api:

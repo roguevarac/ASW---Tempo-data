@@ -61,7 +61,7 @@ env_sb = dict(os.environ, SUPABASE_URL=f"http://127.0.0.1:{srv.server_port}", SU
 envi = dict(os.environ, PGURL=DESTINO, STORAGE_DIR=str(storage_destino))
 exportar = [sys.executable, str(RAIZ / "migracion" / "exportar_supabase.py")]
 importar = [sys.executable, str(RAIZ / "migracion" / "importar.py")]
-tablas = sql(ORIGEN, "select string_agg(tablename, ' ') from pg_tables where schemaname='public'").split()
+tablas = sql(ORIGEN, "select string_agg(tablename, ' ') from pg_tables where schemaname='public' and tablename not in ('envios', 'envio_obras')").split()
 registrados = sql(ORIGEN, "select string_agg(name, chr(10)) from storage.objects").splitlines()
 
 

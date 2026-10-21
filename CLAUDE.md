@@ -122,6 +122,21 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   - El usuario quiere empezar el historial de cero: `bash ranking.sh vaciar-historial` (respaldo previo, confirmación de
     una persona, no corre con `--automatico`). Borra `storage.objects` del bucket `csv-uploads`, `csv_uploads` y los
     archivos; no toca obras, territorios ni usuarios.
+  - **Empezar de cero:** `bash ranking.sh empezar-de-cero` vacía obras, territorios, reportes, auditoría, envíos e
+    historial (respaldo previo, confirmación de una persona). Quedan los usuarios y `bo_export_counter`.
+  - **Seguimiento de envíos** (`db/mejoras/01_seguimiento.sql`: tablas `envios` y `envio_obras`, `fn_preparar_envio`,
+    `fn_envio_obras`, `fn_envios_por_obra`). El reporte BO y el CSV de la tabla principal se descargan como
+    "Solo las nuevas" (nunca salieron en ese tipo) o "Todas" (revisión trimestral). La tabla principal tiene la columna
+    y el filtro "Seguimiento".
+  - **Mejoras propias de la base:** van en `db/mejoras/*.sql`, idempotentes. `db/mejoras.sh` las aplica:
+    - al instalar;
+    - en cada arranque del servicio `instalador` de compose;
+    - en `instalar.py`.
+
+    Así llegan a la base ya instalada. Nunca editar `db/03`/`db/04` para esto. Si una tabla nueva apunta a
+    `tracks_master`, agregarla a los TRUNCATE de `restaurar`, `empezar-de-cero` y `migracion/importar.py`.
+  - **Manual de uso:** `front/manual.html` (enlace "Manual de uso" arriba a la derecha). Actualizarlo cuando cambie el
+    front.
 - **Como aplicación (PWA, desde el 21/10/2026):** el front es instalable (`front/manifest.webmanifest`, `front/sw.js`,
   `front/apagado.html`, `front/iconos/`); los inyecta `front/generar_index.py`, y los íconos se generan con
   `front/generar_iconos.py`.

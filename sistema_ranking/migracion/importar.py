@@ -168,7 +168,10 @@ def main():
             ocupadas.append("auth.users")
         if ocupadas and not REEMPLAZAR:
             sys.exit("La base ya tiene datos: " + ", ".join(ocupadas) + ". Usá --reemplazar para borrarlos y cargar.")
-        cur.execute("TRUNCATE " + ", ".join(f"public.{t}" for t in TABLAS) + ", auth.users, storage.objects")
+        # El seguimiento de envíos (mejora propia, db/mejoras) apunta a las obras: se vacía con ellas.
+        propias = [t for t in ("envio_obras", "envios")
+                   if cur.execute("SELECT to_regclass(%s) IS NOT NULL", (f"public.{t}",)).fetchone()[0]]
+        cur.execute("TRUNCATE " + ", ".join(f"public.{t}" for t in propias + TABLAS) + ", auth.users, storage.objects")
 
         n = cargar(cur, "auth", "users", ORIGEN / "tablas" / "auth_users.csv")
         print("auth.users:", n)

@@ -224,7 +224,7 @@ try:
     codigo = fin(p)
     log = texto("migrar.log")
     check("migrar: termina bien", codigo == 0 and "Migración completa" in log, log[-2500:])
-    for t in sql(ORIGEN, "select string_agg(tablename, ' ') from pg_tables where schemaname='public'").split():
+    for t in sql(ORIGEN, "select string_agg(tablename, ' ') from pg_tables where schemaname='public' and tablename not in ('envios', 'envio_obras')").split():
         q = f"select count(*) || ':' || coalesce(md5(string_agg(x::text, '|' order by x::text)), '') from public.{t} x"
         check(f"migrar: tabla {t} idéntica", sql(ORIGEN, q) == base_nueva(q))
     r = login("admin@prueba.local", "clave-migrada-123")
@@ -323,6 +323,33 @@ try:
     check("vaciar-historial: con su respaldo se vuelve atrás", codigo == 0
           and base_nueva("select count(*) from storage.objects") == str(len(registrados)), texto("restaurar.log")[-600:])
 
+    # ================================================================ empezar de cero (todo menos los usuarios)
+    base_nueva("select fn_preparar_envio('csv_principal', 'todas')")   # un envío registrado (apunta a las obras)
+    conteo = ("select (select count(*) from tracks_master) || '|' || (select count(*) from territory_tracks) || '|' || "
+              "(select count(*) from territory_bo_report) || '|' || (select count(*) from territory_tempo_report) || '|' || "
+              "(select count(*) from envios) || '|' || (select count(*) from csv_uploads) || '|' || (select count(*) from storage.objects) || '|' || "
+              "(select count(*) from auth.users) || '|' || (select counter from bo_export_counter)")
+    antes_cero = base_nueva(conteo)
+    r = subprocess.run(["bash", str(proyecto / "ranking.sh"), "empezar-de-cero", "--automatico"], cwd=proyecto, env=ENTORNO,
+                       capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=300)
+    check("empezar-de-cero --automatico: se niega y no borra nada", r.returncode != 0 and base_nueva(conteo) == antes_cero, r.stdout + r.stderr)
+    p = ranking("empezar-de-cero")
+    p.expect(r"¿Borrar todos los datos y empezar de cero\? .*\(S/N\)"); p.sendline("S")
+    codigo = fin(p)
+    log = texto("empezar-de-cero.log")
+    resp = re.findall(r"restaurar (ranking_\d+_\d+)", log)
+    a = antes_cero.split("|")
+    quedan = dc("exec", "-T", "api", "find", "/data/storage/csv-uploads", "-type", "f").stdout.split()
+    check("empezar-de-cero: vacía obras, territorios, reportes, envíos e historial; quedan usuarios y número de carga",
+          codigo == 0 and resp and base_nueva(conteo) == f"0|0|0|0|0|0|0|{a[7]}|{a[8]}" and not quedan
+          and int(a[0]) > 0 and int(a[1]) > 0 and int(a[4]) > 0, (antes_cero, base_nueva(conteo), log[-800:]))
+    check("empezar-de-cero: los usuarios siguen entrando", login("admin@prueba.local", "clave-migrada-123").status_code == 200)
+    p = ranking("restaurar", resp[-1] if resp else "x")
+    p.expect(r"¿Seguir\? \(S/N\)"); p.sendline("S")
+    codigo = fin(p)
+    check("empezar-de-cero: con su respaldo se vuelve atrás (también el seguimiento de envíos)",
+          codigo == 0 and base_nueva(conteo) == antes_cero, (antes_cero, base_nueva(conteo), texto("restaurar.log")[-600:]))
+
     # ================================================================ detener y abrir
     codigo = fin(ranking("detener"))
     check("detener: apaga el sistema", codigo == 0 and login("admin@prueba.local", "clave-migrada-123").status_code == 599)
@@ -373,11 +400,16 @@ try:
     shutil.copytree(proyecto, nueva)
     (nueva / "front" / "index.html").write_text((nueva / "front" / "index.html").read_text() + "<!-- version nueva -->")
     usuarios_antes = base_nueva("select count(*) from auth.users")
+    # Una base de antes de las mejoras propias (db/mejoras): la versión nueva se las agrega al arrancar.
+    base_nueva("drop table envio_obras, envios cascade; drop function fn_preparar_envio, fn_envio_obras, fn_envios_por_obra")
     codigo = fin(ranking("instalar", carpeta=nueva))
     log = texto("instalar.log").split("1/4 Configuración")[-1]
     check("versión nueva en otra carpeta: conserva claves, datos y usuarios", codigo == 0 and "se mantiene" in log
           and f"Hay {usuarios_antes} usuarios cargados" in log and login("admin@prueba.local", "clave-migrada-123").status_code == 200, log[-1500:])
     check("versión nueva en otra carpeta: el programa se actualiza", "version nueva" in httpx.get(api("/"), trust_env=False).text)
+    check("versión nueva: una base ya instalada recibe las mejoras (seguimiento de envíos) sin perder datos",
+          base_nueva("select to_regclass('public.envios') is not null and to_regprocedure('fn_envios_por_obra()') is not null") == "t"
+          and base_nueva("select count(*) from auth.users") == usuarios_antes)
 
     # ================================================================ el flujo de Antigravity: clon de git + actualizar
     # "fuente" hace de GitHub: ahí se suben las mejoras; la PC tiene un clon y corre "ranking.sh actualizar".

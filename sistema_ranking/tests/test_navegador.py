@@ -114,11 +114,28 @@ with sync_playwright() as p:
           ultima_carga() == "Seleccionar país para ver fecha de última carga", ultima_carga())
     pag.click('[data-tab="master"]'); pag.select_option("#masterCountry", ""); pag.wait_for_timeout(1500)
 
-    # ---- descarga de la tabla principal (fn_master_export -> CSV)
+    # ---- descarga de la tabla principal: elige "solo las nuevas" o "todas" y queda registrada
+    total_obras = int(sqlq("select count(*) from tracks_master where deleted_at is null"))
+    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="nuevas"]')
+    check("Descargar CSV pregunta nuevas o todas, con la cantidad de cada una",
+          f"Solo las nuevas · {total_obras} obras" in pag.inner_text(".modal") and f"Todas · {total_obras} obras" in pag.inner_text(".modal"),
+          pag.inner_text(".modal"))
     with pag.expect_download() as d:
-        pag.click("#exportMaster")
+        pag.click('[data-envio-modo="nuevas"]')
     contenido = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
-    check("descarga CSV de la tabla principal", contenido.startswith("track_artist_concat,tempo_id") and "777001" in contenido, contenido[:200])
+    check("descarga CSV de la tabla principal (solo nuevas = todas la primera vez)",
+          contenido.startswith("track_artist_concat,tempo_id") and "777001" in contenido
+          and len(contenido.strip().splitlines()) == total_obras + 1 and d.value.suggested_filename == "tabla_principal_nuevas.csv",
+          (d.value.suggested_filename, contenido[:300]))
+    pag.wait_for_timeout(1000)
+    check("la descarga del CSV queda en el historial y marca las obras",
+          sqlq("select count(*) from csv_uploads where format='csv_principal' and file_path like 'csv_principal/%'") == "1"
+          and pag.locator(".seg", has_text="CSV: nunca").count() == 0, sqlq("select count(*) from csv_uploads where format='csv_principal'"))
+    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="nuevas"]')
+    check("después ya no hay nuevas para el CSV (la opción queda apagada) y muestra la última descarga",
+          pag.is_disabled('[data-envio-modo="nuevas"]') and "Solo las nuevas · 0 obras" in pag.inner_text(".modal")
+          and "solo nuevas" in pag.inner_text(".modal"), pag.inner_text(".modal"))
+    pag.click("#closeEnvio")
 
     # ---- tabla por territorio + histórico
     sqlq("select fn_upsert_bo_report_row('777001','AR','00123','C','ok','',50)")
@@ -128,14 +145,49 @@ with sync_playwright() as p:
     check("histórico de cambios abre", pag.is_visible("#closeHistory"))
     pag.click("#closeHistory")
 
-    # ---- reporte BO (contador + descarga + copia en el bucket)
+    # ---- reporte BO: solo las nuevas (contador + descarga + copia en el bucket + seguimiento)
     pag.click('[data-tab="master"]'); pag.wait_for_timeout(800)
+    con_tempo = int(sqlq("select count(*) from tracks_master where deleted_at is null and tempo_id ~ '^[0-9]+$'"))
+    pag.select_option("#segFilter", "bo_nunca"); pag.wait_for_timeout(300)
+    check("filtro Seguimiento: nunca en un reporte BO muestra todas al principio",
+          pag.locator("tbody tr").count() == total_obras, pag.locator("tbody tr").count())
+    pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="nuevas"]')
     with pag.expect_download() as d:
-        pag.click("#exportBo")
+        pag.click('[data-envio-modo="nuevas"]')
     bo = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
-    check("reporte BO descargado con número de carga", d.value.suggested_filename.startswith("reporte_bo_carga") and "777001;" in bo, (d.value.suggested_filename, bo[:100]))
+    carga = sqlq("select counter from bo_export_counter")
+    check("reporte BO (nuevas) con número de carga y solo obras con Tempo ID",
+          d.value.suggested_filename == f"reporte_bo_carga{carga}_nuevas.csv" and "777001;" in bo
+          and len(bo.strip().splitlines()) == con_tempo and all(l.endswith(f";BOcarga{carga}") for l in bo.splitlines()),
+          (d.value.suggested_filename, bo[:200]))
+    pag.wait_for_timeout(1000)
     check("copia del reporte BO guardada y registrada",
           sqlq("select count(*) from csv_uploads where format='bo_generado' and file_path like 'bo_generado/%'") == "1")
+    check("la columna Seguimiento muestra la carga del reporte BO",
+          pag.locator(".seg", has_text=f"BO: carga {carga}").count() == 0  # con el filtro "nunca", ya no aparecen
+          and pag.locator("tbody tr .seg").count() == 2 * (total_obras - con_tempo), pag.inner_text("tbody"))
+    pag.select_option("#segFilter", "bo_ya"); pag.wait_for_timeout(300)
+    check("filtro Seguimiento: ya en un reporte BO",
+          pag.locator(".seg", has_text=f"BO: carga {carga}").count() == con_tempo, pag.inner_text("tbody"))
+    pag.select_option("#segFilter", "")
+    pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="todas"]')
+    check("reporte BO: sin nuevas, 'solo las nuevas' queda apagada", pag.is_disabled('[data-envio-modo="nuevas"]'), pag.inner_text(".modal"))
+    with pag.expect_download() as d:
+        pag.click('[data-envio-modo="todas"]')
+    bo2 = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
+    check("reporte BO (todas, revisión completa): vuelve a incluir todo con la carga siguiente",
+          d.value.suggested_filename == f"reporte_bo_carga{int(carga) + 1}.csv" and len(bo2.strip().splitlines()) == con_tempo,
+          (d.value.suggested_filename, bo2[:200]))
+    pag.wait_for_timeout(800)
+
+    # ---- manual de uso
+    check("el enlace al manual está arriba", pag.get_attribute("#manualLink", "href") == "manual.html")
+    manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
+    texto_manual = manual.inner_text("main")
+    check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
+          all(t in texto_manual for t in ("Carga CSV", "Cómo se ordenan los títulos", "Solo las nuevas", "Estado de trabajo automático")),
+          texto_manual[:300])
+    manual.close()
 
     # ---- historial de cargas y descarga del archivo guardado (link firmado)
     pag.click('[data-tab="history"]'); pag.wait_for_timeout(800)

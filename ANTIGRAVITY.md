@@ -15,8 +15,9 @@ Claude.
    su terminal; el script lo pide sin mostrarlo.
 2. **Datos.** Nunca corras `docker compose down -v`, `docker volume rm`, `docker system prune` con volúmenes, ni
    borres `~/.config/ranking-digital`. Ahí están la base, los archivos del historial y las claves.
-3. **`bash ranking.sh restaurar`, `bash ranking.sh migrar` y `bash ranking.sh vaciar-historial` reemplazan o borran
-   datos.** Solo con el usuario presente y si él lo pide. `vaciar-historial` lo confirma él en su terminal.
+3. **`restaurar`, `migrar`, `vaciar-historial` y `empezar-de-cero` (de `bash ranking.sh`) reemplazan o borran
+   datos.** Solo con el usuario presente y si él lo pide. `vaciar-historial` y `empezar-de-cero` los confirma él en su
+   terminal.
 4. **Todo desde la terminal de Ubuntu (bash, WSL2)**, dentro de `~/proyectos`. Nada desde `/mnt/c` ni desde
    PowerShell. No uses Docker Desktop: no existe en esta PC.
 5. **Si un paso falla,** no improvises arreglos en el código. Mostrale al usuario la salida completa del comando y

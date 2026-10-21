@@ -10,7 +10,8 @@
 #   bash ranking.sh logs            últimos mensajes del sistema
 #   bash ranking.sh respaldo        copia de la base y los archivos en ~/proyectos/ranking-respaldos
 #   bash ranking.sh restaurar F     vuelve a un respaldo (F = el nombre que mostró "respaldo")
-#   bash ranking.sh vaciar-historial  borra los archivos del historial para empezar de cero (antes hace un respaldo)
+#   bash ranking.sh vaciar-historial  borra solo los archivos del historial (antes hace un respaldo)
+#   bash ranking.sh empezar-de-cero   borra todos los datos menos los usuarios (antes hace un respaldo)
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
 #   bash ranking.sh acceso-directo  crea la aplicación "Ranking Digital" en Windows (escritorio, menú Inicio, inicio)
 #   bash ranking.sh verificar       revisa que todo esté sano (sin cambiar nada)
@@ -434,6 +435,7 @@ cmd_restaurar() {
               TRUNCATE public.app_users, public.tracks_master, public.territory_tracks, public.territory_control,
                        public.territory_bo_report, public.territory_tempo_report, public.csv_uploads, public.audit_logs,
                        public.bo_export_counter, public.staging_tempo_historico, public.resultado_tempo_historico,
+                       public.envio_obras, public.envios,
                        auth.users, storage.objects, storage.buckets" > /dev/null || fallar "No se pudo vaciar la base."
     dc exec -T db pg_restore -U postgres -d ranking --data-only --disable-triggers --single-transaction \
         -n public -n auth -n storage < "$RESPALDOS/$f.dump" || fallar "No se pudo restaurar la base (quedó vacía: volvé a intentar)."
@@ -462,6 +464,37 @@ cmd_vaciar_historial() {
     herramienta sh -c 'rm -rf /data/storage/csv-uploads && mkdir -p /data/storage/csv-uploads' \
         || fallar "Se vació la lista, pero no se pudieron borrar los archivos (bash ranking.sh logs)."
     ok "Historial vacío. Los próximos CSV que cargues empiezan el historial de cero."
+    echo "Para volver atrás: bash ranking.sh restaurar <el respaldo de arriba>"
+}
+
+# Empezar de cero: vacía la tabla principal, la tabla por territorio (charts, Reporte Tempo, Reporte BO, estados de
+# trabajo), el historial de cambios, el seguimiento de envíos y el historial de archivos. Quedan los usuarios y el
+# número de carga del Reporte BO (para no repetir números que BO ya recibió). Respaldo previo; nunca en --automatico.
+cmd_empezar_de_cero() {
+    verificar_docker; instalado
+    dc up -d db > /dev/null 2>&1
+    local resumen; resumen="$(consulta "select (select count(*) from public.tracks_master) || ' obras en la tabla principal, '
+                                      || (select count(*) from public.territory_tracks) || ' registros por territorio, '
+                                      || (select count(*) from storage.objects where bucket_id = 'csv-uploads') || ' archivos en el historial'")" \
+        || fallar "No se pudo consultar la base."
+    titulo "Empezar de cero"
+    echo "Hoy hay: $resumen."
+    echo "Se borra todo eso: la tabla principal, la tabla por territorio (charts, Reporte Tempo, Reporte BO y estados"
+    echo "de trabajo), el historial de cambios, el seguimiento de reportes y descargas, y el historial de archivos."
+    echo "Quedan los usuarios y sus contraseñas, y el número de la próxima carga del Reporte BO."
+    [ "$AUTOMATICO" = 1 ] && fallar "Este comando lo confirma una persona: corrélo sin --automatico."
+    si "¿Borrar todos los datos y empezar de cero? (antes se hace un respaldo para poder volver atrás)" || fallar "Cancelado. No se borró nada."
+    cmd_respaldo
+    titulo "Vaciando"
+    consulta "BEGIN;
+              TRUNCATE public.envio_obras, public.envios, public.territory_tracks, public.territory_control,
+                       public.territory_bo_report, public.territory_tempo_report, public.tracks_master, public.audit_logs,
+                       public.csv_uploads, public.staging_tempo_historico, public.resultado_tempo_historico;
+              DELETE FROM storage.objects WHERE bucket_id = 'csv-uploads';
+              COMMIT;" > /dev/null || fallar "No se pudo vaciar la base (no se borró nada)."
+    herramienta sh -c 'rm -rf /data/storage/csv-uploads && mkdir -p /data/storage/csv-uploads' \
+        || fallar "Se vaciaron las tablas, pero no se pudieron borrar los archivos (bash ranking.sh logs)."
+    ok "Listo: el sistema quedó vacío, con los mismos usuarios. Podés empezar a cargar los charts."
     echo "Para volver atrás: bash ranking.sh restaurar <el respaldo de arriba>"
 }
 
@@ -615,7 +648,7 @@ $cambios
     cmd_verificar
 }
 
-ayuda() { sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+ayuda() { sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # --automatico en cualquier posición: sin preguntas (respuestas por defecto).
 ARGS=()
@@ -640,6 +673,7 @@ case "${1:-}" in
     restaurar) shift; cmd_restaurar "$@" ;;
     certificados) cmd_certificados ;;
     vaciar-historial) cmd_vaciar_historial ;;
+    empezar-de-cero) cmd_empezar_de_cero ;;
     acceso-directo|icono) cmd_acceso_directo ;;
     verificar) verificar_docker; cmd_verificar ;;
     actualizar) cmd_actualizar ;;
