@@ -113,6 +113,10 @@ select.edit-field{font-family:'IBM Plex Sans',sans-serif;}
 .val-old{color:var(--red);}
 .val-new{color:var(--green);}
 </style>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0E1520">
+<link rel="icon" href="iconos/icono-32.png">
+<link rel="apple-touch-icon" href="iconos/icono-192.png">
 </head>
 <body>
 
@@ -1124,5 +1128,6 @@ function attachAppEvents(){
   }
 })();
 </script>
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>

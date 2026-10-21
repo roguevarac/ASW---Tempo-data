@@ -43,6 +43,7 @@ correr "Tarea de YouTube" env DATABASE_URL="postgresql://authenticator:prueba_lo
     JWT_SECRET="secreto-de-prueba-local-de-mas-de-32-caracteres" python3 tests/test_youtube.py
 base_nueva
 correr "Front en el navegador" python3 tests/test_navegador.py
+correr "Aplicación instalable (PWA)" python3 tests/test_pwa.py
 correr "Migración (exportar + importar)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_migracion.py
 correr "Comando de certificados de la empresa" python3 tests/test_certificados.py
 correr "Ícono del escritorio (WSL)" python3 tests/test_acceso_directo.py

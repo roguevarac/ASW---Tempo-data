@@ -83,41 +83,51 @@ bash ranking.sh migrar       # trae de Supabase los datos, los usuarios y el his
 Los archivos del historial que no estén en esas carpetas los baja del bucket. Antes de importar, todo se compara
 contra lo que había en Supabase; si algo no coincide, no se importa nada.
 
-### Ícono en el escritorio
+### La aplicación en Windows
 
-Al final de `instalar` te ofrece crear el ícono **Ranking Digital** en el escritorio de Windows. También lo podés
-crear después con `bash ranking.sh acceso-directo`. No hace falta ser administrador.
+Ranking Digital se usa como una **aplicación**: tiene ventana propia, sin pestañas ni barra del navegador, y su
+ícono. Por dentro es una aplicación web instalable (PWA) que corre en Microsoft Edge, y el servidor en Ubuntu queda
+en segundo plano, sin ventanas negras. No hace falta ser administrador.
 
-Con doble clic:
-- arranca Docker sin pedir contraseña (como root de Ubuntu);
-- levanta el sistema y abre el navegador;
-- deja una ventana negra abierta, que podés minimizar. Mientras esa ventana esté abierta, Ubuntu sigue prendido, y
-  con él el sistema y la carga automática de YouTube. Al cerrarla, Windows apaga Ubuntu.
+`instalar` la crea al final. También se puede crear (o rehacer) con `bash ranking.sh acceso-directo`. Deja:
+- **Ranking Digital** en el escritorio y en el **menú Inicio**, así aparece en la búsqueda de Windows. Abre la
+  aplicación en su ventana. Si el servidor estaba apagado, lo enciende y muestra "Iniciando Ranking Digital…" hasta
+  que está listo.
+- **Apagar Ranking Digital**, en el menú Inicio. Apaga todo; los datos quedan guardados.
+- **Arranque oculto al iniciar Windows**, si lo aceptás (recomendado). El servidor queda prendido mientras la sesión
+  de Windows esté abierta, así la carga de YouTube no se pierde.
 
-Si aceptás que arranque al iniciar Windows, se pone también en la carpeta Inicio y no se pierde ninguna carga de
-YouTube.
+Si querés tenerla también en la barra de tareas: en la ventana de la aplicación, menú **···** > **Aplicaciones** >
+**Instalar Ranking Digital**. Después, clic derecho en su ícono de la barra de tareas > **Anclar**.
+
+Si abrís la aplicación con el servidor apagado, en lugar de un error muestra "Ranking Digital está iniciando o
+apagado" y entra sola cuando el servidor responde. Nunca guarda datos en el navegador: todo viene siempre del
+servidor.
+
+`bash ranking.sh actualizar` también actualiza estos accesos. Los registros del lanzador quedan en
+`%LOCALAPPDATA%\RankingDigital\lanzador.log`.
 
 ### Día a día
 
 | Comando | Para qué |
 |---|---|
-| Ícono **Ranking Digital** o `bash ranking.sh abrir` | Lo arranca si estaba apagado (incluso Docker) y lo abre en el navegador de Windows |
+| Aplicación **Ranking Digital** (escritorio, menú Inicio) o `bash ranking.sh abrir` | Lo arranca si estaba apagado (incluso Docker) y lo abre en el navegador de Windows |
 | `bash ranking.sh detener` | Lo apaga; los datos quedan guardados |
 | `bash ranking.sh usuarios` | Crear usuarios, cambiar contraseñas, roles y oficina, bloquear y desbloquear |
 | `bash ranking.sh estado` / `logs` | Qué está corriendo / últimos mensajes, si algo falla |
 | `bash ranking.sh verificar` | Revisa que todo esté sano, sin cambiar nada |
 | `bash ranking.sh actualizar` | Respaldo, versión nueva desde GitHub y reinicio, sin perder datos (si falla, vuelve sola a la anterior) |
-| `bash ranking.sh respaldo` | Copia de la base y de los archivos en `~/proyectos/ranking-respaldos` |
+| `bash ranking.sh respaldo` | Copia de la base y de los archivos en `~/proyectos/ranking-respaldos`, y también en OneDrive (`RANKING DIGITAL REGIONAL\respaldos`) |
 | `bash ranking.sh restaurar NOMBRE` | Vuelve a ese respaldo |
 
 Hay dos cosas que tenés que saber:
-- **Después de reiniciar Windows**, usá el ícono, o corré `bash ranking.sh abrir` en la terminal de Ubuntu.
-- **La carga automática de YouTube** solo corre mientras Ubuntu está prendido, es decir, mientras la ventana del
-  ícono (o una terminal de Ubuntu) esté abierta.
+- **Después de reiniciar Windows**, si aceptaste el arranque automático, el servidor ya está prendido: abrí la
+  aplicación y listo.
+- **La carga automática de YouTube** corre mientras la sesión de Windows está abierta y el servidor prendido.
 
-**Respaldos:** los datos viven dentro de Ubuntu (en volúmenes de Docker). Hacé `bash ranking.sh respaldo` cada
-tanto y copiá los dos archivos a OneDrive, por ejemplo con `cp ~/proyectos/ranking-respaldos/ranking_* "/mnt/c/Users/TU_USUARIO/OneDrive - Sony/"`.
-Si algún día se reinstala Ubuntu, alcanza con `instalar` y `restaurar`.
+**Respaldos:** los datos viven dentro de Ubuntu (en volúmenes de Docker). `bash ranking.sh respaldo` los copia
+también a OneDrive (`...\Backoffice\RANKING DIGITAL REGIONAL\respaldos`), y `actualizar` hace uno antes de cada
+cambio. Si algún día se reinstala Ubuntu, alcanza con `instalar` y `restaurar`.
 
 **Versión nueva del proyecto:** bajala en otra carpeta y corré `bash ranking.sh instalar` desde ahí. Usa la misma
 configuración y los mismos datos, y actualiza el programa.

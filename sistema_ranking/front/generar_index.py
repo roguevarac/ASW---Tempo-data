@@ -4,6 +4,7 @@ Solo cambia dos cosas; TODA la lógica del front queda igual:
   1. La librería supabase-js se reemplaza por tempo-client.js (mismos métodos), y
      PapaParse se sirve desde el propio sistema en vez de un CDN.
   2. La configuración (URL y clave de Supabase) se reemplaza por la URL de la API propia.
+  3. Se agrega lo que la hace instalable como aplicación (PWA): manifiesto, íconos y service worker.
 Si el HTML original cambia, volver a correr: python3 sistema_ranking/front/generar_index.py
 """
 import pathlib, re, sys
@@ -29,6 +30,13 @@ html = conf.sub("// API propia: vacío = mismo servidor que sirve esta página.\
                 "const SUPABASE_URL = '';\nconst SUPABASE_ANON_KEY = '';", html)
 html = html.replace("CONFIGURACIÓN — completar con los datos de tu proyecto Supabase\n  (Settings > API). Usar siempre la anon public key acá.",
                     "CONFIGURACIÓN — sistema propio (sin Supabase). La URL de la API va\n  vacía cuando el front lo sirve la misma API.")
+# PWA: se instala como aplicación (ventana propia, menú Inicio, barra de tareas). Ver manifest.webmanifest y sw.js.
+pwa = ('<link rel="manifest" href="manifest.webmanifest">\n<meta name="theme-color" content="#0E1520">\n'
+       '<link rel="icon" href="iconos/icono-32.png">\n<link rel="apple-touch-icon" href="iconos/icono-192.png">\n')
+if html.count("</head>") != 1 or html.count("</body>") != 1:
+    sys.exit("No encontré </head> o </body> (una sola vez) en el HTML original")
+html = html.replace("</head>", pwa + "</head>")
+html = html.replace("</body>", "<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>\n</body>")
 if "supabase.co" in html or "eyJ" in html:
     sys.exit("Quedó una referencia a Supabase o una clave en el HTML")
 DESTINO.write_text(html, encoding="utf-8")

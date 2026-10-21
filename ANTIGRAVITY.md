@@ -70,7 +70,8 @@ Qué hace, en orden:
    base sigue igual.
 2. Baja PostgreSQL 17 y Python. Si Docker Hub falla, usa solo los espejos `mirror.gcr.io` y `public.ecr.aws`.
 3. Arma la imagen, levanta los contenedores (`ranking-digital-db-1` y `ranking-digital-api-1`) y crea la base.
-4. Crea el ícono **Ranking Digital** en el escritorio de Windows y en Inicio.
+4. Crea la aplicación **Ranking Digital** en Windows: escritorio, menú Inicio (abrir y "Apagar Ranking Digital") y
+   arranque oculto del servidor al iniciar Windows.
 
 | Si la salida dice | Hacé esto |
 |---|---|
@@ -115,18 +116,23 @@ Cuando termine, corré `bash ranking.sh verificar` y confirmá:
 
 ```bash
 bash ranking.sh respaldo
-cp ~/proyectos/ranking-respaldos/ranking_* "/mnt/c/Users/7000042560/OneDrive - Sony/SMP-Administration Argentina - Documents/Latam/Backoffice/RANKING DIGITAL REGIONAL/"
 ```
+
+Deja la copia en `~/proyectos/ranking-respaldos` y también, sola, en OneDrive (`...\Backoffice\RANKING DIGITAL
+REGIONAL\respaldos`). No copies a mano: las rutas tienen espacios.
 
 ## Paso 7. Entregar
 
 Confirmale al usuario:
-- la dirección (la que muestra `verificar`, por ejemplo `http://localhost:8000`);
-- que en el escritorio tiene el ícono **Ranking Digital**. Doble clic: arranca todo y abre el navegador. La ventana
-  negra tiene que quedar abierta, minimizada: si se cierra, se apaga el sistema y la carga de YouTube;
+- que tiene la aplicación **Ranking Digital** en el escritorio y en el menú Inicio (la encuentra buscándola en
+  Windows). Se abre en su propia ventana; si el servidor estaba apagado, lo enciende solo y muestra "Iniciando…";
+- que el servidor arranca solo y oculto al iniciar Windows, sin ventanas negras, y que "Apagar Ranking Digital"
+  (menú Inicio) lo apaga;
+- que, si la quiere en la barra de tareas, en la ventana de la aplicación: menú ··· > Aplicaciones > Instalar Ranking
+  Digital, y después anclarla;
 - que entra con su email y la contraseña nueva.
 
-Si el ícono no apareció: `bash ranking.sh acceso-directo --automatico`.
+Si los accesos no aparecieron: `bash ranking.sh acceso-directo --automatico`.
 
 ## Actualizaciones (cada vez que el usuario diga que hay mejoras nuevas en GitHub)
 
@@ -136,10 +142,11 @@ bash ranking.sh actualizar
 ```
 
 `actualizar`:
-1. hace un respaldo;
+1. hace un respaldo (también en OneDrive);
 2. baja la versión nueva (`git pull --ff-only`);
 3. la arma y la arranca;
-4. verifica.
+4. actualiza los accesos de Windows (la aplicación);
+5. verifica.
 
 Los datos no se tocan. Si la versión nueva no arranca, **vuelve sola a la anterior** y te dice "Quedó funcionando la
 versión anterior": en ese caso pasale la salida al usuario para Claude (regla 5).

@@ -16,7 +16,7 @@ COPY api/ api/
 COPY admin/ admin/
 COPY migracion/ migracion/
 COPY db/ db/
-COPY front/index.html front/tempo-client.js front/papaparse.min.js front/
+COPY front/ front/
 RUN useradd --system --uid 10001 ranking \
     && mkdir -p /data/storage /exportacion && chown ranking /data/storage /exportacion
 USER ranking

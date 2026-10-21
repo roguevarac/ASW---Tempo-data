@@ -55,6 +55,7 @@ respaldos = base / "respaldos"
 # Proyecto e imagen propios de la prueba: nunca toca los datos ni la imagen de un sistema real en la misma máquina.
 PROYECTO_COMPOSE, IMAGEN = "rk-prueba", "rk-prueba-api:local"
 ENTORNO = dict(os.environ, RK_CONFIG=str(config), RK_RESPALDOS=str(respaldos), HOME=str(base), TERM="dumb",
+               RK_BACKOFFICE=str(base / "onedrive" / "Backoffice"),
                COMPOSE_PROJECT_NAME=PROYECTO_COMPOSE, IMAGEN_API=IMAGEN)
 subprocess.run(["docker", "compose", "-p", PROYECTO_COMPOSE, "--profile", "herramientas", "down", "-v"], capture_output=True)
 
@@ -63,6 +64,7 @@ onedrive = base / "onedrive" / "Backoffice"
 carpetas = [onedrive / "Charts historicos Youtube", onedrive / "Charts historicos_spotify"]
 for c in carpetas:
     c.mkdir(parents=True)
+(onedrive / "RANKING DIGITAL REGIONAL").mkdir()   # donde el usuario guardó el proyecto (y van los respaldos)
 registrados = sql(ORIGEN, "select string_agg(name, chr(10) order by name) from storage.objects").splitlines()
 originales = dict(l.split("|", 1) for l in sql(ORIGEN, "select file_path || '|' || filename from csv_uploads where file_path is not null").splitlines())
 for i, n in enumerate(registrados[1:]):
@@ -186,6 +188,11 @@ try:
     check("instalar: el sistema responde solo en esta PC (127.0.0.1)", httpx.get(api("/health"), trust_env=False).status_code == 200
           and "127.0.0.1:" in dc("port", "api", "8000").stdout, dc("port", "api", "8000").stdout)
     check("instalar: el admin creado entra", login("jefe@nuevo.local", "clave-jefe-12345").status_code == 200)
+    m = httpx.get(api("/manifest.webmanifest"), trust_env=False)
+    check("instalar: la imagen sirve la aplicación instalable (manifiesto, service worker, íconos)",
+          m.status_code == 200 and m.json().get("display") == "standalone"
+          and httpx.get(api("/sw.js"), trust_env=False).status_code == 200
+          and httpx.get(api("/iconos/icono-512.png"), trust_env=False).content[:4] == b"\x89PNG", m.text[:200])
     # Con el certificado de la empresa en la imagen, Python confía en un servidor firmado por ella (como el proxy que
     # inspecciona las conexiones a Supabase y YouTube); sin él, la misma conexión se rechaza.
     prueba_tls = f"import httpx; print(httpx.get('https://127.0.0.1:{https.server_port}/', timeout=20).status_code)"
@@ -201,8 +208,8 @@ try:
     p = ranking("migrar")
     p.expect("URL del proyecto"); p.sendline(URL_SB)
     p.expect("service_role key"); p.sendline(CLAVE)
-    for c in carpetas:
-        p.expect("Agregar otra carpeta"); p.sendline(str(c))
+    for c in carpetas:   # las de OneDrive las encuentra solo
+        p.expect(re.escape(str(c)))
     p.expect("Agregar otra carpeta"); p.sendline("")
     p.expect(r"Borrarlos y cargar lo de Supabase\? \(S/N\)"); p.sendline("S")
     p.expect("1 archivos del historial no están en esas carpetas")
@@ -266,6 +273,10 @@ try:
     codigo = fin(p)
     nombre = re.search(r"restaurar (ranking_\d+_\d+)", texto("respaldo.log"))
     check("respaldo: deja la base y los archivos", codigo == 0 and nombre and (respaldos / f"{nombre.group(1)}.dump").stat().st_size > 0, texto("respaldo.log")[-600:])
+    copia_od = onedrive / "RANKING DIGITAL REGIONAL" / "respaldos"
+    check("respaldo: también queda copiado en OneDrive (ruta con espacios)",
+          (copia_od / f"{nombre.group(1)}.dump").read_bytes() == (respaldos / f"{nombre.group(1)}.dump").read_bytes()
+          and (copia_od / f"{nombre.group(1)}_archivos.tgz").exists(), texto("respaldo.log")[-600:])
     base_nueva("update tracks_master set track_name_raw = 'ROTO'; delete from territory_tracks")
     dc("exec", "-T", "api", "sh", "-c", "rm -rf /data/storage/csv-uploads")
     p = ranking("restaurar", nombre.group(1))

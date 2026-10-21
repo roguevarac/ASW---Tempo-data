@@ -93,6 +93,33 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     en `certificados/`.
   - La migración va por la API de Supabase (HTTPS). El historial de archivos se toma de OneDrive
     (`/mnt/c/Users/7000042560/OneDrive - Sony/.../Backoffice/Charts historicos Youtube` y `Charts historicos_spotify`).
+- **Instalación real (21/10/2026, hecha por Antigravity con `ANTIGRAVITY.md`; commit 4899a81):**
+  - Usuario de Ubuntu `rguevara`; clon de git en `/home/rguevara/proyectos/ranking` (rama
+    `claude/funny-bell-bbdz84`). `gh` está autenticado como `roguevarac`.
+  - Docker Engine 29.9.1, Compose v5.6.0, Buildx v0.38.0. **Buildx 0.38 / Compose 5.6 rechazan `network: host` en el
+    build** (piden `--allow=network.host`): no volver a ponerlo. `test_docker_linux.py` lo controla.
+  - Sistema en `http://localhost:8000`. Migrado de Supabase: 2 usuarios, 672 obras, 1.500 registros por territorio y
+    4.610 archivos de historial. YouTube programado `0 12 * * 5` UTC.
+  - El escritorio de Windows está en OneDrive: `C:\Users\7000042560\OneDrive - Sony\Desktop`.
+  - En WSL no hay `xdg-open`/`wslview`; para abrir algo en Windows se usa `explorer.exe` o `powershell.exe`.
+  - Al agente le falló copiar el respaldo a OneDrive por los espacios de la ruta. Desde ahora `ranking.sh respaldo`
+    lo copia solo.
+  - Las mejoras se aplican en la PC con `bash ranking.sh actualizar`, que puede correr Antigravity.
+- **Como aplicación (PWA, desde el 21/10/2026):** el front es instalable (`front/manifest.webmanifest`, `front/sw.js`,
+  `front/apagado.html`, `front/iconos/`); los inyecta `front/generar_index.py`, y los íconos se generan con
+  `front/generar_iconos.py`.
+  - El service worker **nunca cachea la API**: solo la pantalla de apagado y los íconos.
+  - En Windows, `ranking.sh acceso-directo` genera desde `escritorio/` el lanzador
+    `%LOCALAPPDATA%\RankingDigital\lanzar.ps1` y la pantalla `iniciando.html`. El lanzador:
+    - arranca Docker como root de WSL;
+    - deja un "mantenedor" oculto (`wsl.exe ... ranking.sh abrir --mantener --sin-navegador`) que mantiene Ubuntu
+      prendido;
+    - abre la ventana con `msedge.exe --app=URL`;
+    - con `-SoloServidor`, se usa en el inicio de Windows;
+    - con `-Apagar`, apaga todo.
+  - Accesos: escritorio, menú Inicio (abrir y apagar) e inicio de Windows. `actualizar` los regenera si existe
+    `ACCESO_DIRECTO=1` en la configuración.
+  - Se descartó la app nativa (.exe con Electron o Tauri): sin firma, la bloquearía la empresa.
 - Alternativa sin WSL (Windows portable, `*.bat` + `windows/`): PostgreSQL 17 de npm `@embedded-postgres/windows-x64`
   y Python 3.12 de NuGet en `%LOCALAPPDATA%\RankingDigital`. Usa PowerShell 5.1 (archivos con BOM + CRLF) y los
   paquetes de `windows/paquetes`.

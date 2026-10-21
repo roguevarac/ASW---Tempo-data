@@ -18,6 +18,7 @@ import hmac
 import io
 import json
 import logging
+import mimetypes
 import os
 import pathlib
 import re
@@ -457,10 +458,15 @@ def salud():
     return {"ok": True}
 
 
+# Tipos que mimetypes no siempre conoce (el manifiesto de la PWA debe ir como application/manifest+json).
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+mimetypes.add_type("text/javascript", ".js")
+
+
 @app.get("/{archivo:path}")
 def front(archivo: str):
     nombre = archivo or "index.html"
     destino = (FRONT_DIR / nombre).resolve()
-    if FRONT_DIR not in destino.parents or not destino.is_file():
-        destino = FRONT_DIR / "index.html"
+    if FRONT_DIR not in destino.parents or not destino.is_file() or destino.suffix == ".py":
+        destino = FRONT_DIR / "index.html"   # los generadores (.py) de la carpeta no se publican
     return FileResponse(destino, headers={"Cache-Control": "no-cache"})

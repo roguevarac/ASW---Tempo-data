@@ -11,7 +11,7 @@
 #   bash ranking.sh respaldo        copia de la base y los archivos en ~/proyectos/ranking-respaldos
 #   bash ranking.sh restaurar F     vuelve a un respaldo (F = el nombre que mostró "respaldo")
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
-#   bash ranking.sh acceso-directo  crea el ícono "Ranking Digital" en el escritorio de Windows
+#   bash ranking.sh acceso-directo  crea la aplicación "Ranking Digital" en Windows (escritorio, menú Inicio, inicio)
 #   bash ranking.sh verificar       revisa que todo esté sano (sin cambiar nada)
 #   bash ranking.sh actualizar      respaldo + versión nueva desde GitHub + reinicio, sin perder datos
 #   (agregando --automatico, instalar no hace preguntas: lo usan los agentes como Antigravity)
@@ -143,6 +143,23 @@ elegir_imagen() {   # $1 = variable (IMAGEN_POSTGRES / IMAGEN_PYTHON), $2 = imag
     explicar_error_red "$log"; rm -f "$log"
     return 1
 }
+# Carpeta del perfil de Windows (vista desde Ubuntu) y la de Backoffice en OneDrive; vacío si no se encuentra.
+perfil_windows() {
+    local p=""
+    if command -v powershell.exe > /dev/null 2>&1; then
+        p="$(cd /mnt/c 2>/dev/null || true; powershell.exe -NoProfile -Command '[Environment]::GetFolderPath("UserProfile")' 2>/dev/null | tr -d '\r')"
+        [ -n "$p" ] && p="$(wslpath -u "$p" 2>/dev/null)"
+    fi
+    if [ -z "$p" ] || [ ! -d "$p/$ONEDRIVE_BACKOFFICE" ]; then
+        local c; for c in /mnt/c/Users/*; do [ -d "$c/$ONEDRIVE_BACKOFFICE" ] && { p="$c"; break; }; done
+    fi
+    printf '%s' "$p"
+}
+carpeta_backoffice() {
+    if [ -n "${RK_BACKOFFICE:-}" ]; then printf '%s' "$RK_BACKOFFICE"; return; fi
+    local p; p="$(perfil_windows)"
+    [ -n "$p" ] && [ -d "$p/$ONEDRIVE_BACKOFFICE" ] && printf '%s' "$p/$ONEDRIVE_BACKOFFICE"
+}
 consulta() { dc exec -T db psql -U postgres -d ranking -At -c "$1"; }
 usuarios_py() { dc run --rm herramientas python /app/admin/usuarios.py "$@"; }
 herramienta() { dc run --rm --no-deps -T herramientas "$@"; }
@@ -230,16 +247,9 @@ cmd_migrar() {
 
     titulo "4/6 Carpetas con los CSV del historial"
     echo "Los archivos del historial se toman de estas carpetas (por nombre y tamaño exactos):"
-    local carpetas=() c perfil=""
-    if command -v powershell.exe > /dev/null 2>&1; then
-        perfil="$(cd /mnt/c 2>/dev/null || true; powershell.exe -NoProfile -Command '[Environment]::GetFolderPath("UserProfile")' 2>/dev/null | tr -d '\r')"
-        [ -n "$perfil" ] && perfil="$(wslpath -u "$perfil" 2>/dev/null)"
-    fi
-    if [ -z "$perfil" ] || [ ! -d "$perfil/$ONEDRIVE_BACKOFFICE" ]; then
-        for c in /mnt/c/Users/*; do [ -d "$c/$ONEDRIVE_BACKOFFICE" ] && { perfil="$c"; break; }; done
-    fi
-    if [ -n "$perfil" ]; then
-        for c in "$perfil/$ONEDRIVE_BACKOFFICE/Charts historicos Youtube" "$perfil/$ONEDRIVE_BACKOFFICE/Charts historicos_spotify"; do
+    local carpetas=() c bo; bo="$(carpeta_backoffice)"
+    if [ -n "$bo" ]; then
+        for c in "$bo/Charts historicos Youtube" "$bo/Charts historicos_spotify"; do
             if [ -d "$c" ]; then carpetas+=("$c"); ok "  $c"; else aviso "  No encontré: $c"; fi
         done
         echo "En OneDrive (Windows): clic derecho sobre cada carpeta > 'Mantener siempre en este dispositivo'."
@@ -317,15 +327,17 @@ cmd_migrar() {
 }
 
 cmd_abrir() {
+    local mantener=0 navegador=1 a
+    for a in "$@"; do case "$a" in --mantener) mantener=1 ;; --sin-navegador) navegador=0 ;; esac; done
     verificar_docker; instalado
     echo "Arrancando Ranking Digital..."
     dc up -d > /dev/null 2>&1 || { dc up -d; fallar "No arrancó (el motivo está arriba)."; }
     esperar_sistema
     ok "Ranking Digital funcionando: $(direccion)"
-    abrir_navegador "$(direccion)"
-    if [ "${1:-}" = "--mantener" ]; then
-        # Lo usa el ícono del escritorio: mientras esta ventana esté abierta, Ubuntu (y con él Docker, el sistema y la
-        # carga automática de YouTube) sigue prendido. Windows apaga Ubuntu cuando no queda ninguna ventana suya abierta.
+    [ "$navegador" = 1 ] && abrir_navegador "$(direccion)"
+    if [ "$mantener" = 1 ]; then
+        # Lo usa el lanzador de Windows (oculto): mientras este proceso viva, Ubuntu (y con él Docker, el sistema y la
+        # carga automática de YouTube) sigue prendido. Windows apaga Ubuntu cuando no queda ningún proceso suyo.
         echo
         echo "Dejá esta ventana abierta (podés minimizarla): mientras esté abierta, el sistema y la carga"
         echo "automática de YouTube siguen funcionando. Para volver a abrir la página: $(direccion)"
@@ -389,7 +401,18 @@ cmd_respaldo() {
     dc exec -T db pg_dump -U postgres -Fc ranking > "$RESPALDOS/$f.dump" || { rm -f "$RESPALDOS/$f.dump"; fallar "No se pudo respaldar la base."; }
     herramienta tar -C /data/storage -czf - . > "$RESPALDOS/${f}_archivos.tgz" || { rm -f "$RESPALDOS/$f"*; fallar "No se pudieron respaldar los archivos."; }
     ok "Listo: $RESPALDOS/$f.dump y ${f}_archivos.tgz"
-    echo "Para guardarlo también en Windows (por ejemplo OneDrive), copiá esos dos archivos a /mnt/c/Users/<tu usuario>/..."
+    # Copia en OneDrive (fuera de Ubuntu: si algún día se reinstala, el respaldo sigue ahí).
+    local bo destino; bo="$(carpeta_backoffice)"
+    if [ -n "$bo" ]; then
+        destino="$bo/RANKING DIGITAL REGIONAL/respaldos"
+        if mkdir -p "$destino" && cp "$RESPALDOS/$f.dump" "$RESPALDOS/${f}_archivos.tgz" "$destino/"; then
+            ok "Copia en OneDrive: $destino"
+        else
+            aviso "No pude copiarlo a OneDrive ($destino); quedó en $RESPALDOS."
+        fi
+    else
+        echo "(No encontré la carpeta de OneDrive: el respaldo quedó solo en $RESPALDOS.)"
+    fi
     echo "Para volver a este respaldo:  bash ranking.sh restaurar $f"
 }
 
@@ -447,42 +470,59 @@ Pedile a IT el certificado raíz de la empresa (.crt) y copialo a $DIR/certifica
 
 cmd_acceso_directo() {
     command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ] \
-        || fallar "El ícono del escritorio es para WSL (Ubuntu dentro de Windows). Acá no encuentro Windows."
+        || fallar "Los accesos de Windows son para WSL (Ubuntu dentro de Windows). Acá no encuentro Windows."
     instalado
     case "$DIR" in /mnt/*) fallar "Primero copiá el proyecto dentro de Ubuntu (~/proyectos) y corré este comando desde ahí.";; esac
-    titulo "Creando el ícono 'Ranking Digital'"
-    local win_local carpeta_win carpeta cmd_win ico_win
+    titulo "Creando la aplicación 'Ranking Digital' en Windows"
+    local win_local carpeta_win carpeta lanzar_win ico_win
     win_local="$(cd /mnt/c 2>/dev/null || true; powershell.exe -NoProfile -Command '$env:LOCALAPPDATA' 2>/dev/null | tr -d '\r')"
     [ -n "$win_local" ] || fallar "No pude leer la carpeta de Windows del usuario."
     carpeta_win="$win_local\RankingDigital"
     carpeta="$(wslpath -u "$carpeta_win")"
     mkdir -p "$carpeta" || fallar "No pude crear $carpeta_win"
     cp "$DIR/windows/ranking.ico" "$carpeta/ranking.ico"
-    # El lanzador: arranca Docker como root de Ubuntu (sin pedir contraseña) y después el sistema, con la ventana abierta.
-    printf '%s\r\n' '@echo off' 'title Ranking Digital' \
-        "wsl.exe -d \"$WSL_DISTRO_NAME\" -u root -- service docker start >nul 2>&1" \
-        "wsl.exe -d \"$WSL_DISTRO_NAME\" --cd \"$DIR\" -- bash ranking.sh abrir --mantener" \
-        'if errorlevel 1 pause' > "$carpeta/Ranking Digital.cmd"
-    cmd_win="$carpeta_win\Ranking Digital.cmd"; ico_win="$carpeta_win\ranking.ico"
-    local inicio=0
-    si "¿Que también arranque solo cada vez que entrás a Windows? (así la carga de YouTube no se pierde)" S && inicio=1
-    local ps="
+    # Lanzador (PowerShell 5.1: con BOM y fin de línea de Windows) y pantalla de "iniciando", con los datos de esta PC.
+    shopt -u patsub_replacement 2> /dev/null || true
+    local t d="${WSL_DISTRO_NAME//\'/\'\'}" pr="${DIR//\'/\'\'}"
+    t="$(cat "$DIR/escritorio/lanzar.ps1")"; t="${t//__DISTRO__/$d}"; t="${t//__PROYECTO__/$pr}"; t="${t//__PUERTO__/$(valor PUERTO)}"
+    { printf '\xef\xbb\xbf'; printf '%s\n' "$t" | sed 's/$/\r/'; } > "$carpeta/lanzar.ps1"
+    t="$(cat "$DIR/escritorio/iniciando.html")"; printf '%s\n' "${t//__PUERTO__/$(valor PUERTO)}" > "$carpeta/iniciando.html"
+    rm -f "$carpeta/Ranking Digital.cmd"   # lanzador anterior (con ventana negra)
+    lanzar_win="$carpeta_win\lanzar.ps1"; ico_win="$carpeta_win\ranking.ico"
+    local por_defecto inicio=0; por_defecto="$(valor INICIO_AUTOMATICO)"
+    si "¿Que el servidor arranque solo (oculto) cada vez que entrás a Windows? (así la carga de YouTube no se pierde)" "${por_defecto:-S}" && inicio=1
+    q() { local x="${1//\'/\'\'}"; printf "'%s'" "$x"; }
+    local ps
+    ps="
         \$s = New-Object -ComObject WScript.Shell
-        \$lugares = @([Environment]::GetFolderPath('Desktop'))
-        if ($inicio -eq 1) { \$lugares += [Environment]::GetFolderPath('Startup') }
-        foreach (\$l in \$lugares) {
-            \$a = \$s.CreateShortcut((Join-Path \$l 'Ranking Digital.lnk'))
-            \$a.TargetPath = '${cmd_win//\'/\'\'}'
-            \$a.IconLocation = '${ico_win//\'/\'\'},0'
-            \$a.WorkingDirectory = '${carpeta_win//\'/\'\'}'
-            \$a.Description = 'Ranking Digital'
+        function Acceso(\$carpeta, \$nombre, \$extra, \$descripcion) {
+            New-Item -ItemType Directory -Force \$carpeta | Out-Null
+            \$a = \$s.CreateShortcut((Join-Path \$carpeta (\$nombre + '.lnk')))
+            \$a.TargetPath = 'powershell.exe'
+            \$a.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"' + $(q "$lanzar_win") + '\"' + \$extra
+            \$a.IconLocation = $(q "$ico_win") + ',0'
+            \$a.WorkingDirectory = $(q "$carpeta_win")
+            \$a.WindowStyle = 7
+            \$a.Description = \$descripcion
             \$a.Save()
-            Write-Output \$l
-        }"
+            Write-Output (Join-Path \$carpeta (\$nombre + '.lnk'))
+        }
+        \$escritorio = [Environment]::GetFolderPath('Desktop')
+        \$menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Ranking Digital'
+        \$inicio = [Environment]::GetFolderPath('Startup')
+        Acceso \$escritorio 'Ranking Digital' '' 'Abrir Ranking Digital'
+        Acceso \$menu 'Ranking Digital' '' 'Abrir Ranking Digital'
+        Acceso \$menu 'Apagar Ranking Digital' ' -Apagar' 'Apagar Ranking Digital (los datos quedan guardados)'
+        Remove-Item (Join-Path \$inicio 'Ranking Digital.lnk') -ErrorAction SilentlyContinue
+        if ($inicio -eq 1) { Acceso \$inicio 'Ranking Digital' ' -SoloServidor' 'Encender el servidor de Ranking Digital' }"
     local donde; donde="$(cd /mnt/c 2>/dev/null || true; powershell.exe -NoProfile -Command "$ps" 2>&1 | tr -d '\r')" \
-        || fallar "No pude crear el ícono: $donde"
-    ok "Listo: ícono 'Ranking Digital' en:"; printf '  %s\n' "$donde"
-    echo "Doble clic: arranca Docker y el sistema, y abre el navegador. Dejá abierta la ventana negra (minimizada)."
+        || fallar "No pude crear los accesos: $donde"
+    poner ACCESO_DIRECTO 1; poner INICIO_AUTOMATICO "$([ "$inicio" = 1 ] && echo S || echo N)"
+    ok "Listo. Accesos creados:"; printf '  %s\n' "$donde"
+    echo "Doble clic en 'Ranking Digital' (escritorio o menú Inicio, o buscándolo en Windows): abre la aplicación en su"
+    echo "propia ventana y, si hace falta, enciende el servidor sin ventanas negras."
+    echo "Para instalarla también como aplicación de Edge (barra de tareas): en esa ventana, menú ··· > Aplicaciones >"
+    echo "Instalar Ranking Digital. 'Apagar Ranking Digital' (menú Inicio) apaga todo."
 }
 
 version_programa() {
@@ -542,6 +582,11 @@ $cambios
         git -C "$DIR" reset -q --hard "$antes"
         dc build api > /dev/null 2>&1; dc up -d > /dev/null 2>&1; esperar_sistema
         fallar "Quedó funcionando la versión anterior. Pasale a Claude el mensaje de arriba (o el de bash ranking.sh logs)."
+    fi
+    if [ "$(valor ACCESO_DIRECTO)" = 1 ] && command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ]; then
+        local antes_auto="$AUTOMATICO"; AUTOMATICO=1; cmd_acceso_directo > /dev/null 2>&1 \
+            && ok "Accesos de Windows actualizados." || aviso "No pude actualizar los accesos de Windows (bash ranking.sh acceso-directo)."
+        AUTOMATICO="$antes_auto"
     fi
     titulo "4/4 Verificación"
     cmd_verificar
