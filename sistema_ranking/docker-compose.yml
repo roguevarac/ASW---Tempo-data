@@ -48,10 +48,12 @@ services:
     image: ${IMAGEN_API:-ranking-digital-api:local}
     build:
       context: .
-      # Arma la imagen con la red de Ubuntu (mismo proxy y DNS que la terminal: suele ser lo que anda con VPN).
-      network: host
+      # Sin "network: host": Docker Compose v5.6 / Buildx 0.38 lo bloquean salvo permiso explícito. El proxy de la
+      # terminal (HTTP_PROXY, HTTPS_PROXY, NO_PROXY) se pasa igual al armado.
       args:
         IMAGEN_PYTHON: ${IMAGEN_PYTHON:-python:3.12-slim}
+        NO_PROXY: ${NO_PROXY:-}
+        no_proxy: ${no_proxy:-}
         <<: *proxy
     restart: unless-stopped
     depends_on:

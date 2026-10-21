@@ -141,8 +141,9 @@ configuración y los mismos datos, y actualiza el programa.
 - **Docker Hub limitado o bloqueado.** No hay que hacer nada: usa solo los espejos públicos. Si la empresa tiene su
   propio espejo, ponelo en `IMAGEN_POSTGRES` e `IMAGEN_PYTHON` dentro de `~/.config/ranking-digital/ranking.env`.
 
-La imagen se arma con la red de Ubuntu (`network: host`), así que usa el mismo proxy y el mismo DNS que la
-terminal.
+Al armar la imagen se le pasa el proxy de la terminal (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`). Si el proxy es
+un programa que corre en la misma PC (por ejemplo en `127.0.0.1`), el armado no llega a él: en ese caso usá la
+dirección de la red de la empresa del proxy, no la local.
 
 ## Alternativa: Windows sin WSL (doble clic, versión portable)
 

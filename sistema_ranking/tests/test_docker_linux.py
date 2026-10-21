@@ -118,6 +118,10 @@ def texto(nombre):
     return re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", (base / nombre).read_text())
 
 
+# Docker Compose v5.6 / Buildx 0.38 rechazan "network: host" al armar la imagen (salvo permiso explícito), y
+# las versiones de este entorno no lo hacen: se controla acá para que no vuelva.
+check("docker-compose.yml no arma la imagen con network: host",
+      not re.search(r"^\s*network:\s*host", (RAIZ / "docker-compose.yml").read_text(), re.M))
 exito = False
 try:
     # ================================================================ mensajes ante errores de red de la empresa
@@ -149,6 +153,18 @@ try:
     https.socket = ctx.wrap_socket(https.socket, server_side=True)
     threading.Thread(target=https.serve_forever, daemon=True).start()
     shutil.copyfile(ca / "empresa.crt", proyecto / "certificados" / "empresa.crt")
+
+    # ================================================================ proxy que inspecciona HTTPS (como el de la empresa)
+    # Si en este entorno el armado de la imagen pasa por un proxy que inspecciona HTTPS, sin su certificado falla y
+    # ranking.sh dice qué hacer; con el certificado (lo que deja "ranking.sh certificados") sigue.
+    cert_entorno = pathlib.Path(os.environ.get("CERT_PROXY", "/root/.ccr/ca-bundle.crt"))
+    if cert_entorno.exists():
+        codigo = fin(ranking("instalar", "--automatico"))
+        log = texto("instalar.log")
+        if "CERTIFICATE_VERIFY_FAILED" in log or "x509" in log:
+            check("proxy que inspecciona HTTPS sin su certificado: falla y dice que corras 'ranking.sh certificados'",
+                  codigo != 0 and "bash ranking.sh certificados" in log, log[-1500:])
+        shutil.copyfile(cert_entorno, proyecto / "certificados" / "proxy-del-entorno.crt")
 
     # ================================================================ instalar
     p = ranking("instalar")
@@ -288,7 +304,7 @@ try:
     git = ["git", "-c", "user.name=Claude", "-c", "user.email=claude@prueba.local", "-c", "init.defaultBranch=main"]
     fuente = base / "fuente"
     shutil.copytree(nueva, fuente / "sistema_ranking", ignore=shutil.ignore_patterns("*.crt"))
-    shutil.copyfile(proyecto / "certificados" / "empresa.crt", base / "empresa.crt")
+
     subprocess.run(git + ["init", "-q", str(fuente)], check=True)
     subprocess.run(git + ["-C", str(fuente), "add", "-A"], check=True)
     subprocess.run(git + ["-C", str(fuente), "commit", "-qm", "version 1"], check=True)
@@ -297,7 +313,8 @@ try:
     clon = base / "proyectos" / "ranking"
     subprocess.run(git + ["clone", "-q", str(base / "github.git"), str(clon)], check=True)
     clon_sr = clon / "sistema_ranking"
-    shutil.copyfile(base / "empresa.crt", clon_sr / "certificados" / "empresa.crt")   # lo que deja "ranking.sh certificados"
+    for crt in (proyecto / "certificados").glob("*.crt"):   # lo que deja "ranking.sh certificados" (no se sube a git)
+        shutil.copyfile(crt, clon_sr / "certificados" / crt.name)
 
     def sin_terminal(*a):   # como lo corre un agente: sin terminal y sin nadie que conteste
         return subprocess.run(["bash", str(clon_sr / "ranking.sh"), *a], cwd=clon_sr, env=ENTORNO, capture_output=True, text=True,
