@@ -105,6 +105,8 @@ YouTube.
 | `bash ranking.sh detener` | Lo apaga; los datos quedan guardados |
 | `bash ranking.sh usuarios` | Crear usuarios, cambiar contraseñas, roles y oficina, bloquear y desbloquear |
 | `bash ranking.sh estado` / `logs` | Qué está corriendo / últimos mensajes, si algo falla |
+| `bash ranking.sh verificar` | Revisa que todo esté sano, sin cambiar nada |
+| `bash ranking.sh actualizar` | Respaldo, versión nueva desde GitHub y reinicio, sin perder datos (si falla, vuelve sola a la anterior) |
 | `bash ranking.sh respaldo` | Copia de la base y de los archivos en `~/proyectos/ranking-respaldos` |
 | `bash ranking.sh restaurar NOMBRE` | Vuelve a ese respaldo |
 

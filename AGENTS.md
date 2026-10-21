@@ -3,6 +3,10 @@
 Leé este archivo antes de tocar nada. Las reglas completas y los hechos verificados están en `CLAUDE.md`.
 Aunque el nombre diga Claude, ese archivo vale para cualquier agente.
 
+> **Antigravity (o cualquier agente en la PC del usuario):** para instalar, verificar o actualizar Ranking Digital,
+> seguí **`ANTIGRAVITY.md`** paso a paso. Las mejoras las hace y las prueba Claude y llegan por GitHub; en la PC solo
+> se aplican con `bash ranking.sh actualizar`.
+
 ## Qué hay en el repo
 1. **Queries de Tempo (Amazon Redshift)**: `reporte_cwr/`, `financials/` y `docs/tempo_schema/`. Las reglas están
    en `CLAUDE.md`. Las queries no se pueden correr desde acá; las corre el usuario en Redshift Query Editor V2.
@@ -23,7 +27,7 @@ Docker Engine" de `sistema_ranking/README.md`. Todo pasa por `sistema_ranking/ra
    - Al final pide contraseñas nuevas y el horario de YouTube.
 2. Probar con los usuarios y, si todo está bien, apagar Supabase y rotar sus claves.
 
-Uso diario: `bash ranking.sh abrir | detener | usuarios | respaldo | restaurar | logs | estado`. La configuración
+Uso diario: `bash ranking.sh abrir | detener | usuarios | respaldo | restaurar | logs | estado | verificar | actualizar`. La configuración
 está en `~/.config/ranking-digital/ranking.env`, fuera del proyecto. El nombre del proyecto de compose es fijo
 (`ranking-digital`), así que una versión nueva en otra carpeta usa los mismos datos.
 

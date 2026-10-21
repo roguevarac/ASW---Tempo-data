@@ -12,6 +12,9 @@
 #   bash ranking.sh restaurar F     vuelve a un respaldo (F = el nombre que mostró "respaldo")
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
 #   bash ranking.sh acceso-directo  crea el ícono "Ranking Digital" en el escritorio de Windows
+#   bash ranking.sh verificar       revisa que todo esté sano (sin cambiar nada)
+#   bash ranking.sh actualizar      respaldo + versión nueva desde GitHub + reinicio, sin perder datos
+#   (agregando --automatico, instalar no hace preguntas: lo usan los agentes como Antigravity)
 #
 # Las claves internas quedan en ~/.config/ranking-digital/ranking.env (fuera del proyecto: una versión nueva del
 # proyecto, en otra carpeta, sigue usando la misma base). No compartas ese archivo.
@@ -28,7 +31,15 @@ titulo() { printf '\n%s== %s%s\n' "$C" "$*" "$N"; }
 ok()     { printf '%s%s%s\n' "$V" "$*" "$N"; }
 aviso()  { printf '%s%s%s\n' "$A" "$*" "$N"; }
 fallar() { printf '\n%s%s%s\n' "$R" "$*" "$N" >&2; unset SUPABASE_SERVICE_KEY; exit 1; }
-si()     { local r; read -r -p "$1 (S/N): " r; [[ "$r" =~ ^[[:space:]]*[sS] ]]; }
+# si "pregunta" [S|N]: en modo --automatico (lo usan los agentes, sin nadie que conteste) toma la respuesta por
+# defecto; sin respuesta por defecto, en automático es "no" (nunca se borra ni se reemplaza nada sin una persona).
+AUTOMATICO=0
+si() {
+    local r
+    if [ "$AUTOMATICO" = 1 ]; then r="${2:-N}"; echo "$1 (S/N): $r  (automático)"
+    else read -r -p "$1 (S/N): " r; fi
+    [[ "$r" =~ ^[[:space:]]*[sS] ]]
+}
 
 # La configuración manda: variables con el mismo nombre en la terminal (que docker compose priorizaría) no se usan.
 CLAVES_CONFIG=(POSTGRES_PASSWORD AUTHENTICATOR_PASSWORD JWT_SECRET PUERTO ESCUCHAR SESSION_HOURS MAX_UPLOAD_MB
@@ -111,6 +122,7 @@ esperar_sistema() {
         sleep 1
     done
     dc logs --tail 30 api
+    [ "${1:-}" = "--sin-salir" ] && return 1
     fallar "El sistema no responde en $(direccion). Arriba están los últimos mensajes."
 }
 abrir_navegador() {
@@ -175,14 +187,14 @@ EOF
     else
         echo "Todavía no hay usuarios."
         echo "  * Si venís de Supabase, NO crees usuarios ahora: corré  bash ranking.sh migrar  (trae tus usuarios y datos)."
-        if si "  * ¿Crear ahora un usuario administrador nuevo?"; then
+        if si "  * ¿Crear ahora un usuario administrador nuevo?" N; then
             local email oficina; read -r -p "Email: " email; read -r -p "Oficina (ej. AR; Enter para dejarla vacía): " oficina
             echo "Escribí la contraseña (mínimo 10 caracteres; no se ve mientras escribís)."
             usuarios_py crear "$email" admin ${oficina:+"$oficina"} || aviso "No se pudo crear. Reintentá con: bash ranking.sh usuarios"
         fi
     fi
     if command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ]; then
-        si "¿Crear el ícono 'Ranking Digital' en el escritorio de Windows?" && cmd_acceso_directo
+        si "¿Crear el ícono 'Ranking Digital' en el escritorio de Windows?" S && cmd_acceso_directo
     fi
     ok $'\n'"Listo. Entrá desde el navegador de Windows: $(direccion)"
     echo "Para los próximos días:  bash ranking.sh abrir   (y  bash ranking.sh detener  para apagarlo)."
@@ -453,7 +465,7 @@ cmd_acceso_directo() {
         'if errorlevel 1 pause' > "$carpeta/Ranking Digital.cmd"
     cmd_win="$carpeta_win\Ranking Digital.cmd"; ico_win="$carpeta_win\ranking.ico"
     local inicio=0
-    si "¿Que también arranque solo cada vez que entrás a Windows? (así la carga de YouTube no se pierde)" && inicio=1
+    si "¿Que también arranque solo cada vez que entrás a Windows? (así la carga de YouTube no se pierde)" S && inicio=1
     local ps="
         \$s = New-Object -ComObject WScript.Shell
         \$lugares = @([Environment]::GetFolderPath('Desktop'))
@@ -473,7 +485,74 @@ cmd_acceso_directo() {
     echo "Doble clic: arranca Docker y el sistema, y abre el navegador. Dejá abierta la ventana negra (minimizada)."
 }
 
-ayuda() { sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+version_programa() {
+    if git -C "$DIR" rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+        git -C "$DIR" log -1 --format='%h %cd  %s' --date=format:'%Y-%m-%d %H:%M'
+    else echo "(copia sin git)"; fi
+}
+
+# Revisa que todo esté sano, sin cambiar nada. Sale con código 0 si está todo bien (lo usan los agentes).
+cmd_verificar() {
+    local fallo=0 n
+    linea() { if [ "$1" = ok ]; then ok "  OK     $2"; else printf '%s  FALLA  %s%s\n' "$R" "$2" "$N"; fallo=1; fi; }
+    titulo "Verificación de Ranking Digital"
+    if docker info > /dev/null 2>&1; then linea ok "Docker funcionando"; else linea mal "Docker no está corriendo (sudo service docker start)"; fi
+    if [ -f "$CONFIG" ]; then linea ok "Configuración en $CONFIG"; else linea mal "Sin configuración: falta bash ranking.sh instalar"; fi
+    if [ "$fallo" = 0 ]; then
+        for n in db api; do
+            if [ -n "$(dc ps --status running -q "$n" 2> /dev/null)" ]; then linea ok "Contenedor $n corriendo"; else linea mal "Contenedor $n apagado (bash ranking.sh abrir)"; fi
+        done
+        if curl -fsS --noproxy '*' "http://127.0.0.1:$(valor PUERTO)/health" > /dev/null 2>&1; then
+            linea ok "Sistema respondiendo en $(direccion)"
+        else linea mal "El sistema no responde en $(direccion) (bash ranking.sh logs)"; fi
+        local datos; datos="$(consulta "select (select count(*) from auth.users) || ' usuarios, ' || (select count(*) from public.tracks_master)
+                                         || ' obras, ' || (select count(*) from public.territory_tracks) || ' registros por territorio, '
+                                         || (select count(*) from storage.objects) || ' archivos en el historial'" 2> /dev/null)"
+        if [ -n "$datos" ]; then linea ok "Base: $datos"; else linea mal "No se pudo consultar la base"; fi
+        if [ -n "$(valor YOUTUBE_CRON)" ]; then linea ok "Carga de YouTube programada: $(valor YOUTUBE_CRON) ($(valor YOUTUBE_CRON_TZ))"
+        else aviso "  AVISO  Carga automática de YouTube apagada (se programa al final de bash ranking.sh migrar)"; fi
+    fi
+    echo "  Versión del programa: $(version_programa)"
+    [ "$fallo" = 0 ] && ok "Todo en orden." || { printf '%sHay problemas: revisá las líneas FALLA.%s\n' "$R" "$N"; return 1; }
+}
+
+# Trae la última versión del programa desde GitHub y la aplica sin perder datos (antes hace un respaldo).
+cmd_actualizar() {
+    verificar_docker; instalado
+    git -C "$DIR" rev-parse --is-inside-work-tree > /dev/null 2>&1 \
+        || fallar "Esta carpeta no es una copia de git; no se puede actualizar sola. Ver ANTIGRAVITY.md (paso de git clone)."
+    local cambios; cambios="$(git -C "$DIR" status --porcelain --untracked-files=no)"
+    [ -z "$cambios" ] || fallar "Hay cambios hechos a mano en esta copia; no actualizo para no pisarlos:
+$cambios
+(Si no los necesitás: git -C \"$DIR\" checkout -- .   y volvé a correr bash ranking.sh actualizar)"
+    titulo "1/4 Respaldo antes de actualizar"
+    cmd_respaldo
+    titulo "2/4 Bajando la versión nueva"
+    local antes; antes="$(git -C "$DIR" rev-parse HEAD)"
+    correr_con_registro git -C "$DIR" pull --ff-only || fallar "No se pudo bajar la versión nueva (el motivo está arriba). No se cambió nada."
+    if [ "$(git -C "$DIR" rev-parse HEAD)" = "$antes" ]; then
+        ok "Ya estaba en la última versión: $(version_programa)"
+    else
+        echo "Cambios nuevos:"; git -C "$DIR" log --format='  %h %s' "$antes..HEAD"
+    fi
+    arreglar_fin_de_linea
+    titulo "3/4 Armando y arrancando la versión nueva"
+    if ! { correr_con_registro dc build api && dc up -d && esperar_sistema --sin-salir; }; then
+        aviso "La versión nueva no arrancó. Vuelvo a la anterior ($(git -C "$DIR" log -1 --format=%h "$antes"))..."
+        git -C "$DIR" reset -q --hard "$antes"
+        dc build api > /dev/null 2>&1; dc up -d > /dev/null 2>&1; esperar_sistema
+        fallar "Quedó funcionando la versión anterior. Pasale a Claude el mensaje de arriba (o el de bash ranking.sh logs)."
+    fi
+    titulo "4/4 Verificación"
+    cmd_verificar
+}
+
+ayuda() { sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+# --automatico en cualquier posición: sin preguntas (respuestas por defecto).
+ARGS=()
+for a in "$@"; do if [ "$a" = "--automatico" ]; then AUTOMATICO=1; else ARGS+=("$a"); fi; done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 case "${1:-}" in
     instalar) cmd_instalar ;;
@@ -487,5 +566,7 @@ case "${1:-}" in
     restaurar) shift; cmd_restaurar "$@" ;;
     certificados) cmd_certificados ;;
     acceso-directo|icono) cmd_acceso_directo ;;
+    verificar) verificar_docker; cmd_verificar ;;
+    actualizar) cmd_actualizar ;;
     *) ayuda ;;
 esac

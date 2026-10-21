@@ -282,6 +282,68 @@ try:
     check("versión nueva en otra carpeta: conserva claves, datos y usuarios", codigo == 0 and "se mantiene" in log
           and f"Hay {usuarios_antes} usuarios cargados" in log and login("admin@prueba.local", "clave-migrada-123").status_code == 200, log[-1500:])
     check("versión nueva en otra carpeta: el programa se actualiza", "version nueva" in httpx.get(api("/"), trust_env=False).text)
+
+    # ================================================================ el flujo de Antigravity: clon de git + actualizar
+    # "fuente" hace de GitHub: ahí se suben las mejoras; la PC tiene un clon y corre "ranking.sh actualizar".
+    git = ["git", "-c", "user.name=Claude", "-c", "user.email=claude@prueba.local", "-c", "init.defaultBranch=main"]
+    fuente = base / "fuente"
+    shutil.copytree(nueva, fuente / "sistema_ranking", ignore=shutil.ignore_patterns("*.crt"))
+    shutil.copyfile(proyecto / "certificados" / "empresa.crt", base / "empresa.crt")
+    subprocess.run(git + ["init", "-q", str(fuente)], check=True)
+    subprocess.run(git + ["-C", str(fuente), "add", "-A"], check=True)
+    subprocess.run(git + ["-C", str(fuente), "commit", "-qm", "version 1"], check=True)
+    subprocess.run(git + ["clone", "-q", "--bare", str(fuente), str(base / "github.git")], check=True)
+    subprocess.run(git + ["-C", str(fuente), "remote", "add", "origin", str(base / "github.git")], check=True)
+    clon = base / "proyectos" / "ranking"
+    subprocess.run(git + ["clone", "-q", str(base / "github.git"), str(clon)], check=True)
+    clon_sr = clon / "sistema_ranking"
+    shutil.copyfile(base / "empresa.crt", clon_sr / "certificados" / "empresa.crt")   # lo que deja "ranking.sh certificados"
+
+    def sin_terminal(*a):   # como lo corre un agente: sin terminal y sin nadie que conteste
+        return subprocess.run(["bash", str(clon_sr / "ranking.sh"), *a], cwd=clon_sr, env=ENTORNO, capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL, timeout=900)
+
+    r = sin_terminal("instalar", "--automatico")
+    check("instalar --automatico: sin terminal ni preguntas, conserva todo", r.returncode == 0 and "(automático)" not in r.stdout.split("4/4")[0]
+          and login("admin@prueba.local", "clave-migrada-123").status_code == 200, (r.stdout + r.stderr)[-1500:])
+    r = sin_terminal("verificar")
+    check("verificar: todo en orden (código 0) con el resumen de la base", r.returncode == 0 and "Todo en orden" in r.stdout
+          and "usuarios," in r.stdout and "Carga de YouTube programada: 0 12 * * 5" in r.stdout and "version 1" in r.stdout, r.stdout[-1500:])
+
+    def subir(archivo, cambio, mensaje):
+        f = fuente / "sistema_ranking" / archivo
+        f.write_text(cambio(f.read_text()))
+        subprocess.run(git + ["-C", str(fuente), "commit", "-qam", mensaje], check=True)
+        subprocess.run(git + ["-C", str(fuente), "push", "-q", "origin", "main"], check=True)
+
+    subir("front/index.html", lambda t: t + "<!-- mejora 2 -->", "mejora 2: nuevo texto en el front")
+    respaldos_antes = len(list(respaldos.glob("*.dump")))
+    datos_antes = base_nueva("select count(*) || md5(string_agg(x::text, '|' order by x::text)) from tracks_master x")
+    r = sin_terminal("actualizar")
+    check("actualizar: respaldo, versión nueva y verificación", r.returncode == 0 and "mejora 2: nuevo texto en el front" in r.stdout
+          and len(list(respaldos.glob("*.dump"))) == respaldos_antes + 1 and "Todo en orden" in r.stdout, (r.stdout + r.stderr)[-2000:])
+    check("actualizar: el sistema sirve la versión nueva y los datos siguen iguales",
+          "mejora 2" in httpx.get(api("/"), trust_env=False).text
+          and base_nueva("select count(*) || md5(string_agg(x::text, '|' order by x::text)) from tracks_master x") == datos_antes)
+    r = sin_terminal("actualizar")
+    check("actualizar sin novedades: avisa que ya estaba al día", r.returncode == 0 and "Ya estaba en la última versión" in r.stdout, r.stdout[-800:])
+
+    (clon_sr / "api" / "app.py").write_text((clon_sr / "api" / "app.py").read_text() + "\n# cambio a mano\n")
+    r = sin_terminal("actualizar")
+    check("actualizar con cambios hechos a mano: no los pisa", r.returncode != 0 and "cambios hechos a mano" in r.stderr, r.stderr[-600:])
+    subprocess.run(["git", "-C", str(clon), "checkout", "--", "."], check=True)
+
+    subir("api/app.py", lambda t: t + "\nesto rompe la api(\n", "version rota")
+    r = sin_terminal("actualizar")
+    check("actualizar con una versión rota: vuelve sola a la anterior y sigue funcionando",
+          r.returncode != 0 and "Quedó funcionando la versión anterior" in r.stderr
+          and "mejora 2" in httpx.get(api("/"), trust_env=False).text and login("admin@prueba.local", "clave-migrada-123").status_code == 200
+          and "mejora 2" in subprocess.run(["git", "-C", str(clon), "log", "-1", "--format=%s"], capture_output=True, text=True).stdout,
+          (r.stdout + r.stderr)[-2000:])
+
+    codigo = fin(ranking("detener"))
+    r = sin_terminal("verificar")
+    check("verificar con el sistema apagado: avisa (código distinto de 0)", r.returncode != 0 and "FALLA" in r.stdout, r.stdout[-800:])
     exito = not fallas
 finally:
     srv.shutdown()
