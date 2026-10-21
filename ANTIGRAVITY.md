@@ -15,8 +15,8 @@ Claude.
    su terminal; el script lo pide sin mostrarlo.
 2. **Datos.** Nunca corras `docker compose down -v`, `docker volume rm`, `docker system prune` con volúmenes, ni
    borres `~/.config/ranking-digital`. Ahí están la base, los archivos del historial y las claves.
-3. **`bash ranking.sh restaurar` y `bash ranking.sh migrar` reemplazan datos.** Solo con el usuario presente y si él
-   lo pide.
+3. **`bash ranking.sh restaurar`, `bash ranking.sh migrar` y `bash ranking.sh vaciar-historial` reemplazan o borran
+   datos.** Solo con el usuario presente y si él lo pide. `vaciar-historial` lo confirma él en su terminal.
 4. **Todo desde la terminal de Ubuntu (bash, WSL2)**, dentro de `~/proyectos`. Nada desde `/mnt/c` ni desde
    PowerShell. No uses Docker Desktop: no existe en esta PC.
 5. **Si un paso falla,** no improvises arreglos en el código. Mostrale al usuario la salida completa del comando y
@@ -86,8 +86,7 @@ Qué hace, en orden:
 bash ranking.sh verificar
 ```
 
-Tiene que terminar con **"Todo en orden."** y código de salida 0. Antes de migrar es normal ver "0 usuarios" y el
-aviso de que la carga de YouTube está apagada.
+Tiene que terminar con **"Todo en orden."** y código de salida 0. Antes de migrar es normal ver "0 usuarios".
 
 ## Paso 5. Traer los datos de Supabase (lo hace el usuario, una sola vez)
 
@@ -106,11 +105,9 @@ Explicale qué contestar:
 - **Carpetas con CSV:** encuentra solas las de OneDrive. Enter para seguir.
 - **Si faltan archivos del historial:** `1`.
 - **Contraseña para cada usuario:** `S` y una contraseña nueva (mínimo 10 caracteres).
-- **Horario de YouTube:** lo que devuelve en el SQL Editor de Supabase `select schedule from cron.job;`.
 
 Cuando termine, corré `bash ranking.sh verificar` y confirmá:
-- que están los usuarios, las obras y los archivos;
-- que dice "Carga de YouTube programada".
+- que están los usuarios, las obras y los archivos.
 
 ## Paso 6. Respaldo
 

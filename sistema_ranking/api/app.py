@@ -1,7 +1,7 @@
 """
 API propia de Ranking Digital. Reemplaza las partes de Supabase que usa el front:
 login (Auth), lectura/escritura de tablas y funciones (PostgREST) y archivos (Storage).
-También corre la tarea programada de YouTube Charts (ex Edge Function).
+Los charts de Spotify y YouTube se cargan a mano (CSV desde el front): no hay tareas programadas.
 
 Seguridad: cada pedido se ejecuta en Postgres con el rol `authenticated` y el usuario
 del token (auth.uid()), así que las reglas RLS y políticas de la base deciden qué puede
@@ -67,8 +67,6 @@ app = FastAPI(title="Ranking Digital API", docs_url=None, redoc_url=None)
 def _inicio():
     pool.open(wait=True)
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    from youtube_job import iniciar_programador  # noqa: E402
-    iniciar_programador()
 
 
 @app.on_event("shutdown")
@@ -436,18 +434,6 @@ def bajar(bucket: str, nombre: str, exp: int, token: str):
     if not destino.exists():
         raise ErrorApi(404, "Object not found")
     return FileResponse(destino, filename=destino.name)
-
-
-# ---------------------------------------------------------------- tarea YouTube (manual)
-@app.post("/jobs/youtube")
-def correr_youtube(request: Request):
-    claims = usuario_del_pedido(request)
-    with transaccion(claims) as cur:
-        cur.execute("SELECT public.fn_app_role() AS rol")
-        if cur.fetchone()["rol"] != "admin":
-            raise ErrorApi(403, "Solo un admin puede correr la carga de YouTube a mano")
-    from youtube_job import correr
-    return respuesta_json(correr())
 
 
 # ---------------------------------------------------------------- front

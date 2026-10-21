@@ -10,6 +10,7 @@
 #   bash ranking.sh logs            últimos mensajes del sistema
 #   bash ranking.sh respaldo        copia de la base y los archivos en ~/proyectos/ranking-respaldos
 #   bash ranking.sh restaurar F     vuelve a un respaldo (F = el nombre que mostró "respaldo")
+#   bash ranking.sh vaciar-historial  borra los archivos del historial para empezar de cero (antes hace un respaldo)
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
 #   bash ranking.sh acceso-directo  crea la aplicación "Ranking Digital" en Windows (escritorio, menú Inicio, inicio)
 #   bash ranking.sh verificar       revisa que todo esté sano (sin cambiar nada)
@@ -46,7 +47,7 @@ si() {
 # oculto de Windows sin él), cada "up" vería otra configuración y reiniciaría la API.
 CLAVES_PROXY=(HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy)
 CLAVES_CONFIG=(POSTGRES_PASSWORD AUTHENTICATOR_PASSWORD JWT_SECRET PUERTO ESCUCHAR SESSION_HOURS MAX_UPLOAD_MB
-               STATEMENT_TIMEOUT DB_POOL YOUTUBE_CRON YOUTUBE_CRON_TZ IMAGEN_POSTGRES IMAGEN_PYTHON "${CLAVES_PROXY[@]}")
+               STATEMENT_TIMEOUT DB_POOL IMAGEN_POSTGRES IMAGEN_PYTHON "${CLAVES_PROXY[@]}")
 dc() {
     local sin=() k; for k in "${CLAVES_CONFIG[@]}"; do sin+=(-u "$k"); done
     env "${sin[@]}" docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" --env-file "$CONFIG" "$@"
@@ -194,8 +195,6 @@ AUTHENTICATOR_PASSWORD=$(clave_nueva)
 JWT_SECRET=$(clave_nueva)
 PUERTO=$(puerto_libre 8000)
 SESSION_HOURS=8
-YOUTUBE_CRON=
-YOUTUBE_CRON_TZ=UTC
 EOF
         umask 022
         ok "Configuración creada con claves al azar en $CONFIG"
@@ -310,7 +309,7 @@ cmd_migrar() {
     unset SUPABASE_SERVICE_KEY
     ok "Datos importados y verificados."
 
-    titulo "6/6 Contraseñas y carga automática de YouTube"
+    titulo "6/6 Contraseñas"
     echo "Supabase no entrega las contraseñas: cada usuario necesita una nueva (mínimo 10 caracteres)."
     local email
     while read -r email <&3; do
@@ -321,20 +320,6 @@ cmd_migrar() {
             aviso "  Pendiente: hacelo después con  bash ranking.sh usuarios"
         fi
     done 3< <(consulta "select email from auth.users where encrypted_password is null order by email")
-    echo
-    echo "Horario de la carga automática de YouTube Charts. Para verlo: Supabase > SQL Editor > corré"
-    echo "    select schedule from cron.job;"
-    echo "y pegá lo que aparece (por ejemplo: 0 12 * * 5). Enter = dejarla apagada por ahora."
-    local cron; read -r -p "Horario: " cron
-    if [ -n "$cron" ]; then
-        if [ "$(wc -w <<< "$cron")" -ne 5 ]; then
-            aviso "No parece un horario válido (son 5 partes). Queda apagada; podés volver a correr este paso."
-        else
-            poner YOUTUBE_CRON "'$cron'"; poner YOUTUBE_CRON_TZ UTC   # pg_cron de Supabase usa hora UTC
-            dc up -d > /dev/null 2>&1; esperar_sistema
-            ok "Carga automática de YouTube programada: $cron (hora UTC, como en Supabase). Corre mientras Ubuntu y Docker estén prendidos."
-        fi
-    fi
     ok $'\n'"Migración completa. Entrá con tu email y la contraseña nueva: $(direccion)"
     echo "Revisá la tabla principal, territorios e historial. Cuando todo esté bien, podés apagar Supabase"
     echo "y cambiar la contraseña de la base y las claves del proyecto de Supabase."
@@ -355,11 +340,11 @@ cmd_abrir() {
     ok "Ranking Digital funcionando: $(direccion)"
     [ "$navegador" = 1 ] && abrir_navegador "$(direccion)"
     if [ "$mantener" = 1 ]; then
-        # Lo usa el lanzador de Windows (oculto): mientras este proceso viva, Ubuntu (y con él Docker, el sistema y la
-        # carga automática de YouTube) sigue prendido. Windows apaga Ubuntu cuando no queda ningún proceso suyo.
+        # Lo usa el lanzador de Windows (oculto): mientras este proceso viva, Ubuntu (y con él Docker y el sistema)
+        # sigue prendido. Windows apaga Ubuntu cuando no queda ningún proceso suyo.
         echo
-        echo "Dejá esta ventana abierta (podés minimizarla): mientras esté abierta, el sistema y la carga"
-        echo "automática de YouTube siguen funcionando. Para volver a abrir la página: $(direccion)"
+        echo "Dejá esta ventana abierta (podés minimizarla): mientras esté abierta, el sistema sigue"
+        echo "funcionando. Para volver a abrir la página: $(direccion)"
         echo "Para apagar todo, cerrá esta ventana."
         while true; do sleep 3600; done
     fi
@@ -459,6 +444,27 @@ cmd_restaurar() {
     ok "Restaurado el respaldo $f. Sistema funcionando en $(direccion)"
 }
 
+# Deja vacío el historial de archivos (el "bucket" csv-uploads y la pestaña Historial CSV) para empezar a cargar de
+# cero. No toca obras, territorios ni usuarios. Antes hace un respaldo, y nunca corre en modo --automatico.
+cmd_vaciar_historial() {
+    verificar_docker; instalado
+    local n; n="$(dc up -d db > /dev/null 2>&1; consulta "select count(*) from storage.objects where bucket_id = 'csv-uploads'")" \
+        || fallar "No se pudo consultar la base."
+    titulo "Vaciar el historial de archivos"
+    echo "Borra los $n archivos guardados y la lista de la pestaña Historial CSV."
+    echo "No cambia la tabla principal, la tabla por territorio, las fechas de última carga ni los usuarios."
+    [ "$AUTOMATICO" = 1 ] && fallar "Este comando lo confirma una persona: corrélo sin --automatico."
+    si "¿Vaciar el historial? (antes se hace un respaldo para poder volver atrás)" || fallar "Cancelado. No se borró nada."
+    cmd_respaldo
+    titulo "Vaciando"
+    consulta "BEGIN; DELETE FROM storage.objects WHERE bucket_id = 'csv-uploads'; DELETE FROM public.csv_uploads; COMMIT;" > /dev/null \
+        || fallar "No se pudo vaciar la base (no se borró nada)."
+    herramienta sh -c 'rm -rf /data/storage/csv-uploads && mkdir -p /data/storage/csv-uploads' \
+        || fallar "Se vació la lista, pero no se pudieron borrar los archivos (bash ranking.sh logs)."
+    ok "Historial vacío. Los próximos CSV que cargues empiezan el historial de cero."
+    echo "Para volver atrás: bash ranking.sh restaurar <el respaldo de arriba>"
+}
+
 cmd_certificados() {
     command -v powershell.exe > /dev/null 2>&1 || fallar "No puedo leer los certificados de Windows desde acá (falta powershell.exe en WSL).
 Pedile a IT el certificado raíz de la empresa (.crt) y copialo a $DIR/certificados/"
@@ -509,7 +515,7 @@ cmd_acceso_directo() {
     rm -f "$carpeta/Ranking Digital.cmd"   # lanzador anterior (con ventana negra)
     lanzar_win="$carpeta_win\lanzar.ps1"; ico_win="$carpeta_win\ranking.ico"
     local por_defecto inicio=0; por_defecto="$(valor INICIO_AUTOMATICO)"
-    si "¿Que el servidor arranque solo (oculto) cada vez que entrás a Windows? (así la carga de YouTube no se pierde)" "${por_defecto:-S}" && inicio=1
+    si "¿Que el servidor arranque solo (oculto) cada vez que entrás a Windows?" "${por_defecto:-S}" && inicio=1
     q() { local x="${1//\'/\'\'}"; printf "'%s'" "$x"; }
     local ps
     ps="
@@ -568,8 +574,6 @@ cmd_verificar() {
                                          || ' obras, ' || (select count(*) from public.territory_tracks) || ' registros por territorio, '
                                          || (select count(*) from storage.objects) || ' archivos en el historial'" 2> /dev/null)"
         if [ -n "$datos" ]; then linea ok "Base: $datos"; else linea mal "No se pudo consultar la base"; fi
-        if [ -n "$(valor YOUTUBE_CRON)" ]; then linea ok "Carga de YouTube programada: $(valor YOUTUBE_CRON) ($(valor YOUTUBE_CRON_TZ))"
-        else aviso "  AVISO  Carga automática de YouTube apagada (se programa al final de bash ranking.sh migrar)"; fi
     fi
     echo "  Versión del programa: $(version_programa)"
     [ "$fallo" = 0 ] && ok "Todo en orden." || { printf '%sHay problemas: revisá las líneas FALLA.%s\n' "$R" "$N"; return 1; }
@@ -611,14 +615,18 @@ $cambios
     cmd_verificar
 }
 
-ayuda() { sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+ayuda() { sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # --automatico en cualquier posición: sin preguntas (respuestas por defecto).
 ARGS=()
 for a in "$@"; do if [ "$a" = "--automatico" ]; then AUTOMATICO=1; else ARGS+=("$a"); fi; done
 set -- "${ARGS[@]+"${ARGS[@]}"}"
 
-[ -f "$CONFIG" ] && guardar_proxy
+if [ -f "$CONFIG" ]; then
+    guardar_proxy
+    # La carga automática de YouTube ya no existe (los charts se cargan a mano): se borra su horario viejo.
+    grep -q '^YOUTUBE_CRON' "$CONFIG" && sed -i '/^YOUTUBE_CRON/d' "$CONFIG"
+fi
 
 case "${1:-}" in
     instalar) cmd_instalar ;;
@@ -631,6 +639,7 @@ case "${1:-}" in
     respaldo) cmd_respaldo ;;
     restaurar) shift; cmd_restaurar "$@" ;;
     certificados) cmd_certificados ;;
+    vaciar-historial) cmd_vaciar_historial ;;
     acceso-directo|icono) cmd_acceso_directo ;;
     verificar) verificar_docker; cmd_verificar ;;
     actualizar) cmd_actualizar ;;

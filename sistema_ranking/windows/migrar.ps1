@@ -90,7 +90,7 @@ if ($script:Codigo -ne 0) { Fallar "La importacion no se hizo (el motivo esta ar
 Remove-Item Env:SUPABASE_SERVICE_KEY -ErrorAction SilentlyContinue
 Ok "Datos importados y verificados."
 
-Titulo "6/6 Contrasenas y carga automatica de YouTube"
+Titulo "6/6 Contrasenas"
 Write-Host "Supabase no entrega las contrasenas, asi que cada usuario necesita una nueva (minimo 10 caracteres)."
 foreach ($email in @(Consulta-Base "select email from auth.users where encrypted_password is null order by email")) {
     if (-not $email) { continue }
@@ -98,20 +98,6 @@ foreach ($email in @(Consulta-Base "select email from auth.users where encrypted
     do {
         Usuarios clave $email
     } while ($script:Codigo -ne 0 -and (Preguntar-SiNo "No se pudo. Reintentar?"))
-}
-Write-Host ""
-Write-Host "Horario de la carga automatica de YouTube Charts. Para verlo: Supabase > SQL Editor > corre"
-Write-Host "    select schedule from cron.job;"
-Write-Host "y pega lo que aparece (por ejemplo: 0 12 * * 5). Enter = dejarla apagada por ahora."
-$cron = (Read-Host "Horario").Trim()
-if ($cron) {
-    if (($cron -split '\s+').Count -ne 5) { Aviso "No parece un horario valido (son 5 partes). Queda apagada; podes volver a correr este paso." }
-    else {
-        Poner-Config 'YOUTUBE_CRON' $cron
-        Poner-Config 'YOUTUBE_CRON_TZ' 'UTC'   # pg_cron de Supabase usa hora UTC
-        Reiniciar-Api
-        Ok "Carga automatica de YouTube programada: $cron (hora UTC, como en Supabase). Corre mientras la PC este prendida."
-    }
 }
 
 Ok "`nMigracion completa. Entra con tu email y la contrasena nueva."

@@ -30,8 +30,6 @@ if (Test-Path $Config) {
     Poner-Config 'PUERTO' (Primer-Puerto-Libre 8000)
     Poner-Config 'PUERTO_BASE' (Primer-Puerto-Libre 54329)
     Poner-Config 'SESSION_HOURS' '8'
-    Poner-Config 'YOUTUBE_CRON' ''
-    Poner-Config 'YOUTUBE_CRON_TZ' 'UTC'
     Ok "Configuracion creada con claves al azar en $Config (no la compartas)."
 }
 $cfg = Leer-Config
@@ -88,7 +86,7 @@ if ($EsWindows) {
     $acceso.Save()
     Ok "Acceso directo 'Ranking Digital' creado en el escritorio."
     $inicio = Join-Path ([Environment]::GetFolderPath('Startup')) 'Ranking Digital.lnk'
-    if (Preguntar-SiNo "Arrancar el sistema solo cada vez que prendes la PC (recomendado para la carga de YouTube)?") {
+    if (Preguntar-SiNo "Arrancar el sistema solo cada vez que prendes la PC?") {
         $auto = $shell.CreateShortcut($inicio)
         $auto.TargetPath = 'powershell.exe'
         $auto.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$abrir`" -SinNavegador"

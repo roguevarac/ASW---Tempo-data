@@ -2,7 +2,7 @@
 Prueba "bash ranking.sh ..." de punta a punta con Docker Engine (Linux / WSL2), como lo usa una persona en la terminal:
 instalar (detrás de un proxy que inspecciona HTTPS: primero falla y explica qué hacer; con los certificados de la
 empresa anda), migrar desde un Supabase simulado tomando el historial de carpetas tipo OneDrive, poner contraseñas,
-programar YouTube, usuarios, respaldo y restauración, detener, abrir, y una versión nueva del proyecto en otra
+usuarios, respaldo y restauración, detener, abrir, y una versión nueva del proyecto en otra
 carpeta que sigue usando los mismos datos.
 
 Si Docker Hub está bloqueado o limitado, ranking.sh usa solo los espejos públicos de las imágenes oficiales.
@@ -214,14 +214,13 @@ try:
     p.expect(r"Borrarlos y cargar lo de Supabase\? \(S/N\)"); p.sendline("S")
     p.expect("1 archivos del historial no están en esas carpetas")
     p.expect("Opción"); p.sendline("1")
-    while p.expect([r"Poner contraseña a (\S+) ahora\? \(S/N\)", "Horario:"]) == 0:
+    while p.expect([r"Poner contraseña a (\S+) ahora\? \(S/N\)", "Migración completa"]) == 0:
         if p.match.group(1) == "admin@prueba.local":
             p.sendline("S")
             p.expect("Contraseña nueva"); p.sendline("clave-migrada-123")
             p.expect("Repetila"); p.sendline("clave-migrada-123")
         else:
             p.sendline("N")
-    p.sendline("0 12 * * 5")
     codigo = fin(p)
     log = texto("migrar.log")
     check("migrar: termina bien", codigo == 0 and "Migración completa" in log, log[-2500:])
@@ -243,9 +242,9 @@ try:
     bajado = httpx.get(api(firma.get("signedUrl", "")), trust_env=False)
     check("migrar: desde el historial se descarga el archivo original",
           bajado.status_code == 200 and bajado.content == (STORAGE_ORIGEN / "csv-uploads" / registrados[1]).read_bytes())
-    check("migrar: YouTube programado en el sistema (UTC, como en Supabase)",
-          dc("exec", "-T", "api", "printenv", "YOUTUBE_CRON", "YOUTUBE_CRON_TZ").stdout.split("\n")[:2] == ["0 12 * * 5", "UTC"]
-          and "YouTube: próxima carga" in dc("logs", "api").stdout + dc("logs", "api").stderr)
+    check("migrar: no pregunta ni programa una carga automática de YouTube (los charts se cargan a mano)",
+          "Horario" not in log and "YOUTUBE_CRON" not in config.read_text()
+          and "YouTube" not in dc("logs", "api").stdout + dc("logs", "api").stderr, log[-800:])
     filtrada = [str(f) for f in [config, *proyecto.rglob("*")] if f.is_file() and CLAVE.encode() in f.read_bytes()]
     filtrada += ["volumen exportacion"] if CLAVE in dc("run", "--rm", "--no-deps", "-T", "herramientas", "sh", "-c",
                                                      "cat /exportacion/* /exportacion/*/* 2>/dev/null").stdout else []
@@ -288,6 +287,41 @@ try:
                                       headers={"Authorization": "Bearer " + login("admin@prueba.local", "clave-migrada-123").json().get("access_token", "")},
                                       trust_env=False).json().get("signedUrl", "")), trust_env=False)
     check("restaurar: los archivos del historial también", bajado.status_code == 200 and bajado.content == (STORAGE_ORIGEN / "csv-uploads" / registrados[1]).read_bytes())
+
+    # ================================================================ vaciar el historial (empezar a cargar de cero)
+    r = subprocess.run(["bash", str(proyecto / "ranking.sh"), "vaciar-historial", "--automatico"], cwd=proyecto, env=ENTORNO,
+                       capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=300)
+    check("vaciar-historial --automatico: se niega (lo confirma una persona) y no borra nada",
+          r.returncode != 0 and base_nueva("select count(*) from storage.objects") == str(len(registrados)), r.stdout + r.stderr)
+    p = ranking("vaciar-historial")
+    p.expect(r"¿Vaciar el historial\? .*\(S/N\)"); p.sendline("N")
+    check("vaciar-historial: si se contesta que no, no borra nada",
+          fin(p) != 0 and base_nueva("select count(*) from storage.objects") == str(len(registrados)))
+    obras = base_nueva("select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from tracks_master x")
+    territorio = base_nueva("select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from territory_tracks x")
+    p = ranking("vaciar-historial")
+    p.expect(r"¿Vaciar el historial\? .*\(S/N\)"); p.sendline("S")
+    codigo = fin(p)
+    log = texto("vaciar-historial.log")
+    resp = re.findall(r"restaurar (ranking_\d+_\d+)", log)
+    quedan = dc("exec", "-T", "api", "find", "/data/storage/csv-uploads", "-type", "f").stdout.split()
+    check("vaciar-historial: borra el bucket y la lista del historial, con respaldo previo",
+          codigo == 0 and resp and (respaldos / f"{resp[-1]}_archivos.tgz").exists() and not quedan
+          and base_nueva("select (select count(*) from storage.objects) || '|' || (select count(*) from csv_uploads)") == "0|0", (log[-800:], quedan))
+    check("vaciar-historial: no toca obras, territorios ni usuarios",
+          obras == base_nueva("select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from tracks_master x")
+          and territorio == base_nueva("select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from territory_tracks x")
+          and login("admin@prueba.local", "clave-migrada-123").status_code == 200)
+    tok = {"Authorization": "Bearer " + login("admin@prueba.local", "clave-migrada-123").json().get("access_token", "")}
+    subida = httpx.post(api("/storage/upload/csv-uploads/spotify/2026-10-21/nuevo.csv"), content=b"rank\n1\n",
+                        headers=dict(tok, **{"Content-Type": "text/csv"}), trust_env=False)
+    check("vaciar-historial: después se puede volver a cargar", subida.status_code == 200
+          and base_nueva("select count(*) from storage.objects") == "1", subida.text)
+    p = ranking("restaurar", resp[-1] if resp else "x")
+    p.expect(r"¿Seguir\? \(S/N\)"); p.sendline("S")
+    codigo = fin(p)
+    check("vaciar-historial: con su respaldo se vuelve atrás", codigo == 0
+          and base_nueva("select count(*) from storage.objects") == str(len(registrados)), texto("restaurar.log")[-600:])
 
     # ================================================================ detener y abrir
     codigo = fin(ranking("detener"))
@@ -369,9 +403,12 @@ try:
     r = sin_terminal("instalar", "--automatico")
     check("instalar --automatico: sin terminal ni preguntas, conserva todo", r.returncode == 0 and "(automático)" not in r.stdout.split("4/4")[0]
           and login("admin@prueba.local", "clave-migrada-123").status_code == 200, (r.stdout + r.stderr)[-1500:])
+    with config.open("a") as f:   # configuración de antes, con el horario de la carga automática de YouTube
+        f.write("YOUTUBE_CRON='0 12 * * 5'\nYOUTUBE_CRON_TZ=UTC\n")
     r = sin_terminal("verificar")
     check("verificar: todo en orden (código 0) con el resumen de la base", r.returncode == 0 and "Todo en orden" in r.stdout
-          and "usuarios," in r.stdout and "Carga de YouTube programada: 0 12 * * 5" in r.stdout and "version 1" in r.stdout, r.stdout[-1500:])
+          and "usuarios," in r.stdout and "YouTube" not in r.stdout and "version 1" in r.stdout, r.stdout[-1500:])
+    check("el horario viejo de YouTube se borra de la configuración", "YOUTUBE_CRON" not in config.read_text())
 
     def subir(archivo, cambio, mensaje):
         f = fuente / "sistema_ranking" / archivo

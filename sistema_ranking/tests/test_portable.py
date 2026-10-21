@@ -1,7 +1,7 @@
 """
 Prueba la versión portable de Windows (windows/*.ps1, los que corren los .bat) de punta a punta, como lo haría una
 persona: instalar, migrar desde un Supabase simulado tomando el historial de carpetas tipo OneDrive, poner
-contraseñas, programar YouTube, administrar usuarios, apagar, volver a abrir y reinstalar encima (actualización).
+contraseñas, administrar usuarios, apagar, volver a abrir y reinstalar encima (actualización).
 
 Corre los scripts reales con PowerShell y PostgreSQL 17 (el mismo paquete que usa Windows, en su versión de Linux),
 con un usuario común: PostgreSQL no arranca como administrador, igual que en Windows.
@@ -254,14 +254,13 @@ try:
     esperar(p, r"Borrarlos y cargar lo de Supabase\? \(S/N\)"); p.sendline("S")
     esperar(p, "1 archivos del historial no estan en esas carpetas")
     esperar(p, "Opcion"); p.sendline("1")
-    while esperar(p, [r"Poner contrasena a (\S+) ahora\? \(S/N\)", "Horario:"]) == 0:
+    while esperar(p, [r"Poner contrasena a (\S+) ahora\? \(S/N\)", "Migracion completa"]) == 0:
         if p.match.group(1) == "admin@prueba.local":
             p.sendline("S")
             esperar(p, "Contraseña nueva"); p.sendline("clave-migrada-123")
             esperar(p, "Repetila"); p.sendline("clave-migrada-123")
         else:
             p.sendline("N")
-    p.sendline("0 12 * * 5")
     esperar(p, "Presiona Enter para cerrar"); p.sendline("")
     esperar(p, pexpect.EOF)
     log = texto("migrar.ps1.log")
@@ -287,8 +286,8 @@ try:
     bajado = httpx.get(api(firma.get("signedUrl", "")))
     check("migrar: desde el historial se descarga el archivo original",
           bajado.status_code == 200 and bajado.content == (STORAGE_ORIGEN / "csv-uploads" / registrados[1]).read_bytes(), (firma, bajado.status_code))
-    check("migrar: carga de YouTube programada (UTC, como en Supabase)", config()["YOUTUBE_CRON"] == "0 12 * * 5"
-          and "YouTube: próxima carga" in (inst / "logs" / "api.log").read_text(encoding="utf-8"), config())
+    check("migrar: sin carga automática de YouTube (los charts se cargan a mano)", "YOUTUBE_CRON" not in config()
+          and "Horario" not in log and "YouTube" not in (inst / "logs" / "api.log").read_text(encoding="utf-8"), config())
     filtrada = [str(f) for f in base.rglob("*") if f.is_file() and not f.name.endswith(".log") and CLAVE.encode() in f.read_bytes()]
     check("migrar: la service_role key no quedó guardada en ningún archivo", not filtrada, filtrada)
 

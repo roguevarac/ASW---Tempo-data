@@ -1,7 +1,7 @@
 #!/bin/sh
 # Corre todas las pruebas del sistema contra un Postgres local (por defecto el del entorno, puerto 54340).
 # Cada prueba arranca con la base recién instalada. Uso: tests/correr_todo.sh
-# Requiere: psql, python3 con fastapi uvicorn psycopg[binary,pool] pyjwt httpx croniter playwright pexpect packaging.
+# Requiere: psql, python3 con fastapi uvicorn psycopg[binary,pool] pyjwt httpx playwright pexpect packaging.
 set -eu
 cd "$(dirname "$0")/.."
 SERVIDOR="${PGHOST_URL:-postgresql://postgres@localhost:54340}"
@@ -27,7 +27,7 @@ SQL
 
 base_nueva
 (cd api && DATABASE_URL="postgresql://authenticator:prueba_local_123@${SERVIDOR#postgresql://*@}/ranking" \
-    JWT_SECRET="secreto-de-prueba-local-de-mas-de-32-caracteres" YOUTUBE_CRON="" \
+    JWT_SECRET="secreto-de-prueba-local-de-mas-de-32-caracteres" \
     exec python3 -m uvicorn app:app --port "$PUERTO" >"$TMP/api.log" 2>&1) &
 API=$!
 trap 'kill $API 2>/dev/null; rm -rf "$TMP"' EXIT
@@ -38,9 +38,6 @@ correr() { echo "== $1"; shift; "$@" || FALLAS=$((FALLAS+1)); }
 
 correr "Esquema igual al de Supabase" python3 tests/comparar_con_supabase.py
 correr "API de punta a punta" python3 tests/test_e2e.py
-base_nueva
-correr "Tarea de YouTube" env DATABASE_URL="postgresql://authenticator:prueba_local_123@${SERVIDOR#postgresql://*@}/ranking" \
-    JWT_SECRET="secreto-de-prueba-local-de-mas-de-32-caracteres" python3 tests/test_youtube.py
 base_nueva
 correr "Front en el navegador" python3 tests/test_navegador.py
 correr "Aplicación instalable (PWA)" python3 tests/test_pwa.py

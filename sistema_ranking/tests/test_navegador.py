@@ -34,6 +34,9 @@ spotify = tmp / "regional-ar-weekly-2026-10-08.csv"
 spotify.write_text("rank,uri,artist_names,track_name,source,peak_rank,previous_rank,weeks_on_chart,streams\n"
                    "1,spotify:track:1,Artista Navegador,Tema Navegador,Sello,1,2,3,5000\n"
                    "2,spotify:track:2,Otro Artista,Segundo Tema,Sello,2,1,8,4000\n", encoding="utf-8")
+youtube = tmp / "youtube-charts-top-songs-uy-weekly-20261001.csv"
+youtube.write_text("Rank,Previous Rank,Track Name,Artist Name,Weeks on Chart,Views,Weekly Growth,YouTube URL\n"
+                   "1,3,Tema Video,Artista Video,4,90000,12.5%,https://www.youtube.com/watch?v=abc\n", encoding="utf-8")
 tempo = tmp / "tempo_ids.csv"
 tempo.write_text("Track - Artista,Tempo ID\nTema Navegador - Artista Navegador,777001\n", encoding="utf-8")
 
@@ -77,9 +80,39 @@ with sync_playwright() as p:
     # ---- tabla principal: se ven las obras y se edita un tempo_id
     pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
     check("tabla principal muestra las obras cargadas", "Tema Navegador - Artista Navegador" in pag.content())
+
     campo = pag.locator('[data-field-master="tempo_id"][value=""]').first
     campo.fill("777002"); campo.press("Tab"); pag.wait_for_timeout(1500)
     check("editar tempo_id desde la tabla (fn_set_tempo_id)", sqlq("select tempo_id from tracks_master where track_name_clean='Segundo Tema'") == "777002")
+
+    pag.click('[data-tab="upload"]')
+    # YouTube se carga a mano, igual que Spotify (no hay carga automática)
+    pag.set_input_files("#fileInput", [str(youtube)])
+    pag.wait_for_function("() => !document.body.innerText.includes('Procesando')", timeout=20000)
+    pag.wait_for_timeout(1500)
+    check("CSV de YouTube cargado a mano: país y fecha del nombre del archivo",
+          sqlq("select count(*) || '|' || min(pais_code) || '|' || min(snapshot_date) || '|' || min(streams) from territory_tracks where platform='youtube'")
+          == "1|UY|2026-10-01|90000")
+    pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
+
+    # ---- fecha de última carga: por país (cada país se carga en otro momento)
+    def ultima_carga():
+        return "\n".join(l.strip() for l in pag.inner_text("#lastLoads").splitlines() if l.strip())
+    check("con todos los países pide elegir uno para ver la fecha",
+          ultima_carga() == "Seleccionar país para ver fecha de última carga", ultima_carga())
+    check("el pie de página ya no menciona Supabase", "Supabase" not in pag.inner_text("footer"), pag.inner_text("footer"))
+    pag.select_option("#masterCountry", "AR"); pag.wait_for_timeout(1500)
+    check("país AR: fecha de Spotify de AR y YouTube sin cargas",
+          ultima_carga() == "Último Spotify cargado (AR): 2026-10-08\nÚltimo YouTube cargado (AR): —", ultima_carga())
+    pag.select_option("#masterCountry", "UY"); pag.wait_for_timeout(1500)
+    check("país UY: fecha de YouTube de UY y Spotify sin cargas",
+          ultima_carga() == "Último Spotify cargado (UY): —\nÚltimo YouTube cargado (UY): 2026-10-01", ultima_carga())
+    pag.click('[data-tab="history"]'); pag.wait_for_timeout(500)
+    check("en Historial se ven las fechas del último país elegido", "(UY): 2026-10-01" in ultima_carga(), ultima_carga())
+    pag.click('[data-tab="territory"]'); pag.wait_for_timeout(500)
+    check("en la tabla por territorio, sin país elegido, pide elegir uno",
+          ultima_carga() == "Seleccionar país para ver fecha de última carga", ultima_carga())
+    pag.click('[data-tab="master"]'); pag.select_option("#masterCountry", ""); pag.wait_for_timeout(1500)
 
     # ---- descarga de la tabla principal (fn_master_export -> CSV)
     with pag.expect_download() as d:

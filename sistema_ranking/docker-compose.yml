@@ -66,8 +66,6 @@ services:
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
       STATEMENT_TIMEOUT: ${STATEMENT_TIMEOUT:-120s}
       DB_POOL: ${DB_POOL:-10}
-      YOUTUBE_CRON: ${YOUTUBE_CRON:-}
-      YOUTUBE_CRON_TZ: ${YOUTUBE_CRON_TZ:-UTC}
     volumes:
       - archivos:/data/storage
     ports:

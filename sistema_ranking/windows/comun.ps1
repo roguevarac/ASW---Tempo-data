@@ -187,14 +187,12 @@ function Iniciar-Api {
     $env:FRONT_DIR = Unir $App 'front'
     $env:PORT = $c['PUERTO']
     $env:SESSION_HOURS = $c['SESSION_HOURS']
-    $env:YOUTUBE_CRON = $c['YOUTUBE_CRON']
-    $env:YOUTUBE_CRON_TZ = $c['YOUTUBE_CRON_TZ']
     $env:RK_LOG = Unir $Logs 'api.log'
     $env:PYTHONDONTWRITEBYTECODE = '1'
     $o = Oculto
     $p = Start-Process -FilePath $PywExe -ArgumentList "`"$(Unir $App 'api' 'servir.py')`"" -WorkingDirectory (Unir $App 'api') -PassThru @o
     [IO.File]::WriteAllText((Unir $Inst 'api.pid'), [string]$p.Id)
-    foreach ($v in 'DATABASE_URL', 'JWT_SECRET', 'STORAGE_DIR', 'FRONT_DIR', 'PORT', 'SESSION_HOURS', 'YOUTUBE_CRON', 'YOUTUBE_CRON_TZ', 'RK_LOG') {
+    foreach ($v in 'DATABASE_URL', 'JWT_SECRET', 'STORAGE_DIR', 'FRONT_DIR', 'PORT', 'SESSION_HOURS', 'RK_LOG') {
         Remove-Item "Env:$v" -ErrorAction SilentlyContinue
     }
     for ($i = 0; $i -lt 60; $i++) {

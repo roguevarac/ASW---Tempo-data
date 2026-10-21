@@ -4,6 +4,4 @@ psycopg[binary]==3.3.6
 psycopg-pool==3.3.3
 PyJWT==2.13.0
 httpx==0.28.1
-croniter==6.2.4
-tzdata
 truststore==0.10.4  # Windows: certificados del sistema (proxy de la empresa)

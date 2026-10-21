@@ -144,7 +144,7 @@ let state = {
   activeTab: 'master', search: '', territoryCountry: '', reclamosFilter: '', estadoTrabajoFilter: '', showDeleted: false,
   dateFrom: '', dateTo: '', masterCountry: '', history: null, historyLoading: false,
   master: [], territoryControl: [], uploads: [], loading: true,
-  uploadResults: [], uploadProgress: null, uploading: false, controlCountry: '', lastChartLoad: null, lastSpotify: null, lastYoutube: null,
+  uploadResults: [], uploadProgress: null, uploading: false, controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
 };
 
 function fmtNum(n){ return n===null || n===undefined ? '—' : Number(n).toLocaleString('es-AR'); }
@@ -567,10 +567,6 @@ async function processRankingCsv(file, rows, format){
   const prepared = [];
   let errors = [];
 
-  // Spotify: el país sale del nombre del archivo que se sube (una sola
-  // vez, vale para todas las filas) — ya no viene como columna dentro
-  // del CSV. YouTube (carga manual, poco usada) sigue leyendo el país
-  // por fila desde Source.Name, por si esos archivos sí lo traen.
   // El país sale del nombre del archivo (vale para Spotify y para
   // YouTube). Si el archivo no lo trae en el nombre, se usa la columna
   // Source.Name fila por fila, para los export viejos que sí la tenían.
@@ -751,17 +747,28 @@ async function finishUpload(file, total, updated, created_tracks, errors, format
 }
 
 async function loadLastChartLoad(){
-  // Semana del chart más reciente cargado por plataforma (no la fecha
-  // de subida): así un histórico de 2021 subido hoy no la pisa.
-  const ultima = async (plataforma) => {
+  // Semana del chart más reciente cargado por país y plataforma (no la
+  // fecha de subida): así un histórico de 2021 subido hoy no la pisa.
+  // Cada país se carga por separado, así que cada uno tiene su fecha.
+  const ultima = async (plataforma, pais) => {
     const { data } = await sb.from('territory_tracks').select('snapshot_date')
-      .eq('platform', plataforma).is('deleted_at', null)
+      .eq('platform', plataforma).eq('pais_code', pais).is('deleted_at', null)
       .order('snapshot_date', { ascending: false }).limit(1);
     return data?.[0]?.snapshot_date || null;
   };
-  const [sp, yt] = await Promise.all([ultima('spotify'), ultima('youtube')]);
-  state.lastSpotify = sp;
-  state.lastYoutube = yt;
+  const fechas = await Promise.all(COUNTRIES.map(async (pais) => {
+    const [spotify, youtube] = await Promise.all([ultima('spotify', pais), ultima('youtube', pais)]);
+    return [pais, { spotify, youtube }];
+  }));
+  state.lastLoads = Object.fromEntries(fechas);
+}
+
+// País del que se muestran las fechas de última carga: el filtro de la
+// pestaña abierta; en Carga CSV e Historial, el último país elegido.
+function lastLoadCountry(){
+  if(state.activeTab==='master') return state.masterCountry;
+  if(state.activeTab==='territory') return state.territoryCountry;
+  return state.lastCountry;
 }
 
 // ---------- Login ----------
@@ -796,14 +803,21 @@ function renderLogin(){
   </div>`;
 }
 
+function renderLastLoads(){
+  const pais = lastLoadCountry();
+  if(!pais) return `<div id="lastLoads"><p>Seleccionar país para ver fecha de última carga</p></div>`;
+  const f = state.lastLoads[pais] || {};
+  return `<div id="lastLoads"><p>Último Spotify cargado (${pais}): <span class="mono">${f.spotify || '—'}</span></p>
+      <p class="last-chart">Último YouTube cargado (${pais}): <span class="mono">${f.youtube || '—'}</span></p></div>`;
+}
+
 function renderTopbar(){
   return `
   <div class="topbar">
     <div class="wordmark">
       <div class="mark">RD</div>
       <div><h1 class="display">Ranking Digital Regional</h1>
-      <p>Último Spotify cargado: <span class="mono">${state.lastSpotify || '—'}</span></p>
-      <p class="last-chart">Último YouTube cargado: <span class="mono">${state.lastYoutube || '—'}</span></p>
+      ${renderLastLoads()}
       </div>
     </div>
     <div class="session">
@@ -1016,7 +1030,7 @@ function render(){
   root.innerHTML = `<div class="app">
     ${renderTopbar()}${renderTabs()}
     <div class="panel-body">${renderBody()}</div>
-    <footer><span>Supabase · PostgreSQL 15 · RLS activo</span><span>${rows_count()}</span></footer>
+    <footer><span>Ranking Digital Regional</span><span>${rows_count()}</span></footer>
   </div>${renderHistoryModal()}`;
   attachAppEvents();
 }
@@ -1042,9 +1056,9 @@ function attachAppEvents(){
   if(sT) sT.oninput = (e) => { state.search = e.target.value; render(); const el=document.getElementById('searchTerritory'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
 
   const cf = document.getElementById('countryFilter');
-  if(cf) cf.onchange = (e) => { state.territoryCountry = e.target.value; loadAll(); };
+  if(cf) cf.onchange = (e) => { state.territoryCountry = state.lastCountry = e.target.value; loadAll(); };
   const mc = document.getElementById('masterCountry');
-  if(mc) mc.onchange = (e) => { state.masterCountry = e.target.value; loadAll(); };
+  if(mc) mc.onchange = (e) => { state.masterCountry = state.lastCountry = e.target.value; loadAll(); };
 
   ['dateFrom','dateFromT'].forEach(id => {
     const el = document.getElementById(id);

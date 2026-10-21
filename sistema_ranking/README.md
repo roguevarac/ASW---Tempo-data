@@ -6,7 +6,7 @@ lógica. Lo único que cambió es a quién le habla: antes era Supabase, ahora e
 ```
 navegador ──► API propia (FastAPI) ──► PostgreSQL 16
   index.html     login, tablas, RPC,       las mismas 11 tablas, 38 funciones, vistas,
-  tempo-client   archivos, YouTube         triggers, RLS y políticas que en Supabase
+  tempo-client   archivos                  triggers, RLS y políticas que en Supabase
 ```
 
 | Supabase | Acá |
@@ -15,7 +15,7 @@ navegador ──► API propia (FastAPI) ──► PostgreSQL 16
 | Auth (email + contraseña) | `auth.users` con bcrypt, `auth.uid()`, `auth.jwt()`. Los usuarios migrados conservan su id, email y rol. |
 | PostgREST + supabase-js | `api/app.py` + `front/tempo-client.js`, que imita los métodos de supabase-js que usa el front. |
 | Bucket `csv-uploads` | Archivos en disco (`STORAGE_DIR`) y registro en `storage.objects`, con RLS y links firmados. |
-| Edge Function de YouTube + pg_cron | `api/youtube_job.py`: misma lógica y mismos 8 países, programada con `YOUTUBE_CRON`. |
+| Edge Function de YouTube + pg_cron | No se usa más: los charts de YouTube se cargan a mano desde **Carga CSV**, igual que los de Spotify. |
 | Dashboard > Users | `USUARIOS.bat` (o `admin/usuarios.py`) |
 
 ## En tu PC: Ubuntu (WSL2) + Docker Engine
@@ -77,8 +77,7 @@ bash ranking.sh migrar       # trae de Supabase los datos, los usuarios y el his
 - la service_role key: Supabase > Project Settings > API Keys > service_role > Reveal. No se guarda en ningún lado.
 - las carpetas con los CSV del historial. Las de OneDrive (`Charts historicos Youtube` y `Charts historicos_spotify`)
   las encuentra solas. También podés pegar una ruta de Windows (`C:\...`) o de Ubuntu.
-- contraseñas nuevas para los usuarios, porque Supabase no entrega las contraseñas por la API;
-- el horario de la carga de YouTube, que se saca en el SQL Editor de Supabase con `select schedule from cron.job;`.
+- contraseñas nuevas para los usuarios, porque Supabase no entrega las contraseñas por la API.
 
 Los archivos del historial que no estén en esas carpetas los baja del bucket. Antes de importar, todo se compara
 contra lo que había en Supabase; si algo no coincide, no se importa nada.
@@ -95,7 +94,7 @@ en segundo plano, sin ventanas negras. No hace falta ser administrador.
   que está listo.
 - **Apagar Ranking Digital**, en el menú Inicio. Apaga todo; los datos quedan guardados.
 - **Arranque oculto al iniciar Windows**, si lo aceptás (recomendado). El servidor queda prendido mientras la sesión
-  de Windows esté abierta, así la carga de YouTube no se pierde.
+  de Windows esté abierta.
 
 Si querés tenerla también en la barra de tareas, instalala desde Edge:
 1. Con el servidor prendido, abrí `http://localhost:8000` en una **pestaña común** de Edge, no en InPrivate.
@@ -125,11 +124,21 @@ servidor.
 | `bash ranking.sh actualizar` | Respaldo, versión nueva desde GitHub y reinicio, sin perder datos (si falla, vuelve sola a la anterior) |
 | `bash ranking.sh respaldo` | Copia de la base y de los archivos en `~/proyectos/ranking-respaldos`, y también en OneDrive (`RANKING DIGITAL REGIONAL\respaldos`) |
 | `bash ranking.sh restaurar NOMBRE` | Vuelve a ese respaldo |
+| `bash ranking.sh vaciar-historial` | Borra los archivos del historial para empezar a cargar de cero (antes hace un respaldo) |
 
 Hay dos cosas que tenés que saber:
 - **Después de reiniciar Windows**, si aceptaste el arranque automático, el servidor ya está prendido: abrí la
   aplicación y listo.
-- **La carga automática de YouTube** corre mientras la sesión de Windows está abierta y el servidor prendido.
+- **Los charts se cargan a mano.** Spotify y YouTube se suben desde **Carga CSV**; no hay cargas automáticas. Arriba
+  se ve la fecha del último chart de Spotify y de YouTube del país elegido, porque cada país se carga por separado.
+
+**Empezar el historial de cero:** `bash ranking.sh vaciar-historial`. Lo confirma una persona y antes hace un
+respaldo. Hace dos cosas:
+- borra los archivos guardados (el bucket `csv-uploads`);
+- vacía la lista de la pestaña **Historial CSV**.
+
+La tabla principal, la tabla por territorio, las fechas de última carga y los usuarios no cambian. Para volver
+atrás: `bash ranking.sh restaurar <respaldo>`.
 
 **Respaldos:** los datos viven dentro de Ubuntu (en volúmenes de Docker). `bash ranking.sh respaldo` los copia
 también a OneDrive (`...\Backoffice\RANKING DIGITAL REGIONAL\respaldos`), y `actualizar` hace uno antes de cada
@@ -186,8 +195,7 @@ de tu usuario (`%LOCALAPPDATA%\RankingDigital`), como cualquier programa portabl
 3. **`2_MIGRAR_DESDE_SUPABASE.bat`**. Trae de Supabase los datos, los usuarios y el historial de cargas. Te pide:
    - la URL del proyecto: Enter para usar la tuya;
    - la service_role key: Supabase > Project Settings > API Keys > service_role > Reveal;
-   - una contraseña nueva para cada usuario, porque Supabase no entrega las contraseñas;
-   - el horario de la carga de YouTube, que se saca en el SQL Editor con `select schedule from cron.job;`.
+   - una contraseña nueva para cada usuario, porque Supabase no entrega las contraseñas.
 
    Los archivos del historial los toma de tus carpetas de OneDrive `Charts historicos Youtube` y
    `Charts historicos_spotify`, buscándolos por nombre y tamaño exactos. Los que no estén ahí, los baja del bucket.
@@ -205,8 +213,7 @@ ahí solo y lo verifica. Los dos links son:
 - https://registry.npmjs.org/@embedded-postgres/windows-x64/-/windows-x64-17.10.0-beta.17.tgz
 
 Hay dos diferencias con Supabase:
-- **Solo funciona mientras la PC está prendida.** Eso incluye la carga automática de YouTube: si la PC está apagada
-  a esa hora, esa semana no se carga sola.
+- **Solo funciona mientras la PC está prendida.**
 - **Solo entra quien usa esa PC.** El sistema escucha solo en esa PC. Para que lo use todo el equipo, tiene que
   instalarse en un servidor (sección siguiente).
 
@@ -254,8 +261,6 @@ fuera del servidor.
      igual, sin ellos.
    - `--reemplazar` carga sobre datos que ya existen.
 3. Contraseñas: `admin/usuarios.py clave <email>` para cada usuario.
-4. Horario de YouTube: `YOUTUBE_CRON=<schedule de cron.job>` y `YOUTUBE_CRON_TZ=UTC` en `.env`, y después
-   `docker compose up -d`.
 
 ## Usuarios (servidor Linux)
 
@@ -280,7 +285,6 @@ Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
 - Las rutas de archivos están validadas, así que no se puede salir de la carpeta del bucket.
 - Un `PATCH` sin filtro se rechaza: no se puede modificar la tabla entera por error.
 - Un usuario bloqueado pierde la sesión en el acto.
-- La tarea de YouTube no puede correr dos veces al mismo tiempo.
 
 ## Comportamientos heredados de Supabase (se mantuvieron a propósito)
 
@@ -301,11 +305,10 @@ aparte:
 |---|---|
 | `comparar_con_supabase.py` | Estructura idéntica a la del CSV de Supabase. |
 | `test_e2e.py` | Por HTTP, cada operación del front: login, cargas, ediciones, reportes, historial, archivos, exportaciones, permisos por rol y bloqueo. |
-| `test_youtube.py` | La tarea de YouTube con respuestas simuladas, incluidos los errores por país. |
-| `test_navegador.py` | El front real en Chromium: login, cargar CSV, editar, descargar, historial, reporte BO, sesión y auditor en solo lectura. |
+| `test_navegador.py` | El front real en Chromium: login, cargar CSV de Spotify y de YouTube, fecha de última carga por país, editar, descargar, historial, reporte BO, sesión y auditor en solo lectura. |
 | `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
-| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, detener, abrir y versión nueva en otra carpeta. |
-| `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, programar YouTube, administrar usuarios, apagar, volver a abrir y actualizar. |
+| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
+| `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, administrar usuarios, apagar, volver a abrir y actualizar. |
 | `test_componentes_windows.py` | Los componentes reales de Windows (Python y PostgreSQL): verificación por sha256, archivos alterados, descarga caída y que al descomprimir esté todo lo necesario. |
 | `test_paquetes_windows.py` | Que los paquetes de Python incluidos alcancen para Windows sin internet (dependencias evaluadas como en Windows). |
 
@@ -313,7 +316,7 @@ aparte:
 
 ```
 db/          instalar.sh (Docker/servidor) e instalar.py (Windows portable, sin psql) + SQL (03 y 04 se generan del CSV con generar_esquema.py)
-api/         app.py (API) y youtube_job.py
+api/         app.py (API)
 front/       index.html (generado de ../frontend_ranking_digital.html con generar_index.py), tempo-client.js
 admin/       usuarios.py
 migracion/   exportar_supabase.py e importar.py

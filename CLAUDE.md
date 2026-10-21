@@ -99,7 +99,8 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   - Docker Engine 29.9.1, Compose v5.6.0, Buildx v0.38.0. **Buildx 0.38 / Compose 5.6 rechazan `network: host` en el
     build** (piden `--allow=network.host`): no volver a ponerlo. `test_docker_linux.py` lo controla.
   - Sistema en `http://localhost:8000`. Migrado de Supabase: 2 usuarios, 672 obras, 1.500 registros por territorio y
-    4.610 archivos de historial. YouTube programado `0 12 * * 5` UTC.
+    4.610 archivos de historial. Tenía YouTube programado `0 12 * * 5` UTC; desde el 21/10/2026 ya no hay carga
+    automática.
   - El escritorio de Windows está en OneDrive: `C:\Users\7000042560\OneDrive - Sony\Desktop`.
   - En WSL no hay `xdg-open`/`wslview`; para abrir algo en Windows se usa `explorer.exe` o `powershell.exe`.
   - Al agente le falló copiar el respaldo a OneDrive por los espacios de la ruta. Desde ahora `ranking.sh respaldo`
@@ -111,6 +112,16 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - el proxy se guarda en `ranking.env` (`guardar_proxy`) y `dc()` ignora el de la terminal;
     - `abrir` usa `up -d --no-recreate`, salvo que recién haya cambiado el proxy.
     `test_docker_linux.py` lo controla. No volver a pasar variables de la terminal al compose sin guardarlas.
+- **Cambios del usuario (21/10/2026):**
+  - **Sin carga automática de YouTube** (a futuro podía romperse). Los charts de Spotify y YouTube se cargan a mano desde
+    "Carga CSV". Se borraron `api/youtube_job.py`, `YOUTUBE_CRON` y croniter; `ranking.sh` borra el horario viejo de
+    `ranking.env`. No volver a agregar tareas programadas sin que el usuario lo pida.
+  - **Fecha de última carga por país:** en el front (`renderLastLoads`) se toma el país del filtro de la pestaña (en
+    Carga CSV / Historial, el último elegido). Sin país muestra "Seleccionar país para ver fecha de última carga".
+  - El pie del front ya no dice "Supabase · PostgreSQL 15 · RLS activo".
+  - El usuario quiere empezar el historial de cero: `bash ranking.sh vaciar-historial` (respaldo previo, confirmación de
+    una persona, no corre con `--automatico`). Borra `storage.objects` del bucket `csv-uploads`, `csv_uploads` y los
+    archivos; no toca obras, territorios ni usuarios.
 - **Como aplicación (PWA, desde el 21/10/2026):** el front es instalable (`front/manifest.webmanifest`, `front/sw.js`,
   `front/apagado.html`, `front/iconos/`); los inyecta `front/generar_index.py`, y los íconos se generan con
   `front/generar_iconos.py`.
