@@ -97,8 +97,14 @@ en segundo plano, sin ventanas negras. No hace falta ser administrador.
 - **Arranque oculto al iniciar Windows**, si lo aceptás (recomendado). El servidor queda prendido mientras la sesión
   de Windows esté abierta, así la carga de YouTube no se pierde.
 
-Si querés tenerla también en la barra de tareas: en la ventana de la aplicación, menú **···** > **Aplicaciones** >
-**Instalar Ranking Digital**. Después, clic derecho en su ícono de la barra de tareas > **Anclar**.
+Si querés tenerla también en la barra de tareas, instalala desde Edge:
+1. Con el servidor prendido, abrí `http://localhost:8000` en una **pestaña común** de Edge, no en InPrivate.
+2. Usá el ícono **Instalar** de la barra de direcciones, o el menú **···** > **Aplicaciones** > **Instalar este sitio
+   como aplicación**.
+3. Clic derecho en su ícono de la barra de tareas > **Anclar**.
+
+Edge solo la ofrece si la página cargó bien, con su manifiesto, sus íconos y el service worker activo. El sistema ya
+trae todo eso. Si el servidor se estaba reiniciando, recargá la página y esperá unos segundos.
 
 Si abrís la aplicación con el servidor apagado, en lugar de un error muestra "Ranking Digital está iniciando o
 apagado" y entra sola cuando el servidor responde. Nunca guarda datos en el navegador: todo viene siempre del
@@ -151,7 +157,12 @@ configuración y los mismos datos, y actualiza el programa.
 - **Docker Hub limitado o bloqueado.** No hay que hacer nada: usa solo los espejos públicos. Si la empresa tiene su
   propio espejo, ponelo en `IMAGEN_POSTGRES` e `IMAGEN_PYTHON` dentro de `~/.config/ranking-digital/ranking.env`.
 
-Al armar la imagen se le pasa el proxy de la terminal (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`). Si el proxy es
+El proxy de la terminal (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`) se guarda en `~/.config/ranking-digital/ranking.env`
+la primera vez que se corre cualquier comando con él. Desde ahí lo usan todos los comandos, incluso el lanzador
+oculto de Windows, que no lee `~/.bashrc`. Así el sistema no ve una configuración distinta según quién lo abra, y
+`abrir` nunca reinicia un sistema que ya funciona.
+
+Al armar la imagen se le pasa ese proxy. Si el proxy es
 un programa que corre en la misma PC (por ejemplo en `127.0.0.1`), el armado no llega a él: en ese caso usá la
 dirección de la red de la empresa del proxy, no la local.
 

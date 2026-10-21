@@ -76,9 +76,9 @@ gateway = subprocess.run(["docker", "network", "inspect", "bridge", "-f", "{{(in
 URL_SB = f"http://{gateway}:{srv.server_port}"
 
 
-def ranking(*argumentos, carpeta=None, timeout=900):
+def ranking(*argumentos, carpeta=None, timeout=900, entorno=None):
     p = pexpect.spawn("bash", [str((carpeta or proyecto) / "ranking.sh"), *argumentos], cwd=str(carpeta or proyecto),
-                      env=ENTORNO, encoding="utf-8", timeout=timeout, dimensions=(50, 250))
+                      env=entorno or ENTORNO, encoding="utf-8", timeout=timeout, dimensions=(50, 250))
     p.logfile_read = open(base / f"{argumentos[0]}.log", "a", encoding="utf-8")
     return p
 
@@ -297,6 +297,41 @@ try:
     p.expect("Dejá esta ventana abierta", timeout=300)
     check("abrir (ícono): vuelve a levantar todo, los datos siguen y la ventana queda abierta",
           p.isalive() and login("admin@prueba.local", "clave-migrada-123").status_code == 200, texto("abrir.log")[-800:])
+
+    # Con el sistema funcionando, otra terminal con otro proxy (la de Ubuntu con ~/.bashrc vs. el lanzador oculto de
+    # Windows, sin proxy) no tiene que reiniciar la API: antes cada "abrir" la recreaba y cortaba los pedidos.
+    def contenedor_api():
+        r = subprocess.run(["docker", "inspect", "-f", "{{.Id}} {{.State.StartedAt}}", f"{PROYECTO_COMPOSE}-api-1"],
+                           capture_output=True, text=True)
+        return r.stdout.strip()
+
+    def proxy_api():
+        r = subprocess.run(["docker", "inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", f"{PROYECTO_COMPOSE}-api-1"],
+                           capture_output=True, text=True)
+        return [l for l in r.stdout.splitlines() if l.startswith("HTTPS_PROXY=")]
+
+    sin_proxy = {k: v for k, v in ENTORNO.items() if "proxy" not in k.lower()}
+    proxy_original = valor("HTTPS_PROXY")
+    inicial = contenedor_api()
+    codigo = fin(ranking("abrir", "--sin-navegador", entorno=sin_proxy))
+    check("abrir desde una terminal sin proxy: no reinicia la API que ya funcionaba",
+          codigo == 0 and contenedor_api() == inicial, (inicial, contenedor_api()))
+    codigo = fin(ranking("abrir", "--sin-navegador", entorno=dict(ENTORNO, HTTPS_PROXY="http://proxy.empresa:8080")))
+    con_proxy = contenedor_api()
+    check("abrir con un proxy nuevo: lo guarda en la configuración y la API lo toma (se reinicia una sola vez)",
+          codigo == 0 and valor("HTTPS_PROXY") == "http://proxy.empresa:8080" and con_proxy != inicial
+          and proxy_api() == ["HTTPS_PROXY=http://proxy.empresa:8080"], (proxy_api(), texto("abrir.log")[-500:]))
+    for _ in range(2):
+        codigo = fin(ranking("abrir", "--sin-navegador", entorno=sin_proxy))
+    check("abrir otra vez sin proxy (como el lanzador de Windows): misma API y conserva el proxy guardado",
+          codigo == 0 and contenedor_api() == con_proxy and proxy_api() == ["HTTPS_PROXY=http://proxy.empresa:8080"],
+          (con_proxy, contenedor_api(), proxy_api()))
+    # Vuelve al proxy real del entorno de prueba (lo necesitan los armados de imagen que siguen).
+    lineas = [l for l in config.read_text().splitlines() if not l.startswith("HTTPS_PROXY=")]
+    if proxy_original is not None:
+        lineas.append(f"HTTPS_PROXY='{proxy_original}'")
+    config.write_text("\n".join(lineas) + "\n")
+    dc("up", "-d")
     p.terminate(force=True)
 
     # ================================================================ versión nueva del ZIP en otra carpeta

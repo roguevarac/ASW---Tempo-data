@@ -105,6 +105,12 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   - Al agente le falló copiar el respaldo a OneDrive por los espacios de la ruta. Desde ahora `ranking.sh respaldo`
     lo copia solo.
   - Las mejoras se aplican en la PC con `bash ranking.sh actualizar`, que puede correr Antigravity.
+  - **API reiniciándose en bucle (21/10/2026):** cada `docker compose up -d` con otro proxy en el entorno recreaba la
+    API. Pasaba con la terminal de Antigravity (con proxy) y el mantenedor oculto de WSL (sin `.bashrc`, sin proxy).
+    Arreglo:
+    - el proxy se guarda en `ranking.env` (`guardar_proxy`) y `dc()` ignora el de la terminal;
+    - `abrir` usa `up -d --no-recreate`, salvo que recién haya cambiado el proxy.
+    `test_docker_linux.py` lo controla. No volver a pasar variables de la terminal al compose sin guardarlas.
 - **Como aplicación (PWA, desde el 21/10/2026):** el front es instalable (`front/manifest.webmanifest`, `front/sw.js`,
   `front/apagado.html`, `front/iconos/`); los inyecta `front/generar_index.py`, y los íconos se generan con
   `front/generar_iconos.py`.

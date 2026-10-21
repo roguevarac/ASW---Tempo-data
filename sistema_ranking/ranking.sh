@@ -42,8 +42,11 @@ si() {
 }
 
 # La configuración manda: variables con el mismo nombre en la terminal (que docker compose priorizaría) no se usan.
+# El proxy también sale de la configuración: si cada terminal pasara el suyo (la de Ubuntu con proxy, el lanzador
+# oculto de Windows sin él), cada "up" vería otra configuración y reiniciaría la API.
+CLAVES_PROXY=(HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy)
 CLAVES_CONFIG=(POSTGRES_PASSWORD AUTHENTICATOR_PASSWORD JWT_SECRET PUERTO ESCUCHAR SESSION_HOURS MAX_UPLOAD_MB
-               STATEMENT_TIMEOUT DB_POOL YOUTUBE_CRON YOUTUBE_CRON_TZ IMAGEN_POSTGRES IMAGEN_PYTHON)
+               STATEMENT_TIMEOUT DB_POOL YOUTUBE_CRON YOUTUBE_CRON_TZ IMAGEN_POSTGRES IMAGEN_PYTHON "${CLAVES_PROXY[@]}")
 dc() {
     local sin=() k; for k in "${CLAVES_CONFIG[@]}"; do sin+=(-u "$k"); done
     env "${sin[@]}" docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" --env-file "$CONFIG" "$@"
@@ -55,6 +58,17 @@ poner() {
     local tmp; tmp="$(mktemp "$CONFIG.XXXX")"
     awk -v k="$1" -v v="$2" 'BEGIN { hecho = 0 } index($0, k "=") == 1 { print k "=" v; hecho = 1; next } { print }
                              END { if (!hecho) print k "=" v }' "$CONFIG" > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$CONFIG"
+}
+# El proxy que tenga definido la terminal (ej. en ~/.bashrc) queda guardado en la configuración; una terminal sin
+# proxy (el lanzador de Windows) usa el guardado.
+PROXY_CAMBIADO=0
+guardar_proxy() {
+    local k v cambio=0
+    for k in "${CLAVES_PROXY[@]}"; do
+        v="${!k:-}"
+        [ -n "$v" ] && [ "$v" != "$(valor "$k")" ] && { poner "$k" "'$v'"; cambio=1; }
+    done
+    [ "$cambio" = 0 ] || { PROXY_CAMBIADO=1; ok "Proxy de la terminal guardado en la configuración."; }
 }
 clave_nueva() { openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 puerto_ocupado() {
@@ -186,6 +200,7 @@ EOF
         umask 022
         ok "Configuración creada con claves al azar en $CONFIG"
     fi
+    guardar_proxy
 
     titulo "2/4 Bajando PostgreSQL y armando el sistema (la primera vez tarda unos minutos)"
     elegir_imagen IMAGEN_POSTGRES postgres:17 || fallar "No se pudo bajar PostgreSQL (el motivo está arriba)."
@@ -331,7 +346,11 @@ cmd_abrir() {
     for a in "$@"; do case "$a" in --mantener) mantener=1 ;; --sin-navegador) navegador=0 ;; esac; done
     verificar_docker; instalado
     echo "Arrancando Ranking Digital..."
-    dc up -d > /dev/null 2>&1 || { dc up -d; fallar "No arrancó (el motivo está arriba)."; }
+    # --no-recreate: si ya está funcionando, no lo reinicia (las versiones nuevas las aplica actualizar). Solo si
+    # recién se guardó un proxy nuevo, la API se reinicia una vez para tomarlo.
+    local recrear=(--no-recreate); [ "$PROXY_CAMBIADO" = 1 ] && recrear=()
+    dc up -d "${recrear[@]+"${recrear[@]}"}" > /dev/null 2>&1 \
+        || { dc up -d "${recrear[@]+"${recrear[@]}"}"; fallar "No arrancó (el motivo está arriba)."; }
     esperar_sistema
     ok "Ranking Digital funcionando: $(direccion)"
     [ "$navegador" = 1 ] && abrir_navegador "$(direccion)"
@@ -598,6 +617,8 @@ ayuda() { sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 ARGS=()
 for a in "$@"; do if [ "$a" = "--automatico" ]; then AUTOMATICO=1; else ARGS+=("$a"); fi; done
 set -- "${ARGS[@]+"${ARGS[@]}"}"
+
+[ -f "$CONFIG" ] && guardar_proxy
 
 case "${1:-}" in
     instalar) cmd_instalar ;;

@@ -128,8 +128,10 @@ Confirmale al usuario:
   Windows). Se abre en su propia ventana; si el servidor estaba apagado, lo enciende solo y muestra "Iniciando…";
 - que el servidor arranca solo y oculto al iniciar Windows, sin ventanas negras, y que "Apagar Ranking Digital"
   (menú Inicio) lo apaga;
-- que, si la quiere en la barra de tareas, en la ventana de la aplicación: menú ··· > Aplicaciones > Instalar Ranking
-  Digital, y después anclarla;
+- que, si la quiere en la barra de tareas, la instala desde Edge:
+  1. abre `http://localhost:8000` en una pestaña común de Edge (no InPrivate);
+  2. usa el ícono Instalar de la barra de direcciones, o ··· > Aplicaciones > Instalar este sitio como aplicación;
+  3. después, la ancla;
 - que entra con su email y la contraseña nueva.
 
 Si los accesos no aparecieron: `bash ranking.sh acceso-directo --automatico`.
@@ -153,6 +155,17 @@ versión anterior": en ese caso pasale la salida al usuario para Claude (regla 5
 
 Si dice "Hay cambios hechos a mano en esta copia", alguien editó archivos del proyecto. No los borres sin
 preguntarle al usuario.
+
+## Si la API se reinicia sola
+
+`abrir` ya no reinicia un sistema que está funcionando, y el proxy queda guardado en la configuración. Si igual ves en
+`bash ranking.sh logs` "Shutting down" seguido de "Started server process" sin que nadie haya corrido `actualizar`,
+`instalar` o `migrar`:
+- No corras `abrir` en un bucle para probar.
+- Mirá cuántas veces se reinició: `docker inspect -f '{{.State.StartedAt}} {{.RestartCount}}' ranking-digital-api-1`.
+- Contá los mantenedores (tiene que haber uno solo), desde bash:
+  `ps -ef | grep -c "[r]anking.sh abrir --mantener"`.
+- Pasale todo eso al usuario para Claude.
 
 ## Comandos útiles (no cambian datos)
 
