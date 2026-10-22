@@ -369,6 +369,13 @@ Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
 - **Manual de uso** dentro de la aplicación (`front/manual.html`).
 - **Espejo de respaldo y auditoría en OneDrive** (`api/espejo.py`): cada carga y cada respaldo se copian a la carpeta
   compartida, sin que el sistema dependa de ella.
+- **Apertura y búsqueda inmediatas con volumen real** (`db/mejoras/03_rendimiento.sql`): el front de Supabase traía
+  las tablas enteras de a 1.000 filas (cada tanda volvía a calcular la consulta) y filtraba en el navegador; con los
+  históricos cargados tardaba más de dos minutos en abrir. Ahora la base busca, filtra, ordena y pagina
+  (`fn_master_pagina`, `fn_territory_pagina`, `fn_envio_conteo`, `fn_ultimas_cargas`, con índices propios) y el
+  navegador recibe solo las 100 filas visibles y el total. Con 20.000 canciones y 208.000 filas de charts: abrir
+  0,3 s, buscar menos de 1 s, tabla por territorio 0,4 s. Las funciones originales (`fn_master_view`,
+  `fn_territory_view`) quedan iguales y se siguen usando para las descargas completas.
 
 ## Comportamientos heredados de Supabase (se mantuvieron a propósito)
 
@@ -393,6 +400,7 @@ aparte:
 | `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
 | `test_espejo.py` | Espejo de OneDrive: carpeta de cada tipo de carga, nombres que Windows no acepta, que nunca interrumpe una carga, que solo escribe, y la sincronización de todas las cargas. |
 | `test_importar_charts.py` | Carga masiva de charts históricos: mismo resultado que Carga CSV en el navegador, país por carpeta, archivos sin semana, archivos que no son charts, retomar sin duplicar. |
+| `test_rendimiento.py` | Con 20.000 canciones y 208.000 filas de charts: mismos totales que las funciones originales, orden de las páginas, búsqueda literal, filtros, y que abrir, buscar, paginar y filtrar en el navegador tarde menos de 3 s. |
 | `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, espejo de OneDrive (carga nueva copiada, borrado sin efecto, OneDrive sin permiso), mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
 | `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, administrar usuarios, apagar, volver a abrir y actualizar. |
 | `test_componentes_windows.py` | Los componentes reales de Windows (Python y PostgreSQL): verificación por sha256, archivos alterados, descarga caída y que al descomprimir esté todo lo necesario. |

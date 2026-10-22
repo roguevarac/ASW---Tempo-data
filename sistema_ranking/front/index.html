@@ -117,6 +117,8 @@ select.edit-field{font-family:'IBM Plex Sans',sans-serif;}
 .estado.err{color:var(--red);}
 .estado.run{color:var(--brass);}
 .estado.wait{color:var(--text-muted);}
+.pager{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:12px;font-size:12.5px;color:var(--text-muted);}
+.pager .btn:disabled{opacity:0.4;cursor:default;}
 .subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
 .subtab{background:var(--panel);border:1px solid var(--line);color:var(--text-muted);border-radius:3px;padding:7px 12px;font-size:12.5px;cursor:pointer;}
 .subtab.active{border-color:var(--brass);color:var(--text-primary);}
@@ -183,7 +185,9 @@ let state = {
   master: [], territoryControl: [], uploads: [], loading: true,
   uploadQueue: [], uploadIndex: -1, uploading: false,
   historial: null, histTab: 'youtube', histPais: '', controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
-  envios: {}, envioDialog: null, envioBusy: false,
+  envioDialog: null,
+  masterTotal: 0, masterPage: 0, territoryTotal: 0, territoryPage: 0, territoryStale: true,
+  territoryOpciones: { reclamos: [], estado_trabajo: [] }, seqMaster: 0, seqTerritory: 0, envioBusy: false,
 };
 
 function fmtNum(n){ return n===null || n===undefined ? '—' : Number(n).toLocaleString('es-AR'); }
@@ -211,7 +215,7 @@ async function loadProfile(){
   state.profile = error ? { app_role:'usuario_estandar', oficina:null } : data;
 }
 async function fetchAll(fn, params){
-  const PAGE = 1000;
+  const PAGE = 50000;   // la API propia no tiene el límite de 1.000 filas de Supabase: menos vueltas, sin recalcular
   let from = 0;
   const all = [];
   while(true){
@@ -224,43 +228,79 @@ async function fetchAll(fn, params){
   return { data: all, error: null };
 }
 
+// Las tablas se piden de a una página (PAGE_SIZE filas) ya filtrada, buscada y ordenada por la base, con el total.
+// Así abrir la aplicación no depende de cuántos charts haya cargados.
+const PAGE_SIZE = 100;
+
+function filtrosFechas(){
+  return { p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null };
+}
+function incluyeEliminados(){ return state.profile.app_role === 'admin' && state.showDeleted; }
+
+async function loadMaster(){
+  const seq = ++state.seqMaster;
+  const { data, error } = await sb.rpc('fn_master_pagina', {
+    ...filtrosFechas(), p_pais: state.masterCountry || null, p_include_deleted: incluyeEliminados(),
+    p_buscar: state.activeTab === 'master' ? (state.search || null) : null,
+    p_limite: PAGE_SIZE, p_offset: state.masterPage * PAGE_SIZE,
+  });
+  if(seq !== state.seqMaster) return;           // llegó una respuesta más nueva
+  if(error) console.error('fn_master_pagina:', error.message);
+  if(!error && !(data || []).length && state.masterPage > 0){ state.masterPage = 0; return loadMaster(); }
+  state.master = data || [];
+  state.masterTotal = state.master.length ? Number(state.master[0].total) : 0;
+}
+
+async function loadTerritory(){
+  const seq = ++state.seqTerritory;
+  const [t, o] = await Promise.all([
+    sb.rpc('fn_territory_pagina', {
+      ...filtrosFechas(), p_pais: state.territoryCountry || null, p_include_deleted: incluyeEliminados(),
+      p_buscar: state.activeTab === 'territory' ? (state.search || null) : null,
+      p_reclamos: state.reclamosFilter || null, p_estado_trabajo: state.estadoTrabajoFilter || null,
+      p_limite: PAGE_SIZE, p_offset: state.territoryPage * PAGE_SIZE,
+    }),
+    sb.rpc('fn_territory_opciones', {}),
+  ]);
+  if(seq !== state.seqTerritory) return;
+  if(t.error) console.error('fn_territory_pagina:', t.error.message);
+  if(!t.error && !(t.data || []).length && state.territoryPage > 0){ state.territoryPage = 0; return loadTerritory(); }
+  state.territoryControl = t.data || [];
+  state.territoryTotal = state.territoryControl.length ? Number(state.territoryControl[0].total) : 0;
+  const op = o.data || [];
+  state.territoryOpciones = {
+    reclamos: op.filter(x => x.campo === 'reclamos').map(x => x.valor),
+    estado_trabajo: op.filter(x => x.campo === 'estado_trabajo').map(x => x.valor),
+  };
+  state.territoryStale = false;
+}
+
+// Recarga lo que depende de los filtros. La tabla por territorio se pide recién cuando se abre su pestaña.
 async function loadAll(){
   state.loading = true; render();
-  const isAdmin = state.profile.app_role === 'admin';
-  const incDeleted = isAdmin && state.showDeleted;
-
-  const [m, t] = await Promise.all([
-    fetchAll('fn_master_view', {
-      p_date_from: state.dateFrom || null,
-      p_date_to: state.dateTo || null,
-      p_pais: state.masterCountry || null,
-      p_include_deleted: incDeleted,
-    }),
-    fetchAll('fn_territory_view', {
-      p_date_from: state.dateFrom || null,
-      p_date_to: state.dateTo || null,
-      p_pais: state.territoryCountry || null,
-      p_include_deleted: incDeleted,
-    }),
-  ]);
-  if(m.error) console.error('fn_master_view:', m.error.message);
-  if(t.error) console.error('fn_territory_view:', t.error.message);
-  state.master = m.data || [];
-  state.territoryControl = t.data || [];
-  await loadEnvios();
-  await loadLastChartLoad();
+  state.masterPage = 0; state.territoryPage = 0; state.territoryStale = true;
+  const tareas = [loadMaster(), loadLastChartLoad()];
+  if(state.activeTab === 'territory') tareas.push(loadTerritory());
+  await Promise.all(tareas);
   state.historial = null;   // se vuelve a leer al abrir "Historial de cargas"
   if(state.activeTab === 'history') loadHistorial();
-
   state.loading = false;
   render();
 }
 
-// Último Reporte BO y última descarga del CSV de cada obra (seguimiento de envíos).
-async function loadEnvios(){
-  const e = await fetchAll('fn_envios_por_obra', {});
-  if(e.error) console.error('fn_envios_por_obra:', e.error.message);
-  state.envios = Object.fromEntries((e.data || []).map(r => [r.track_master_id, r]));
+// Búsqueda en la base, con una pequeña espera mientras se escribe.
+let esperaBusqueda = null;
+function buscar(valor, idCampo){
+  state.search = valor;
+  clearTimeout(esperaBusqueda);
+  esperaBusqueda = setTimeout(async () => {
+    if(state.activeTab === 'master'){ state.masterPage = 0; await loadMaster(); }
+    else { state.territoryPage = 0; await loadTerritory(); }
+    const activo = document.activeElement && document.activeElement.id === idCampo;
+    render();
+    const el = document.getElementById(idCampo);
+    if(el && activo){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }, 250);
 }
 
 async function updateMasterField(id, field, value){
@@ -361,18 +401,19 @@ function envioFiltros(){
   return { p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null, p_pais: state.masterCountry || null };
 }
 
-function envioCandidatas(tipo){
-  const campo = tipo === 'reporte_bo' ? 'ult_bo_at' : 'ult_csv_at';
-  const todas = state.master.filter(r => !r.deleted_at &&
-    (!ENVIO_TIPOS[tipo].soloTempo || /^\d+$/.test(String(r.tempo_id || '').trim())));
-  return { todas: todas.length, nuevas: todas.filter(r => !state.envios[r.id]?.[campo]).length };
-}
-
 async function openEnvioDialog(tipo){
-  state.envioDialog = { tipo, ultimo: null };
+  state.envioDialog = { tipo, ultimo: null, conteo: null };
   render();
-  const { data } = await sb.from('envios').select('*').eq('tipo', tipo).order('created_at', { ascending: false }).limit(1);
-  if(state.envioDialog) { state.envioDialog.ultimo = data?.[0] || null; render(); }
+  const [u, c] = await Promise.all([
+    sb.from('envios').select('*').eq('tipo', tipo).order('created_at', { ascending: false }).limit(1),
+    sb.rpc('fn_envio_conteo', { p_tipo: tipo, ...envioFiltros() }),
+  ]);
+  if(state.envioDialog && state.envioDialog.tipo === tipo){
+    state.envioDialog.ultimo = u.data?.[0] || null;
+    const r = c.data?.[0] || {};
+    state.envioDialog.conteo = { todas: Number(r.todas || 0), nuevas: Number(r.nuevas || 0) };
+    render();
+  }
 }
 
 // Fecha y hora en la hora local de la PC (la base las guarda en UTC): "2026-10-21 20:22".
@@ -386,7 +427,7 @@ function renderEnvioDialog(){
   const d = state.envioDialog;
   if(!d) return '';
   const t = ENVIO_TIPOS[d.tipo];
-  const c = envioCandidatas(d.tipo);
+  const c = d.conteo;
   const filtros = [state.masterCountry && `país ${state.masterCountry}`, state.dateFrom && `desde ${state.dateFrom}`,
                    state.dateTo && `hasta ${state.dateTo}`].filter(Boolean).join(', ');
   const u = d.ultimo;
@@ -399,6 +440,7 @@ function renderEnvioDialog(){
       <button class="close" id="closeEnvio">Cancelar</button>
       <h2 class="display">${t.titulo}</h2>
       <p class="sub">${ultimo}<br>${filtros ? `Filtros aplicados: ${filtros}.` : 'Sin filtros: incluye toda la tabla principal.'}${t.soloTempo ? ' Incluye únicamente obras con Tempo ID.' : ''}</p>
+      ${!c ? `<div class="empty">Calculando…</div>` : `
       <button class="btn envio-op" data-envio-modo="nuevas" ${c.nuevas && !state.envioBusy ? '' : 'disabled'}>
         <b>Solo las nuevas · ${obras(c.nuevas)}</b>
         <span>Obras que nunca se incluyeron en un ${t.cosa}. Seguimiento semanal.</span>
@@ -406,7 +448,7 @@ function renderEnvioDialog(){
       <button class="btn envio-op" data-envio-modo="todas" ${c.todas && !state.envioBusy ? '' : 'disabled'}>
         <b>Todas · ${obras(c.todas)}</b>
         <span>Incluye las obras ya enviadas. Revisión completa (por ejemplo, trimestral).</span>
-      </button>
+      </button>`}
     </div>
   </div>`;
 }
@@ -424,7 +466,7 @@ async function startEnvio(modo){
     state.envioDialog = null;
   } finally {
     state.envioBusy = false;
-    await loadEnvios();
+    await loadMaster();   // actualiza la columna Seguimiento
     render();
   }
 }
@@ -484,7 +526,7 @@ async function downloadMasterCsv(envio, modo){
 }
 
 async function downloadFilteredCsv(fn, params, filename, columns){
-  const PAGE = 1000;
+  const PAGE = 50000;   // la API propia no tiene el límite de 1.000 filas de Supabase: menos vueltas, sin recalcular
   let from = 0;
   const partes = [];
   while(true){
@@ -898,20 +940,12 @@ async function finishUpload(file, total, updated, created_tracks, errors, format
 }
 
 async function loadLastChartLoad(){
-  // Semana del chart más reciente cargado por país y plataforma (no la
-  // fecha de subida): así un histórico de 2021 subido hoy no la pisa.
-  // Cada país se carga por separado, así que cada uno tiene su fecha.
-  const ultima = async (plataforma, pais) => {
-    const { data } = await sb.from('territory_tracks').select('snapshot_date')
-      .eq('platform', plataforma).eq('pais_code', pais).is('deleted_at', null)
-      .order('snapshot_date', { ascending: false }).limit(1);
-    return data?.[0]?.snapshot_date || null;
-  };
-  const fechas = await Promise.all(COUNTRIES.map(async (pais) => {
-    const [spotify, youtube] = await Promise.all([ultima('spotify', pais), ultima('youtube', pais)]);
-    return [pais, { spotify, youtube }];
-  }));
-  state.lastLoads = Object.fromEntries(fechas);
+  // Semana del chart más reciente cargado por país y plataforma (no la fecha de subida): así un histórico de 2021
+  // subido hoy no la pisa. Cada país se carga por separado, así que cada uno tiene su fecha.
+  const { data } = await sb.rpc('fn_ultimas_cargas', {});
+  const fechas = Object.fromEntries(COUNTRIES.map(c => [c, { spotify: null, youtube: null }]));
+  (data || []).forEach(r => { if(fechas[r.pais_code]) fechas[r.pais_code][r.platform] = r.snapshot_date; });
+  state.lastLoads = fechas;
 }
 
 // País del que se muestran las fechas de última carga: el filtro de la
@@ -989,15 +1023,25 @@ function renderTabs(){
 }
 
 function renderSeguimiento(r){
-  const e = state.envios[r.id] || {};
+  const e = r;
   const bo = e.ult_bo_at ? `carga ${e.ult_bo_carga} · ${fmtFecha(e.ult_bo_at).slice(0,10)}` : '<span class="nunca">nunca</span>';
   const csv = e.ult_csv_at ? fmtFecha(e.ult_csv_at).slice(0,10) : '<span class="nunca">nunca</span>';
   return `<div class="seg">BO: ${bo}</div><div class="seg">CSV: ${csv}</div>`;
 }
 
+// "1–100 de 25.000" y los botones para moverse entre páginas.
+function renderPager(tabla, total, pagina){
+  if(!total) return '';
+  const desde = pagina * PAGE_SIZE + 1, hasta = Math.min(total, (pagina + 1) * PAGE_SIZE);
+  return `<div class="pager">
+    <span>${fmtNum(desde)}–${fmtNum(hasta)} de ${fmtNum(total)}</span>
+    <button class="btn" data-pager="${tabla}" data-dir="-1" ${pagina === 0 ? 'disabled' : ''}>‹ Anterior</button>
+    <button class="btn" data-pager="${tabla}" data-dir="1" ${hasta >= total ? 'disabled' : ''}>Siguiente ›</button>
+  </div>`;
+}
+
 function renderMaster(){
-  let rows = state.master;
-  if(state.search) rows = rows.filter(r => ((r.track_artist_concat||'')+' '+(r.tempo_id||'')).toLowerCase().includes(state.search.toLowerCase()));
+  const rows = state.master;
   const canToggleDeleted = state.profile.app_role==='admin';
   return `
   <div class="toolbar">
@@ -1024,20 +1068,17 @@ function renderMaster(){
       <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—">` : (r.tempo_id||'—')}</td>
       <td>${renderSeguimiento(r)}</td>
     </tr>`).join('') : `<tr><td colspan="3"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
-  </tbody></table>`;
+  </tbody></table>
+  ${renderPager('master', state.masterTotal, state.masterPage)}`;
 }
 
 function renderTerritory(){
-  let rows = state.territoryControl;
-  if(state.territoryCountry) rows = rows.filter(r => r.pais_code===state.territoryCountry);
-  if(state.reclamosFilter) rows = rows.filter(r => (r.reclamos || '—') === state.reclamosFilter);
-  if(state.estadoTrabajoFilter) rows = rows.filter(r => (r.estado_trabajo || '—') === state.estadoTrabajoFilter);
-  if(state.search) rows = rows.filter(r => (r.tempo_id+' '+r.track_artist_concat).toLowerCase().includes(state.search.toLowerCase()));
+  const rows = state.territoryControl;
   const canToggleDeleted = state.profile.app_role==='admin';
 
-  // Opciones "como en Excel": todos los valores distintos que existen hoy en la columna.
-  const reclamosOptions = [...new Set(state.territoryControl.map(r => r.reclamos || '—'))].sort();
-  const estadoTrabajoOptions = [...new Set(state.territoryControl.map(r => r.estado_trabajo || '—'))].sort();
+  // Opciones "como en Excel": los valores distintos que existen hoy en la columna (los calcula la base).
+  const reclamosOptions = state.territoryOpciones.reclamos;
+  const estadoTrabajoOptions = state.territoryOpciones.estado_trabajo;
 
   // % del Reporte Tempo: se muestra exactamente lo que dice el reporte.
   // Si es un número se le agrega "%"; si es texto (NVFT, NOP) va tal cual.
@@ -1094,8 +1135,9 @@ function renderTerritory(){
                </select>`
             : (r.estado_trabajo || '—')}</td>
       <td><button class="rowbtn" data-history-track="${r.track_master_id}" data-history-pais="${r.pais_code}">Show prior</button></td>
-    </tr>`).join('') : `<tr><td colspan="13"><div class="empty">${state.loading?'Cargando...':'Sin registros para este filtro'}</div></td></tr>`}
-  </tbody></table>`;
+    </tr>`).join('') : `<tr><td colspan="13"><div class="empty">${state.loading || state.territoryStale?'Cargando...':'Sin registros para este filtro'}</div></td></tr>`}
+  </tbody></table>
+  ${renderPager('territory', state.territoryTotal, state.territoryPage)}`;
 }
 
 // Nombres de los tipos de archivo, como los ve el usuario.
@@ -1183,7 +1225,7 @@ function renderUpload(){
 const HIST_TABS = [['youtube','YouTube'], ['spotify','Spotify'], ['bo','Reportes BackOffice'], ['tempo','Reportes Tempo Control']];
 
 async function loadHistorial(){
-  const PAGE = 1000;
+  const PAGE = 50000;   // la API propia no tiene el límite de 1.000 filas de Supabase: menos vueltas, sin recalcular
   const uploads = [];
   for(let from = 0; ; from += PAGE){
     const { data, error } = await sb.from('csv_uploads')
@@ -1349,8 +1391,8 @@ function render(){
   attachAppEvents();
 }
 function rows_count(){
-  if(state.activeTab==='master') return `${state.master.length} canciones`;
-  if(state.activeTab==='territory') return `${state.territoryControl.length} registros de territorio`;
+  if(state.activeTab==='master') return `${fmtNum(state.masterTotal)} canciones`;
+  if(state.activeTab==='territory') return `${fmtNum(state.territoryTotal)} registros de territorio`;
   return '';
 }
 
@@ -1362,19 +1404,30 @@ function attachLoginEvents(){
 
 function attachAppEvents(){
   document.getElementById('logoutBtn').onclick = doLogout;
-  document.querySelectorAll('[data-tab]').forEach(t => t.onclick = () => {
+  document.querySelectorAll('[data-tab]').forEach(t => t.onclick = async () => {
+    const habiaBusqueda = !!state.search;
     state.activeTab = t.dataset.tab; state.search='';
     if(!state.uploading) state.uploadQueue = [];
     if(state.activeTab === 'history' && !state.historial) loadHistorial();
     render();
+    // La búsqueda es de cada pestaña: al cambiar, se vuelve a pedir la página sin búsqueda.
+    if(state.activeTab === 'master' && habiaBusqueda){ state.masterPage = 0; await loadMaster(); render(); }
+    if(state.activeTab === 'territory' && (state.territoryStale || habiaBusqueda)){ state.territoryPage = 0; await loadTerritory(); render(); }
+  });
+  document.querySelectorAll('[data-pager]').forEach(b => b.onclick = async () => {
+    const dir = Number(b.dataset.dir);
+    if(b.dataset.pager === 'master'){ state.masterPage = Math.max(0, state.masterPage + dir); await loadMaster(); }
+    else { state.territoryPage = Math.max(0, state.territoryPage + dir); await loadTerritory(); }
+    render();
+    window.scrollTo(0, 0);
   });
   document.querySelectorAll('[data-hist-tab]').forEach(b => b.onclick = () => { state.histTab = b.dataset.histTab; state.histPais = ''; render(); });
   document.querySelectorAll('[data-hist-pais]').forEach(b => b.onclick = () => { state.histPais = b.dataset.histPais; render(); });
 
   const sM = document.getElementById('searchMaster');
-  if(sM) sM.oninput = (e) => { state.search = e.target.value; render(); const el=document.getElementById('searchMaster'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+  if(sM) sM.oninput = (e) => buscar(e.target.value, 'searchMaster');
   const sT = document.getElementById('searchTerritory');
-  if(sT) sT.oninput = (e) => { state.search = e.target.value; render(); const el=document.getElementById('searchTerritory'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+  if(sT) sT.oninput = (e) => buscar(e.target.value, 'searchTerritory');
 
   const cf = document.getElementById('countryFilter');
   if(cf) cf.onchange = (e) => { state.territoryCountry = state.lastCountry = e.target.value; loadAll(); };
@@ -1394,9 +1447,9 @@ function attachAppEvents(){
     if(el) el.onclick = () => { state.dateFrom=''; state.dateTo=''; state.masterCountry=''; loadAll(); };
   });
   const rf = document.getElementById('reclamosFilter');
-  if(rf) rf.onchange = (e) => { state.reclamosFilter = e.target.value; render(); };
+  if(rf) rf.onchange = async (e) => { state.reclamosFilter = e.target.value; state.territoryPage = 0; await loadTerritory(); render(); };
   const etf = document.getElementById('estadoTrabajoFilter');
-  if(etf) etf.onchange = (e) => { state.estadoTrabajoFilter = e.target.value; render(); };
+  if(etf) etf.onchange = async (e) => { state.estadoTrabajoFilter = e.target.value; state.territoryPage = 0; await loadTerritory(); render(); };
   const cc = document.getElementById('controlCountry');
   if(cc) cc.onchange = (e) => { state.controlCountry = e.target.value; };
 

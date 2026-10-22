@@ -64,5 +64,6 @@ fi
 
 # Al final: vacía la base de prueba (las anteriores usan los datos de la prueba del navegador como origen).
 correr "Carga masiva de charts históricos (paridad con Carga CSV)" python3 tests/test_importar_charts.py
+correr "Rendimiento con volumen real (cientos de miles de filas)" python3 tests/test_rendimiento.py
 echo
 [ "$FALLAS" -eq 0 ] && echo "TODAS LAS PRUEBAS OK" || { echo "$FALLAS PRUEBAS CON FALLAS"; exit 1; }

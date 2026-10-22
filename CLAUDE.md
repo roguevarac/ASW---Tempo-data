@@ -135,6 +135,12 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 
     Así llegan a la base ya instalada. Nunca editar `db/03`/`db/04` para esto. Si una tabla nueva apunta a
     `tracks_master`, agregarla a los TRUNCATE de `restaurar`, `empezar-de-cero` y `migracion/importar.py`.
+  - **Rendimiento (22/10/2026):** con los históricos, abrir tardaba 147 s (fetchAll de a 1.000 filas y filtro en el
+    navegador). Las tablas se paginan en la base: `db/mejoras/03_rendimiento.sql` (`fn_master_pagina`,
+    `fn_territory_pagina`, `fn_territory_opciones`, `fn_envio_conteo`, `fn_ultimas_cargas` e índices). El front pide
+    100 filas (`PAGE_SIZE`) con el total; búsqueda y filtros van al servidor. **Nunca volver a traer una tabla entera
+    para mostrarla.** `fn_master_view`/`fn_territory_view` quedan para descargas. `test_rendimiento.py` (al final de
+    `correr_todo`, vacía la base) mide los tiempos con volumen real.
   - **Manual de uso:** `front/manual.html` (enlace "Manual de uso" arriba a la derecha).
     **Regla fija (pedido del usuario): toda mejora o agregado que cambie lo que ve o hace el usuario se entrega con el
     manual actualizado en el mismo commit, sin que lo pida.** Solo si la información le sirve a quien usa el sistema;
