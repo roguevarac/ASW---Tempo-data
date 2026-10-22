@@ -59,11 +59,12 @@ ENTORNO = dict(os.environ, RK_CONFIG=str(config), RK_RESPALDOS=str(respaldos), H
                RK_BACKOFFICE=str(base / "onedrive" / "Backoffice"), RK_ESPEJO=str(base / "onedrive" / "Latam" / "RANKING DIGITAL REGIONAL"),
                COMPOSE_PROJECT_NAME=PROYECTO_COMPOSE, IMAGEN_API=IMAGEN)
 subprocess.run(["docker", "compose", "-p", PROYECTO_COMPOSE, "--profile", "herramientas", "down", "-v"], capture_output=True)
-# Espejo de auditoría (la carpeta compartida de OneDrive). En WSL, /mnt/c deja escribir a cualquier usuario: igual acá.
+# Espejo de auditoría (la carpeta compartida de OneDrive). Como /mnt/c en WSL: es del usuario de la PC (uid 1000) y
+# no la puede escribir otro usuario (la API corre como 10001), solo root.
 ESPEJO = pathlib.Path(ENTORNO["RK_ESPEJO"])
 ESPEJO.mkdir(parents=True)
-for d in (ESPEJO, ESPEJO.parent, ESPEJO.parent.parent):
-    d.chmod(0o777)
+os.chown(ESPEJO, 1000, 1000)
+ESPEJO.chmod(0o755)
 
 # Carpetas "OneDrive" con los CSV del historial por su nombre original, salvo uno (tiene que bajarse del bucket).
 onedrive = base / "onedrive" / "Backoffice"
@@ -273,11 +274,13 @@ try:
     httpx.post(api("/rest/csv_uploads"), json={"filename": nombre_chart, "file_path": ruta_chart, "format": "spotify", "total_rows": 1,
                                                "updated_rows": 1, "created_tracks": 0, "error_count": 0}, headers=tok_admin, trust_env=False)
     en_od = ESPEJO / "Spotify Charts" / "ar" / nombre_chart
-    for _ in range(50):
+    for _ in range(100):
         if en_od.exists():
             break
         time.sleep(0.2)
-    check("espejo: cada carga nueva se copia sola a 'Spotify Charts/ar' en OneDrive",
+    check("espejo: la API no puede escribir en la carpeta de OneDrive (como en WSL)...",
+          dc("exec", "-T", "api", "sh", "-c", "! touch /espejo/x 2>/dev/null").returncode == 0)
+    check("...y el servicio espejo copia sola cada carga nueva a 'Spotify Charts/ar' en OneDrive",
           en_od.exists() and en_od.read_bytes() == b"rank,track\n1,Tema Espejo\n", sorted(str(x) for x in ESPEJO.rglob("*"))[:20])
     estado_base = base_nueva("select (select count(*) from csv_uploads) || '|' || (select count(*) from tracks_master) || '|' || (select count(*) from storage.objects)")
     shutil.rmtree(ESPEJO / "Spotify Charts")
@@ -289,15 +292,28 @@ try:
     r = subprocess.run(["bash", str(proyecto / "ranking.sh"), "espejo"], cwd=proyecto, env=ENTORNO, capture_output=True,
                        text=True, stdin=subprocess.DEVNULL, timeout=600)
     check("espejo: 'ranking.sh espejo' vuelve a copiar lo que falta en OneDrive", r.returncode == 0 and en_od.exists(), (r.stdout + r.stderr)[-600:])
-    ESPEJO.chmod(0o555)
+    # Una copia que falla (acá, "Youtube Charts" es un archivo y no una carpeta) no frena nada, y el servicio sigue.
+    bloqueo = ESPEJO / "Youtube Charts"
+    shutil.rmtree(bloqueo, ignore_errors=True)
+    bloqueo.write_text("no es una carpeta")
     try:
         r2 = httpx.post(api("/rest/csv_uploads"), json={"filename": "otra.csv", "file_path": ruta_chart, "format": "youtube", "total_rows": 1,
                                                          "updated_rows": 1, "error_count": 0}, headers=tok_admin, trust_env=False)
-        time.sleep(1)
-        check("espejo: si OneDrive no deja escribir, la carga se registra igual",
-              r2.status_code == 201 and httpx.get(api("/health"), trust_env=False).status_code == 200, r2.text)
+        time.sleep(5)
+        check("espejo: si la copia a OneDrive falla, la carga se registra igual y queda el motivo en el log",
+              r2.status_code == 201 and httpx.get(api("/health"), trust_env=False).status_code == 200
+              and "no se pudo copiar otra.csv" in dc("logs", "espejo").stdout + dc("logs", "espejo").stderr, r2.text)
     finally:
-        ESPEJO.chmod(0o777)
+        bloqueo.unlink()
+    nombre2 = "regional-cl-weekly-2026-10-15.csv"
+    httpx.post(api("/rest/csv_uploads"), json={"filename": nombre2, "file_path": ruta_chart, "format": "spotify", "total_rows": 1,
+                                               "updated_rows": 1, "error_count": 0}, headers=tok_admin, trust_env=False)
+    for _ in range(100):
+        if (ESPEJO / "Spotify Charts" / "ar" / nombre2).exists():
+            break
+        time.sleep(0.2)
+    check("espejo: después de una copia fallida, el servicio sigue copiando las cargas nuevas",
+          (ESPEJO / "Spotify Charts" / "ar" / nombre2).exists())
     # Deja la base como estaba para las pruebas que siguen.
     base_nueva(f"delete from csv_uploads where file_path = '{ruta_chart}'; delete from storage.objects where name = '{ruta_chart}'")
     dc("exec", "-T", "api", "rm", "-f", f"/data/storage/csv-uploads/{ruta_chart}")
@@ -492,6 +508,9 @@ try:
     r = sin_terminal("verificar")
     check("verificar: todo en orden (código 0) con el resumen de la base", r.returncode == 0 and "Todo en orden" in r.stdout
           and "usuarios," in r.stdout and "YouTube" not in r.stdout and "version 1" in r.stdout, r.stdout[-1500:])
+    check("verificar: el espejo de OneDrive se puede escribir (servicio espejo corriendo)",
+          "Espejo de auditoría en OneDrive: " in r.stdout and "No se puede escribir" not in r.stdout
+          and "Contenedor espejo corriendo" in r.stdout, r.stdout[-1500:])
     check("el horario viejo de YouTube se borra de la configuración", "YOUTUBE_CRON" not in config.read_text())
 
     def subir(archivo, cambio, mensaje):

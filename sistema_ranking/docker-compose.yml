@@ -66,15 +66,29 @@ services:
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
       STATEMENT_TIMEOUT: ${STATEMENT_TIMEOUT:-120s}
       DB_POOL: ${DB_POOL:-10}
-      # Espejo de auditoría en OneDrive (ESPEJO_DIR en la configuración): el sistema solo escribe ahí; nunca lee ni
-      # borra. Sin ESPEJO_DIR queda apagado (y se monta un volumen vacío que no se usa).
-      ESPEJO: ${ESPEJO_DIR:+/espejo}
     volumes:
       - archivos:/data/storage
-      - ${ESPEJO_DIR:-espejo_apagado}:/espejo
     ports:
       # 127.0.0.1: solo esta PC (en WSL2 se abre igual desde el navegador de Windows). En un servidor: ESCUCHAR=0.0.0.0
       - "${ESCUCHAR:-127.0.0.1}:${PUERTO:-8000}:8000"
+
+  # Espejo de auditoría en OneDrive (ESPEJO_DIR en la configuración; ver api/espejo.py). Copia cada carga a la carpeta
+  # compartida; nunca lee ni borra ahí. Corre como root porque en WSL /mnt/c solo deja escribir al dueño o a root; por
+  # eso no tiene puertos y ve los archivos del sistema en solo lectura. Sin ESPEJO_DIR queda apagado.
+  espejo:
+    image: ${IMAGEN_API:-ranking-digital-api:local}
+    restart: unless-stopped
+    user: root
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      PGURL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/ranking
+      STORAGE_DIR: /data/storage
+      ESPEJO: ${ESPEJO_DIR:+/espejo}
+    volumes:
+      - archivos:/data/storage:ro
+      - ${ESPEJO_DIR:-espejo_apagado}:/espejo
+    command: ["python", "espejo.py", "--servicio"]
 
   # Herramientas de administración (migración, usuarios, respaldo). No arranca sola: se usa con "docker compose run".
   herramientas:

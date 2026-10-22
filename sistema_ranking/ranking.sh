@@ -202,12 +202,14 @@ publicar_documentacion() {
     d="$e/respaldo_documentacion_sistema/docs"
     mkdir -p "$d/esquema" && cp "$DIR/README.md" "$DIR/front/manual.html" "$d/" && cp "$DIR/../ANTIGRAVITY.md" "$d/" 2> /dev/null
     cp "$DIR/db/03_esquema.sql" "$DIR/db/04_rls_politicas.sql" "$DIR"/db/mejoras/*.sql "$d/esquema/" \
-        && herramienta python /app/api/espejo.py --leeme > /dev/null 2>&1
+        && herramienta_root python /app/api/espejo.py --leeme > /dev/null 2>&1
 }
 
 consulta() { dc exec -T db psql -U postgres -d ranking -At -c "$1"; }
 usuarios_py() { dc run --rm herramientas python /app/admin/usuarios.py "$@"; }
 herramienta() { dc run --rm --no-deps -T herramientas "$@"; }
+# Como root: solo para escribir en el espejo de OneDrive (en WSL, /mnt/c solo deja escribir al dueño o a root).
+herramienta_root() { dc run --rm --no-deps -T --user root herramientas "$@"; }
 
 # ---------------------------------------------------------------- comandos
 cmd_instalar() {
@@ -425,7 +427,7 @@ cmd_estado() {
     echo "Configuración: $CONFIG    Respaldos: $RESPALDOS"
 }
 
-cmd_logs() { verificar_docker; instalado; dc logs --tail "${1:-100}" api db; }
+cmd_logs() { verificar_docker; instalado; dc logs --tail "${1:-100}" api db espejo; }
 
 cmd_respaldo() {
     verificar_docker; instalado
@@ -460,7 +462,7 @@ cmd_espejo() {
     dc up -d db > /dev/null 2>&1
     titulo "Espejo de auditoría en OneDrive"
     echo "Carpeta: $e"
-    herramienta python /app/api/espejo.py || aviso "Algunos archivos no se pudieron copiar (el detalle está arriba)."
+    herramienta_root python /app/api/espejo.py || aviso "Algunos archivos no se pudieron copiar (el detalle está arriba)."
     publicar_documentacion && ok "Documentación actualizada en respaldo_documentacion_sistema/docs."
 }
 
@@ -640,7 +642,7 @@ cmd_verificar() {
     if docker info > /dev/null 2>&1; then linea ok "Docker funcionando"; else linea mal "Docker no está corriendo (sudo service docker start)"; fi
     if [ -f "$CONFIG" ]; then linea ok "Configuración en $CONFIG"; else linea mal "Sin configuración: falta bash ranking.sh instalar"; fi
     if [ "$fallo" = 0 ]; then
-        for n in db api; do
+        for n in db api espejo; do
             if [ -n "$(dc ps --status running -q "$n" 2> /dev/null)" ]; then linea ok "Contenedor $n corriendo"; else linea mal "Contenedor $n apagado (bash ranking.sh abrir)"; fi
         done
         if curl -fsS --noproxy '*' "http://127.0.0.1:$(valor PUERTO)/health" > /dev/null 2>&1; then
@@ -651,9 +653,9 @@ cmd_verificar() {
                                          || (select count(*) from storage.objects) || ' archivos en el historial'" 2> /dev/null)"
         if [ -n "$datos" ]; then linea ok "Base: $datos"; else linea mal "No se pudo consultar la base"; fi
         if [ -z "$(valor ESPEJO_DIR)" ]; then aviso "  AVISO  Sin espejo en OneDrive (no se encontró la carpeta $ONEDRIVE_ESPEJO)"
-        elif dc exec -T api sh -c 'test -n "$ESPEJO" && test -w /espejo' > /dev/null 2>&1; then
+        elif dc exec -T espejo sh -c 'test -n "$ESPEJO" && touch /espejo/.prueba-escritura && rm -f /espejo/.prueba-escritura' > /dev/null 2>&1; then
             linea ok "Espejo de auditoría en OneDrive: $(valor ESPEJO_DIR)"
-        else aviso "  AVISO  La API no puede escribir en el espejo de OneDrive ($(valor ESPEJO_DIR)); ver README, sección Espejo"; fi
+        else aviso "  AVISO  No se puede escribir en el espejo de OneDrive ($(valor ESPEJO_DIR)); ver README, sección Espejo"; fi
     fi
     echo "  Versión del programa: $(version_programa)"
     [ "$fallo" = 0 ] && ok "Todo en orden." || { printf '%sHay problemas: revisá las líneas FALLA.%s\n' "$R" "$N"; return 1; }
@@ -693,7 +695,7 @@ $cambios
     fi
     if [ -n "$(valor ESPEJO_DIR)" ]; then
         titulo "Espejo de auditoría en OneDrive"
-        herramienta python /app/api/espejo.py || aviso "Algunos archivos no se pudieron copiar a OneDrive (bash ranking.sh espejo)."
+        herramienta_root python /app/api/espejo.py || aviso "Algunos archivos no se pudieron copiar a OneDrive (bash ranking.sh espejo)."
         publicar_documentacion || true
     fi
     titulo "4/4 Verificación"

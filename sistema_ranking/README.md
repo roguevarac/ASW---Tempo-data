@@ -186,15 +186,16 @@ Solo se copian las cargas que cargaron datos. Las descargas (reporte BO generado
 son cargas y no se copian.
 
 **Cómo funciona:**
-- `ranking.sh` detecta la carpeta y la guarda en la configuración (`ESPEJO_DIR`). Docker la monta en la API en
-  `/espejo`.
-- La API copia cada archivo cuando se registra la carga (`api/espejo.py`), en segundo plano. Si no se encuentra la
-  carpeta de OneDrive, el espejo queda apagado y el sistema funciona igual.
+- `ranking.sh` detecta la carpeta y la guarda en la configuración (`ESPEJO_DIR`).
+- El servicio `espejo` de Docker (`api/espejo.py --servicio`) monta esa carpeta en `/espejo` y copia cada carga
+  nueva unos segundos después de que se registra. Al arrancar copia lo que falte.
+- Corre como root porque en WSL `/mnt/c` solo deja escribir al dueño de la carpeta o a root. Para compensarlo, no
+  tiene puertos y ve los archivos del sistema en solo lectura. La API sigue sin privilegios y sin acceso a OneDrive.
+- Si no se encuentra la carpeta de OneDrive, el espejo queda apagado y el sistema funciona igual.
 - `bash ranking.sh espejo` y `actualizar` copian lo que falte, por ejemplo las cargas anteriores a esta función, sin
   pisar ni borrar nada.
-- `bash ranking.sh verificar` muestra si la API puede escribir en el espejo. Si dice que no puede, revisá que la
-  carpeta exista en OneDrive y que `/etc/wsl.conf` no limite los permisos de `/mnt/c`: con la configuración normal
-  de WSL, cualquier proceso puede escribir ahí.
+- `bash ranking.sh verificar` prueba escribir en el espejo desde el servicio. Si no puede, revisá que la carpeta
+  exista y esté sincronizada en OneDrive, y mirá `bash ranking.sh logs`.
 
 ### Red de la empresa (proxy y certificados)
 

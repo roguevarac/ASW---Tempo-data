@@ -2,7 +2,8 @@
 Espejo de auditoría en OneDrive (solo escritura, nunca afecta al sistema).
 
 La fuente de verdad es la base de datos y el almacenamiento propio del sistema (Docker). Cada vez que se registra
-una carga con datos cargados, se copia el archivo original a la carpeta compartida de OneDrive, organizado así:
+una carga con datos cargados, el servicio "espejo" (docker-compose.yml) copia el archivo original a la carpeta
+compartida de OneDrive, organizado así:
 
     Spotify Charts/<país>/            charts de Spotify
     Youtube Charts/<país>/            charts de YouTube
@@ -14,7 +15,11 @@ Reglas: el sistema solo escribe en el espejo; nunca lee de él ni borra nada. Si
 archivo o falla la copia, la carga sigue igual (el error queda en el log). Se activa con la variable ESPEJO (ruta
 dentro del contenedor); sin ella no hace nada.
 
-También se usa como comando, para copiar lo que falte (por ejemplo, cargas anteriores al espejo):
+Corre como root en un servicio aparte: en WSL, /mnt/c (OneDrive) solo deja escribir al dueño de la carpeta o a root,
+y la API no tiene privilegios. El servicio solo lee la base y los archivos del sistema (montados en solo lectura).
+
+    python espejo.py --servicio   el servicio: copia todo lo que falte y después cada carga nueva, cada pocos segundos
+
     PGURL=... STORAGE_DIR=... ESPEJO=/espejo python espejo.py           (copia lo que falte)
     ESPEJO=/espejo python espejo.py --leeme                             (solo el LEEME de la carpeta)
 """
@@ -134,6 +139,38 @@ def sincronizar(pgurl, storage_dir):
     return copiadas, aplica
 
 
+def servicio(pgurl, storage_dir, intervalo=3):
+    """Copia lo que falte y después, cada `intervalo` segundos, las cargas nuevas (por id de csv_uploads)."""
+    import time
+    import psycopg
+    from psycopg.rows import dict_row
+    if raiz() is None:
+        log.info("Espejo OneDrive apagado: no hay carpeta configurada.")
+        while True:
+            time.sleep(3600)
+    ultimo = None
+    while True:
+        try:
+            with psycopg.connect(pgurl, row_factory=dict_row, autocommit=True) as con:
+                while True:
+                    maximo = con.execute("SELECT coalesce(max(id), 0) AS m FROM public.csv_uploads").fetchone()["m"]
+                    if ultimo is None or maximo < ultimo:
+                        # Al arrancar, o si la base volvió atrás (restaurar): repaso completo, sin pisar nada.
+                        copiadas, aplica = sincronizar(pgurl, storage_dir)
+                        log.info("Espejo OneDrive: %s de %s archivos de carga presentes.", copiadas, aplica)
+                        ultimo = maximo
+                    nuevas = con.execute("SELECT id, filename, file_path, format, updated_rows FROM public.csv_uploads "
+                                         "WHERE id > %s ORDER BY id", (ultimo,)).fetchall()
+                    for c in nuevas:
+                        if copiar(c, storage_dir):
+                            log.info("Espejo OneDrive: copiado %s", c["filename"])
+                        ultimo = c["id"]
+                    time.sleep(intervalo)
+        except Exception as e:  # base reiniciándose, etc.: se reintenta
+            log.warning("Espejo OneDrive: %s; reintento en 10 s", e)
+            time.sleep(10)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if raiz() is None:
@@ -142,6 +179,8 @@ if __name__ == "__main__":
         raiz().mkdir(parents=True, exist_ok=True)
         escribir_leeme(raiz())
         sys.exit(0)
+    if "--servicio" in sys.argv:
+        servicio(os.environ["PGURL"], os.environ.get("STORAGE_DIR", "/data/storage"))
     ok, total = sincronizar(os.environ["PGURL"], os.environ.get("STORAGE_DIR", "/data/storage"))
     print(f"Espejo OneDrive: {ok} de {total} archivos de carga presentes.")
     sys.exit(0 if ok == total else 1)

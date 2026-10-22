@@ -176,8 +176,15 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
       REGIONAL`. Está en `Latam`, no en `Backoffice`.
     - Principio: la base en Docker es la fuente de verdad. El espejo es solo escritura (nunca se lee ni se borra), y un
       error de copia nunca frena una carga.
-    - `api/espejo.py`: la API copia cada carga cuando se registra en `csv_uploads` (POST `/rest/csv_uploads`, en un
-      hilo aparte). Solo copia cargas con `updated_rows > 0`.
+    - `api/espejo.py --servicio`: corre en el servicio `espejo` de compose, como root. En la PC real (22/10/2026) la API
+      (uid 10001) no podía escribir en `/mnt/c`: drvfs solo deja escribir al dueño (uid 1000) o a root.
+      - Al arrancar, copia lo que falte.
+      - Después, cada 3 s, copia las filas nuevas de `csv_uploads` (por id). Si el máximo baja (restaurar), repasa
+        todo.
+      - Solo copia cargas con `updated_rows > 0`.
+      - No tiene puertos y monta `archivos` en solo lectura.
+      - La API no toca OneDrive.
+      - `ranking.sh` usa `herramienta_root` para `espejo` y el LEEME.
       - Destinos: `Spotify Charts/<pais>/`, `Youtube Charts/<pais>/`, `Reportes BackOffice/<pais>/`,
         `Reportes Tempo Control/` (con `Tempo IDs/`).
       - También escribe el LEEME.
