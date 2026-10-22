@@ -139,6 +139,10 @@ tr.clic:hover td{background:var(--panel-raised);}
 .modal .close:hover{border-color:var(--brass-dim);color:var(--brass);}
 .modal table{font-size:12px;}
 .modal.small{width:min(620px,96vw);}
+.clave-form{display:flex;flex-direction:column;gap:12px;max-width:360px;}
+.clave-form label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--text-muted);}
+.clave-form input{background:var(--panel-raised);border:1px solid var(--line);color:var(--text-primary);padding:8px 10px;border-radius:3px;font-size:13px;}
+.clave-form .err{min-height:16px;}
 .envio-op{display:block;width:100%;text-align:left;margin:0 0 10px;padding:12px 14px;}
 .envio-op b{display:block;font-size:13px;margin-bottom:3px;}
 .envio-op span{font-size:12px;color:var(--text-muted);}
@@ -181,6 +185,7 @@ let state = {
   uploadQueue: [], uploadIndex: -1, uploading: false,
   historial: null, histTab: 'youtube', histPais: '', controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
   envioDialog: null,
+  claveDialog: null,
   masterTotal: 0, masterPage: 0, territoryTotal: 0, territoryPage: 0, territoryStale: true,
   territoryOpciones: { reclamos: [], estado_trabajo: [] }, seqMaster: 0, seqTerritory: 0, envioBusy: false,
 };
@@ -300,13 +305,23 @@ function buscar(valor, idCampo){
 
 async function updateMasterField(id, field, value){
   if(field === 'tempo_id'){
-    // Pasa por la función que, si ese tempo_id numérico ya estaba en
-    // otra obra, fusiona las dos en una sola.
-    const { data, error } = await sb.rpc('fn_set_tempo_id', { p_track_id: id, p_tempo_id: value });
-    if(error){ alert('No se pudo guardar el tempo_id: ' + error.message); }
-    else if(data > 0){
-      alert(`Ese tempo_id ya estaba en otra obra: se fusionaron ${data === 1 ? '2 obras' : (data+1)+' obras'} en una sola.`);
+    // Si otra obra ya tiene ese Tempo ID, es la misma canción escrita de otra forma: con la confirmación de la
+    // persona, las dos obras se unifican en la que ya lo tenía (charts, reportes y envíos de ambas).
+    const limpio = String(value || '').trim();
+    let unificar = false;
+    if(/^[0-9]+$/.test(limpio)){
+      const { data: otras } = await sb.from('tracks_master').select('id,track_artist_concat').eq('tempo_id', limpio).limit(2);
+      const otra = (otras || []).find(o => o.id !== id);
+      if(otra){
+        unificar = confirm(`El Tempo ID ${limpio} ya está asignado a "${otra.track_artist_concat}".\n\n`
+          + `Si es la misma canción, aceptá para unificar las dos obras en "${otra.track_artist_concat}", con los `
+          + `charts, reportes y envíos de ambas. Para cancelar, presioná Cancelar.`);
+        if(!unificar){ await loadMaster(); render(); return; }
+      }
     }
+    const { data, error } = await sb.rpc('fn_asignar_tempo_id', { p_track_id: id, p_tempo_id: value, p_unificar: unificar });
+    if(error) alert('No se guardó el Tempo ID. ' + error.message);
+    else if(data > 0) alert('Las obras quedaron unificadas.');
     loadAll();
     return;
   }
@@ -448,6 +463,40 @@ function renderEnvioDialog(){
   </div>`;
 }
 
+function renderClaveDialog(){
+  const d = state.claveDialog;
+  if(!d) return '';
+  return `
+  <div class="modal-bg" id="claveBg">
+    <div class="modal small">
+      <button class="close" id="closeClave">Cancelar</button>
+      <h2 class="display">Cambiar contraseña</h2>
+      <p class="sub">Mínimo 10 caracteres. Las sesiones abiertas en otros equipos se cierran.</p>
+      <form id="claveForm" class="clave-form">
+        <label>Contraseña actual<input type="password" id="claveActual" autocomplete="current-password" required></label>
+        <label>Contraseña nueva<input type="password" id="claveNueva" autocomplete="new-password" required></label>
+        <label>Repetir la contraseña nueva<input type="password" id="claveRepetir" autocomplete="new-password" required></label>
+        <div class="err">${d.error || ''}</div>
+        <button class="btn primary" type="submit" id="claveGuardar" ${d.busy ? 'disabled' : ''}>Guardar</button>
+      </form>
+    </div>
+  </div>`;
+}
+
+async function guardarClave(){
+  const actual = document.getElementById('claveActual').value;
+  const nueva = document.getElementById('claveNueva').value;
+  const repetir = document.getElementById('claveRepetir').value;
+  const error = (m) => { state.claveDialog = { error: m }; render(); };
+  if(nueva.length < 10) return error('La contraseña nueva debe tener al menos 10 caracteres.');
+  if(nueva !== repetir) return error('Las contraseñas nuevas no coinciden.');
+  state.claveDialog = { busy: true }; render();
+  const r = await sb.auth.cambiarClave(actual, nueva);
+  if(r.error) return error(r.error.message);
+  state.claveDialog = null; render();
+  alert('La contraseña quedó cambiada.');
+}
+
 async function startEnvio(modo){
   const tipo = state.envioDialog.tipo;
   state.envioBusy = true; render();
@@ -520,23 +569,13 @@ async function downloadMasterCsv(envio, modo){
   if(blob) await archiveDownload(blob, filename, 'csv_principal', 'csv_principal', envio.obras);
 }
 
+// El CSV completo en una sola consulta (la API no tiene el límite de 1.000 filas de Supabase y lo envía comprimido).
 async function downloadFilteredCsv(fn, params, filename, columns){
-  const PAGE = 50000;   // la API propia no tiene el límite de 1.000 filas de Supabase: menos vueltas, sin recalcular
-  let from = 0;
-  const partes = [];
-  while(true){
-    let q = sb.rpc(fn, params);
-    if(columns) q = q.select(columns);
-    const { data, error } = await q.range(from, from + PAGE - 1).csv();
-    if(error){ alert('No se pudo generar el CSV: ' + error.message); return; }
-    const lineas = (data || '').split('\n').filter(l => l !== '');
-    const encabezado = lineas.shift();
-    if(!partes.length && encabezado !== undefined) partes.push(encabezado);
-    partes.push(...lineas);
-    if(lineas.length < PAGE) break;
-    from += PAGE;
-  }
-  const blob = new Blob([partes.join('\n')], {type:'text/csv'});
+  let q = sb.rpc(fn, params);
+  if(columns) q = q.select(columns);
+  const { data, error } = await q.csv();
+  if(error){ alert('No se pudo generar el CSV: ' + error.message); return; }
+  const blob = new Blob([(data || '').replace(/\n$/, '')], {type:'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
@@ -694,7 +733,7 @@ function handleCsv(file){
   return new Promise(async (resolve) => {
     let text;
     try { text = quitarNotaInicial(await readFileText(file)); }
-    catch(err){ await finishUpload(file, 0, 0, 0, [`No se pudo leer el archivo: ${err}`], null, null); return resolve(); }
+    catch(err){ await cargarArchivo(file, 0, [], [`No se pudo leer el archivo: ${err}`], null, null); return resolve(); }
 
     Papa.parse(text, {
       header:true, skipEmptyLines:true,
@@ -702,7 +741,7 @@ function handleCsv(file){
       complete: async (res) => {
         try {
           if(!res.data.length){
-            await finishUpload(file, 0, 0, 0, ['CSV vacío'], null, null);
+            await cargarArchivo(file, 0, [], ['CSV vacío'], null, null);
             return resolve();
           }
           const format = detectFormat(res.data[0], file.name);
@@ -714,7 +753,7 @@ function handleCsv(file){
           } else if(format === 'bo_report'){
             const pais = detectCountryFromFilename(file.name) || state.controlCountry;
             if(!pais){
-              await finishUpload(file, res.data.length, 0, 0,
+              await cargarArchivo(file, res.data.length, [],
                 ['No se pudo determinar el país: el nombre del archivo no lo indica y no se seleccionó uno en la pantalla de carga.'],
                 format, null);
             } else {
@@ -723,22 +762,16 @@ function handleCsv(file){
           } else if(format === 'spotify' || format === 'youtube'){
             await processRankingCsv(file, res.data, format);
           } else {
-            await finishUpload(file, res.data.length, 0, 0,
+            await cargarArchivo(file, res.data.length, [],
               ['No se reconoce el formato del CSV.'], null, null);
           }
         } catch (err) {
-          await finishUpload(file, 0, 0, 0, [String(err)], null, null);
+          await cargarArchivo(file, 0, [], [String(err)], null, null);
         }
         resolve();
       }
     });
   });
-}
-
-function chunkArray(arr, size){
-  const out = [];
-  for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i, i+size));
-  return out;
 }
 
 // Números enteros de los charts (posiciones, semanas, streams/vistas). Acepta separador de miles ("1,234,567" o
@@ -759,14 +792,19 @@ async function processRankingCsv(file, rows, format){
   // Source.Name fila por fila, para los export viejos que sí la tenían.
   const fileCountry = detectCountryFromFilename(file.name) || detectCountry(file.name);
   if(!fileCountry && !('source_name' in rows[0])){
-    await finishUpload(file, rows.length, 0, 0,
+    await cargarArchivo(file, rows.length, [],
       [`No se pudo determinar el país: el nombre "${file.name}" no lo incluye y el archivo no trae columna Source.Name.`],
       format, null);
     return;
   }
 
-  // Fecha del chart: del nombre del archivo. Si no viene, hoy.
+  // Semana del chart: del nombre del archivo. Sin semana no se carga (la fecha del día daría una semana equivocada).
   const fileDate = detectDateFromFilename(file.name);
+  if(!fileDate){
+    await cargarArchivo(file, rows.length, [],
+      [`El nombre "${file.name}" no indica la semana del chart (por ejemplo 2024-01-04): no se cargó.`], format, fileCountry);
+    return;
+  }
 
   for(const row of rows){
     // Solo el título es obligatorio. Si falta el artista (pasa en algunos
@@ -793,16 +831,7 @@ async function processRankingCsv(file, rows, format){
     });
   }
 
-  let updated=0, created_tracks=0;
-  for(const chunk of chunkArray(prepared, 250)){
-    const { data, error } = await sb.rpc('fn_upsert_ranking_batch', { p_rows: chunk, p_platform: format });
-    if(error){ errors.push(`Error de lote: ${error.message}`); continue; }
-    for(const r of data){
-      if(r.error_message) errors.push(`${chunk[r.idx-1]?.track_name || 'fila'}: ${r.error_message}`);
-      else { updated++; if(r.track_created) created_tracks++; }
-    }
-  }
-  await finishUpload(file, rows.length, updated, created_tracks, errors, format, fileCountry, fileDate || new Date().toISOString().slice(0,10));
+  await cargarArchivo(file, rows.length, prepared, errors, format, fileCountry, fileDate);
 }
 
 async function processMasterTempoCsv(file, rows){
@@ -814,16 +843,7 @@ async function processMasterTempoCsv(file, rows){
     prepared.push({ track_artist: track, tempo_id: (row.tempo_id || '').trim() });
   }
 
-  let updated = 0;
-  for(const chunk of chunkArray(prepared, 250)){
-    const { data, error } = await sb.rpc('fn_upsert_master_tempo_batch', { p_rows: chunk });
-    if(error){ errors.push(`Error de lote: ${error.message}`); continue; }
-    for(const r of data){
-      if(r.error_message) errors.push(r.error_message);
-      else updated++;
-    }
-  }
-  await finishUpload(file, rows.length, updated, 0, errors, 'master_tempo');
+  await cargarArchivo(file, rows.length, prepared, errors, 'master_tempo');
 }
 
 async function processTempoReportCsv(file, rows){
@@ -851,16 +871,7 @@ async function processTempoReportCsv(file, rows){
     });
   }
 
-  let updated=0;
-  for(const chunk of chunkArray(prepared, 250)){
-    const { data, error } = await sb.rpc('fn_upsert_tempo_report_batch', { p_rows: chunk });
-    if(error){ errors.push(`Error de lote: ${error.message}`); continue; }
-    for(const r of data){
-      if(r.error_message) errors.push(`${chunk[r.idx-1]?.tempo_id || 'fila'}: ${r.error_message}`);
-      else updated++;
-    }
-  }
-  await finishUpload(file, rows.length, updated, 0, errors, 'tempo_report');
+  await cargarArchivo(file, rows.length, prepared, errors, 'tempo_report');
 }
 
 async function processBoReportCsv(file, rows, pais){
@@ -879,16 +890,7 @@ async function processBoReportCsv(file, rows, pais){
     });
   }
 
-  let updated=0;
-  for(const chunk of chunkArray(prepared, 250)){
-    const { data, error } = await sb.rpc('fn_upsert_bo_report_batch', { p_rows: chunk, p_pais_code: pais });
-    if(error){ errors.push(`Error de lote: ${error.message}`); continue; }
-    for(const r of data){
-      if(r.error_message) errors.push(`${chunk[r.idx-1]?.tempo_id || 'fila'}: ${r.error_message}`);
-      else updated++;
-    }
-  }
-  await finishUpload(file, rows.length, updated, 0, errors, 'bo_report', pais);
+  await cargarArchivo(file, rows.length, prepared, errors, 'bo_report', pais);
 }
 
 // Supabase Storage no admite acentos ni caracteres especiales en la
@@ -917,21 +919,22 @@ function storageFolder(format, pais){
   }
 }
 
-async function finishUpload(file, total, updated, created_tracks, errors, format, pais, semana){
-  const storagePath = `${storageFolder(format, pais)}/${Date.now()}_${sanitizeStorageName(file.name)}`;
-  let filePath = null;
-  const { error: upErr } = await sb.storage.from('csv-uploads').upload(storagePath, file);
-  if(!upErr) filePath = storagePath;
-  else errors = [...errors, `No se pudo guardar el archivo en Storage: ${upErr.message}`];
-
+// Guarda el archivo original y después carga sus filas y lo registra en el historial en una sola operación de la base
+// (fn_cargar_archivo): queda todo o no queda nada. Sin el archivo original no se carga ningún dato.
+async function cargarArchivo(file, total, filas, errors, format, pais, semana){
   const item = state.uploadQueue[state.uploadIndex];
-  if(item) item.result = { format, pais, semana, total, updated, created_tracks, errors };
-
-  await sb.from('csv_uploads').insert({
-    filename: file.name, total_rows: total, created_tracks,
-    updated_rows: updated, error_count: errors.length, errors: errors.slice(0, 100),
-    file_path: filePath, format,
+  const resultado = (updated, created_tracks, errs) => {
+    if(item) item.result = { format, pais, semana, total, updated, created_tracks, errors: errs };
+  };
+  const storagePath = `${storageFolder(format, pais)}/${Date.now()}_${sanitizeStorageName(file.name)}`;
+  const { error: upErr } = await sb.storage.from('csv-uploads').upload(storagePath, file);
+  if(upErr){ resultado(0, 0, [...errors, `No se cargó: no se pudo guardar el archivo original (${upErr.message}).`]); return; }
+  const { data, error } = await sb.rpc('fn_cargar_archivo', {
+    p_formato: format || null, p_filas: filas, p_archivo: file.name, p_ruta: storagePath, p_total: total,
+    p_pais: format === 'bo_report' ? pais : null, p_errores: errors,
   });
+  if(error){ resultado(0, 0, [...errors, `No se cargó ninguna fila: ${error.message}`]); return; }
+  resultado(data.updated, data.created_tracks, data.errors);
 }
 
 async function loadLastChartLoad(){
@@ -1004,6 +1007,7 @@ function renderTopbar(){
       <div class="who">${state.session.user.email} · <span class="mono">${state.profile.app_role}</span></div>
       <div style="display:flex;gap:8px;align-items:center;">
         <a class="manual-link" id="manualLink" href="manual.html" target="_blank" rel="noopener">Manual de uso</a>
+        <button id="claveBtn">Cambiar contraseña</button>
         <button id="logoutBtn">Cerrar sesión</button>
       </div>
     </div>
@@ -1382,7 +1386,7 @@ function render(){
     ${renderTopbar()}${renderTabs()}
     <div class="panel-body">${renderBody()}</div>
     <footer><span>Auditor de Rankings Digitales</span><span>${rows_count()}</span></footer>
-  </div>${renderHistoryModal()}${renderEnvioDialog()}`;
+  </div>${renderHistoryModal()}${renderEnvioDialog()}${renderClaveDialog()}`;
   attachAppEvents();
 }
 function rows_count(){
@@ -1399,6 +1403,11 @@ function attachLoginEvents(){
 
 function attachAppEvents(){
   document.getElementById('logoutBtn').onclick = doLogout;
+  document.getElementById('claveBtn').onclick = () => { state.claveDialog = {}; render(); document.getElementById('claveActual').focus(); };
+  const claveF = document.getElementById('claveForm');
+  if(claveF) claveF.onsubmit = (e) => { e.preventDefault(); guardarClave(); };
+  const closeC = document.getElementById('closeClave');
+  if(closeC) closeC.onclick = () => { state.claveDialog = null; render(); };
   document.querySelectorAll('[data-tab]').forEach(t => t.onclick = async () => {
     const habiaBusqueda = !!state.search;
     state.activeTab = t.dataset.tab; state.search='';
@@ -1485,9 +1494,10 @@ function attachAppEvents(){
   const bgE = document.getElementById('envioBg');
   if(bgE) bgE.onclick = (e) => { if(e.target === bgE && !state.envioBusy){ state.envioDialog = null; render(); } };
   const exT = document.getElementById('exportTerritory');
-  if(exT) exT.onclick = () => downloadFilteredCsv('fn_territory_export', {
+  if(exT) exT.onclick = () => downloadFilteredCsv('fn_territory_exportar', {
     p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null,
-    p_pais: state.territoryCountry || null,
+    p_pais: state.territoryCountry || null, p_buscar: state.search || null,
+    p_reclamos: state.reclamosFilter || null, p_estado_trabajo: state.estadoTrabajoFilter || null,
   }, `tabla_territorio${state.territoryCountry?'_'+state.territoryCountry:''}.csv`);
 
   const dz = document.getElementById('dropzone'); const fi = document.getElementById('fileInput');

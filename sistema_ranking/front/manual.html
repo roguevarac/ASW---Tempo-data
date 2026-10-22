@@ -108,8 +108,14 @@ en la computadora del usuario.</p>
 
 <section id="entrar">
 <h2>Ingreso y permisos</h2>
-<p>El ingreso se realiza con email y contraseña. La sesión vence a las pocas horas y luego se solicita nuevamente la
-contraseña. Para restablecer una contraseña, contactá a la persona que administra el sistema.</p>
+<p>El ingreso se realiza con email y contraseña. Mientras se utiliza la aplicación, la sesión se mantiene abierta; se
+cierra después de 8 horas sin uso o al presionar <b>Cerrar sesión</b>, y luego se solicita nuevamente la contraseña.
+Después de 8 intentos fallidos, el ingreso se bloquea por unos minutos.</p>
+<ul>
+  <li><b>Cambiar contraseña</b> (arriba a la derecha): solicita la contraseña actual y la nueva, de al menos 10
+    caracteres. Al cambiarla se cierran las sesiones abiertas en otros equipos.</li>
+  <li>Si olvidaste la contraseña, contactá a la persona que administra el sistema.</li>
+</ul>
 <table>
   <tr><th>Rol</th><th>Permisos</th></tr>
   <tr><td><b>admin</b></td><td>Carga de archivos, edición de Tempo ID y estados de trabajo, y descargas. Además, puede ver
@@ -128,7 +134,7 @@ contraseña. Para restablecer una contraseña, contactá a la persona que admini
     <i>"Seleccionar país para ver fecha de última carga"</i>. Se toma el territorio del filtro de la pestaña activa; en
     Carga CSV e Historial de cargas, el último seleccionado. La fecha corresponde a la <b>semana del chart</b>, no al
     día de la carga: cargar hoy un chart anterior no la modifica.</li>
-  <li><b>Superior derecha:</b> usuario y rol, <b>Manual de uso</b> y <b>Cerrar sesión</b>.</li>
+  <li><b>Superior derecha:</b> usuario y rol, <b>Manual de uso</b>, <b>Cambiar contraseña</b> y <b>Cerrar sesión</b>.</li>
   <li><b>Pestañas:</b> Tabla principal, Tabla por territorio, Carga CSV e Historial de cargas.</li>
   <li><b>Pie de página:</b> cantidad de filas visibles con los filtros aplicados.</li>
 </ul>
@@ -170,6 +176,8 @@ las obras con Tempo ID, también las ya enviadas. El mismo criterio aplica al CS
     cargadas.</li>
   <li>Al finalizar se muestran los totales y, si corresponde, el detalle de los errores.</li>
 </ol>
+<p>Cada archivo se carga completo o no se carga: si la carga se interrumpe (por ejemplo, por un corte de conexión),
+no quedan datos parciales y el archivo puede volver a cargarse.</p>
 <table>
   <tr><th>Tipo de archivo</th><th>Información que carga</th></tr>
   <tr><td><b>Spotify</b> (chart semanal)</td><td>La semana del chart de un territorio: posiciones y streams. Crea las
@@ -208,8 +216,8 @@ siguientes formatos:</p>
 <ul>
   <li><b>Plataforma:</b> YouTube si el nombre contiene "youtube" (o los enlaces son de YouTube); en otro caso, Spotify.</li>
   <li><b>Territorio:</b> código de dos letras entre guiones (<code>-ar-</code>, <code>-py-</code>…) o nombre del país.</li>
-  <li><b>Semana:</b> fecha con formato <code>2021-01-07</code> o <code>20210107</code>. Si el nombre no incluye fecha, se
-    utiliza la del día de la carga; por eso se recomienda no modificar esas partes del nombre.</li>
+  <li><b>Semana:</b> fecha con formato <code>2021-01-07</code> o <code>20210107</code>. Un chart cuyo nombre no incluye la
+    fecha no se carga; por eso se recomienda no modificar esas partes del nombre.</li>
   <li>Los agregados al final del nombre (como <code>-ult</code>) no afectan la lectura.</li>
 </ul>
 <p>También se interpretan el formato anterior de los charts de Spotify, el formato oficial de YouTube, los números con
@@ -264,8 +272,14 @@ página. La búsqueda y los filtros se aplican sobre todas las canciones, no sol
 elige al presionar el botón correspondiente.</p>
 <h3>Registro del Tempo ID</h3>
 <p>Ingresá el número en la celda y salí de ella (clic fuera o Tab): se guarda automáticamente. Las celdas vacías se
-marcan en rojo. Un Tempo ID no puede asignarse a dos obras: si ya está asignado, el sistema no lo guarda y lo
-informa. El Tempo ID registrado se aplica también a todas las filas de esa obra en la tabla por territorio.</p>
+marcan en rojo. El Tempo ID registrado se aplica también a todas las filas de esa obra en la tabla por territorio.</p>
+<p>Un Tempo ID corresponde a una sola obra. Si ya está asignado a otra, el sistema indica a cuál y consulta si se trata
+de la misma canción (por ejemplo, escrita de otra forma en Spotify y en YouTube):</p>
+<ul>
+  <li><b>Aceptar:</b> las dos obras se unifican en la que ya tenía el Tempo ID, con los charts, reportes y descargas
+    registradas de ambas.</li>
+  <li><b>Cancelar:</b> no se modifica nada.</li>
+</ul>
 <h3>Botones de descarga</h3>
 <ul>
   <li><b>Descargar CSV:</b> "Track - Artista" y Tempo ID, para completar los Tempo ID en Excel o consultarlos en Tempo.</li>
@@ -335,7 +349,8 @@ OK BO-Tempo y OK - Obra AR / MX) los define siempre el sistema. Para registrar o
   <li><b>País</b> y <b>Desde / Hasta</b> (semanas del chart).</li>
   <li><b>Reclamos</b> y <b>Estado de trabajo</b>, con los valores presentes en la tabla, como el filtro de Excel.</li>
   <li><b>Buscar</b> por Tempo ID o título.</li>
-  <li><b>Descargar CSV</b> genera la tabla con los filtros de país y fechas y las mismas columnas de la pantalla.</li>
+  <li><b>Descargar CSV</b> genera la tabla completa con los filtros y la búsqueda aplicados, y las mismas columnas de la
+    pantalla.</li>
 </ul>
 </section>
 
@@ -371,8 +386,10 @@ auditoría:</p>
   <tr><td><code>Youtube Charts\&lt;país&gt;</code></td><td>Charts de YouTube cargados.</td></tr>
   <tr><td><code>Reportes BackOffice\&lt;país&gt;</code></td><td>Reportes BackOffice cargados.</td></tr>
   <tr><td><code>Reportes Tempo Control</code></td><td>Reportes Tempo Control y archivos de Tempo IDs cargados.</td></tr>
-  <tr><td><code>respaldo_documentacion_sistema</code></td><td>Respaldos completos del sistema y documentación técnica.</td></tr>
+  <tr><td><code>respaldo_documentacion_sistema</code></td><td>Respaldos completos del sistema y documentación técnica. En
+    <code>respaldos\automaticos</code>, el respaldo diario de la base de datos.</td></tr>
 </table>
+<p>Además, el sistema realiza un respaldo completo por día de forma automática, sin intervención.</p>
 <div class="caja"><p>La información del sistema reside en su base de datos. La carpeta de OneDrive es una copia: el sistema
 no la lee, por lo que borrar o modificar un archivo allí no altera la información de la aplicación. Para incorporar
 datos, utilizá siempre <b>Carga CSV</b>.</p></div>
@@ -391,8 +408,12 @@ datos, utilizá siempre <b>Carga CSV</b>.</p></div>
     coincide con ninguna obra. Utilizá el CSV descargado de la tabla principal sin modificar esa columna.</td></tr>
   <tr><td>"No se reconoce el formato del CSV"</td><td>El archivo no tiene las columnas de ninguno de los tipos admitidos
     (ver <a href="#carga">Carga CSV</a>). Verificá que sea el archivo original y que esté guardado como CSV.</td></tr>
-  <tr><td>No se guarda un Tempo ID</td><td>Ese Tempo ID ya está asignado a otra obra. Buscalo en la tabla principal para
-    identificarla.</td></tr>
+  <tr><td>"El Tempo ID … ya está asignado a …"</td><td>Si es la misma canción, volvé a ingresarlo y aceptá la
+    unificación. Si no, verificá el Tempo ID en Tempo.</td></tr>
+  <tr><td>"… no indica la semana del chart"</td><td>El nombre del chart no incluye la fecha. Descargalo nuevamente o
+    renombralo con el formato original (ver <a href="#nombres">Nombres de los charts</a>) y volvé a cargarlo.</td></tr>
+  <tr><td>"La sesión venció. Volvé a ingresar."</td><td>Pasaron 8 horas sin uso, se cerró la sesión o se cambió la
+    contraseña en otro equipo. Ingresá nuevamente.</td></tr>
   <tr><td>La fecha de última carga no cambia</td><td>Seleccioná el país. La fecha corresponde a la semana del chart más
     reciente, no al día de la carga.</td></tr>
   <tr><td>"Auditor de Rankings Digitales está iniciando o apagado"</td><td>El servidor se está iniciando (por ejemplo, después de

@@ -15,10 +15,16 @@ x-sin-proxy: &sin-proxy
   NO_PROXY: db,localhost,127.0.0.1,${NO_PROXY:-}
   no_proxy: db,localhost,127.0.0.1,${no_proxy:-}
 
+# Registros de cada servicio con tope (sin esto Docker los guarda enteros y crecen sin límite).
+x-registros: &registros
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
 services:
   db:
     image: ${IMAGEN_POSTGRES:-postgres:17}
     restart: unless-stopped
+    logging: *registros
     environment:
       POSTGRES_DB: ranking
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD}
@@ -41,6 +47,7 @@ services:
       AUTHENTICATOR_PASSWORD: ${AUTHENTICATOR_PASSWORD:?Falta AUTHENTICATOR_PASSWORD}
     volumes:
       - ./db:/db:ro
+    logging: *registros
     entrypoint: ["sh", "-c", "if psql \"$$PGURL\" -Atc \"select to_regclass('public.tracks_master') is not null\" | grep -q t; then echo 'Base ya instalada'; sh /db/mejoras.sh; else sh /db/instalar.sh; fi"]
     restart: "no"
 
@@ -56,6 +63,7 @@ services:
         no_proxy: ${no_proxy:-}
         <<: *proxy
     restart: unless-stopped
+    logging: *registros
     depends_on:
       instalador: { condition: service_completed_successfully }
     environment:
@@ -78,6 +86,7 @@ services:
   espejo:
     image: ${IMAGEN_API:-ranking-digital-api:local}
     restart: unless-stopped
+    logging: *registros
     user: root
     depends_on:
       db: { condition: service_healthy }
@@ -89,6 +98,28 @@ services:
       - archivos:/data/storage:ro
       - ${ESPEJO_DIR:-espejo_apagado}:/espejo
     command: ["python", "espejo.py", "--servicio"]
+
+  # Respaldo automático (db/respaldo_automatico.sh): un respaldo completo por día en la carpeta de respaldos
+  # (RESPALDOS_DIR, la pasa ranking.sh), con el mismo formato que "ranking.sh respaldo"; conserva los últimos
+  # RESPALDO_CONSERVAR y copia el .dump al espejo de OneDrive. RESPALDO_HORAS=0 lo apaga. Sin carpeta no hace nada.
+  respaldo:
+    image: ${IMAGEN_POSTGRES:-postgres:17}
+    restart: unless-stopped
+    logging: *registros
+    depends_on:
+      instalador: { condition: service_completed_successfully }
+    environment:
+      PGURL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/ranking
+      RESPALDO_ACTIVO: ${RESPALDOS_DIR:+1}
+      RESPALDO_HORAS: ${RESPALDO_HORAS:-24}
+      RESPALDO_CONSERVAR: ${RESPALDO_CONSERVAR:-14}
+      ESPEJO: ${ESPEJO_DIR:+/espejo}
+    volumes:
+      - ./db:/db:ro
+      - archivos:/data/storage:ro
+      - ${RESPALDOS_DIR:-respaldos_apagado}:/respaldos
+      - ${ESPEJO_DIR:-espejo_apagado}:/espejo
+    entrypoint: ["sh", "/db/respaldo_automatico.sh"]
 
   # Herramientas de administración (migración, usuarios, respaldo). No arranca sola: se usa con "docker compose run".
   herramientas:
@@ -112,3 +143,4 @@ volumes:
   archivos:
   exportacion:
   espejo_apagado:
+  respaldos_apagado:

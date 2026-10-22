@@ -52,10 +52,12 @@ si() {
 # oculto de Windows sin él), cada "up" vería otra configuración y reiniciaría la API.
 CLAVES_PROXY=(HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy)
 CLAVES_CONFIG=(POSTGRES_PASSWORD AUTHENTICATOR_PASSWORD JWT_SECRET PUERTO ESCUCHAR SESSION_HOURS MAX_UPLOAD_MB
-               STATEMENT_TIMEOUT DB_POOL IMAGEN_POSTGRES IMAGEN_PYTHON ESPEJO_DIR "${CLAVES_PROXY[@]}")
+               STATEMENT_TIMEOUT DB_POOL IMAGEN_POSTGRES IMAGEN_PYTHON ESPEJO_DIR RESPALDO_HORAS RESPALDO_CONSERVAR
+               "${CLAVES_PROXY[@]}")
 dc() {
     local sin=() k; for k in "${CLAVES_CONFIG[@]}"; do sin+=(-u "$k"); done
-    env "${sin[@]}" docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" --env-file "$CONFIG" "$@"
+    mkdir -p "$RESPALDOS" 2> /dev/null   # el servicio "respaldo" escribe ahí (si no existe, Docker la crearía como root)
+    env "${sin[@]}" RESPALDOS_DIR="$RESPALDOS" docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" --env-file "$CONFIG" "$@"
 }
 
 # ---------------------------------------------------------------- configuración
@@ -428,7 +430,7 @@ cmd_estado() {
     echo "Configuración: $CONFIG    Respaldos: $RESPALDOS"
 }
 
-cmd_logs() { verificar_docker; instalado; dc logs --tail "${1:-100}" api db espejo; }
+cmd_logs() { verificar_docker; instalado; dc logs --tail "${1:-100}" api db espejo respaldo; }
 
 cmd_respaldo() {
     verificar_docker; instalado
@@ -527,7 +529,7 @@ cmd_restaurar() {
                        public.territory_bo_report, public.territory_tempo_report, public.csv_uploads, public.audit_logs,
                        public.bo_export_counter, public.staging_tempo_historico, public.resultado_tempo_historico,
                        public.envio_obras, public.envios,
-                       auth.users, storage.objects, storage.buckets" > /dev/null || fallar "No se pudo vaciar la base."
+                       auth.sesiones, auth.users, storage.objects, storage.buckets" > /dev/null || fallar "No se pudo vaciar la base."
     dc exec -T db pg_restore -U postgres -d ranking --data-only --disable-triggers --single-transaction \
         -n public -n auth -n storage < "$RESPALDOS/$f.dump" || fallar "No se pudo restaurar la base (quedó vacía: volvé a intentar)."
     titulo "Restaurando los archivos"
@@ -693,7 +695,7 @@ cmd_verificar() {
     if docker info > /dev/null 2>&1; then linea ok "Docker funcionando"; else linea mal "Docker no está corriendo (sudo service docker start)"; fi
     if [ -f "$CONFIG" ]; then linea ok "Configuración en $CONFIG"; else linea mal "Sin configuración: falta bash ranking.sh instalar"; fi
     if [ "$fallo" = 0 ]; then
-        for n in db api espejo; do
+        for n in db api espejo respaldo; do
             if [ -n "$(dc ps --status running -q "$n" 2> /dev/null)" ]; then linea ok "Contenedor $n corriendo"; else linea mal "Contenedor $n apagado (bash ranking.sh abrir)"; fi
         done
         if curl -fsS --noproxy '*' "http://127.0.0.1:$(valor PUERTO)/health" > /dev/null 2>&1; then
@@ -708,6 +710,11 @@ cmd_verificar() {
             linea ok "Espejo de auditoría en OneDrive: $(valor ESPEJO_DIR)"
         else aviso "  AVISO  No se puede escribir en el espejo de OneDrive ($(valor ESPEJO_DIR)); ver README, sección Espejo"; fi
         n="$(charts_pendientes)"
+        local ultimo_auto; ultimo_auto="$(ls -1 "$RESPALDOS"/ranking_auto_*.dump 2> /dev/null | sort | tail -n 1)"
+        if [ -z "$ultimo_auto" ]; then aviso "  AVISO  Todavía no hay respaldo automático (se hace al arrancar y una vez por día)"
+        elif [ -n "$(find "$ultimo_auto" -mmin +$((49 * 60)) 2> /dev/null)" ]; then
+            aviso "  AVISO  El último respaldo automático tiene más de dos días: $(basename "$ultimo_auto" .dump) (bash ranking.sh logs)"
+        else linea ok "Respaldo automático: $(basename "$ultimo_auto" .dump)"; fi
         [ "${n:-0}" -gt 0 ] && aviso "  AVISO  $n charts en OneDrive (Spotify Charts / Youtube Charts) sin cargar: bash ranking.sh cargar-historicos"
     fi
     echo "  Versión del programa: $(version_programa)"

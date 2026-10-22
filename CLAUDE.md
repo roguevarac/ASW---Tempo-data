@@ -78,7 +78,9 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 - PostgreSQL (17 en la PC; también probado con 16) + API FastAPI propia + el mismo front (`frontend_ranking_digital.html` -> `front/index.html` con
   `front/generar_index.py`; `tempo-client.js` imita supabase-js). Ver `sistema_ranking/README.md`.
 - El esquema (`db/03`, `db/04`) se genera del CSV `migracion_supabase/origen/esquema_supabase.csv`; no editarlo a mano.
-- Comportamientos heredados de Supabase se mantienen a propósito (listados en el README); `anon` no tiene permisos.
+- Supabase fue solo el entorno de prueba: es una aplicación profesional de uso diario. Las limitaciones heredadas se
+  corrigen (tabla en el README, "Uso diario en la empresa"); solo quedan las que el README lista como que se mantienen.
+  `anon` no tiene permisos.
 - Antes de entregar un cambio: `sistema_ranking/tests/correr_todo.sh` (Postgres local: `PGHOST_URL`, por defecto el
   puerto 54340; con PowerShell también prueba la versión portable de Windows de punta a punta).
 - **Entorno real del usuario:** WSL2 Ubuntu 26.04 + Docker Engine dentro de Ubuntu (`docker compose`, sin Docker
@@ -141,6 +143,20 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     100 filas (`PAGE_SIZE`) con el total; búsqueda y filtros van al servidor. **Nunca volver a traer una tabla entera
     para mostrarla.** `fn_master_view`/`fn_territory_view` quedan para descargas. `test_rendimiento.py` (al final de
     `correr_todo`, vacía la base) mide los tiempos con volumen real.
+  - **Uso diario (22/10/2026, `db/mejoras/04_uso_diario.sql`):**
+    - Sesiones en `auth.sesiones`: el token lleva `sid`; la API valida cada pedido con `auth.sesion_valida`
+      (inactividad = `SESSION_HOURS`). `/auth/renovar`, `/auth/salir`, `/auth/clave`. `tempo-client.js` renueva a mitad
+      de vigencia. Si una tabla nueva apunta a `auth.users`, agregarla a los TRUNCATE de `restaurar` y `importar.py`.
+    - El freno de ingreso cuenta solo intentos fallidos.
+    - Cargas: `fn_cargar_archivo` (filas + `csv_uploads` en una transacción; el archivo se guarda antes). El front ya no
+      manda tandas de 250. Chart sin semana en el nombre: no se carga (como `importar_charts.py`).
+    - Tempo ID: `fn_asignar_tempo_id` (con `p_unificar` tras la confirmación) unifica obras. No usar `fn_set_tempo_id`
+      en el front.
+    - Descarga por territorio: `fn_territory_exportar` (todos los filtros). Respuestas con gzip.
+    - Servicio `respaldo` (`db/respaldo_automatico.sh`, imagen de postgres): diario, `ranking_auto_*` en `RESPALDOS`
+      (ranking.sh pasa `RESPALDOS_DIR`), conserva 14 y copia el `.dump` a OneDrive. `RESPALDO_HORAS=0` lo apaga. El
+      usuario lo pidió (uso profesional): no es una carga automática de datos.
+    - Logs de Docker con tope (`x-registros`).
   - **Manual de uso:** `front/manual.html` (enlace "Manual de uso" arriba a la derecha).
     **Regla fija (pedido del usuario): toda mejora o agregado que cambie lo que ve o hace el usuario se entrega con el
     manual actualizado en el mismo commit, sin que lo pida.** Solo si la información le sirve a quien usa el sistema;

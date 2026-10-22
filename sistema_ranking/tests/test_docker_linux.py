@@ -65,6 +65,8 @@ ESPEJO = pathlib.Path(ENTORNO["RK_ESPEJO"])
 ESPEJO.mkdir(parents=True)
 os.chown(ESPEJO, 1000, 1000)
 ESPEJO.chmod(0o755)
+respaldos.mkdir()
+os.chown(respaldos, 1000, 1000)   # como en la PC: la carpeta de respaldos es del usuario de Ubuntu
 
 # Carpetas "OneDrive" con los CSV del historial por su nombre original, salvo uno (tiene que bajarse del bucket).
 onedrive = base / "onedrive" / "Backoffice"
@@ -333,6 +335,41 @@ try:
     check("usuarios: crear un auditor desde el menú", login("nueva@prueba.local", "clave-nueva-1234").status_code == 200, texto("usuarios.log")[-800:])
     check("usuarios: bloquear desde el menú", base_nueva("select banned_until > now() from auth.users where email='estandar@prueba.local'") == "t")
 
+    # ================================================================ respaldo automático (servicio "respaldo")
+    for _ in range(120):
+        auto = sorted(respaldos.glob("ranking_auto_*.dump"))
+        if auto and (respaldos / (auto[-1].name[:-5] + "_archivos.tgz")).exists():
+            break
+        time.sleep(1)
+    check("respaldo automático: al arrancar deja un respaldo completo (base y archivos), a nombre del dueño de la carpeta",
+          auto and auto[-1].stat().st_size > 0 and auto[-1].stat().st_uid == 1000
+          and (respaldos / (auto[-1].name[:-5] + "_archivos.tgz")).stat().st_uid == 1000,
+          (dc("logs", "respaldo").stdout[-800:], [(f.name, f.stat().st_uid) for f in respaldos.iterdir()]))
+    check("respaldo automático: copia el .dump en OneDrive (respaldo_documentacion_sistema/respaldos/automaticos)",
+          auto and (ESPEJO / "respaldo_documentacion_sistema" / "respaldos" / "automaticos" / auto[-1].name).read_bytes()
+          == auto[-1].read_bytes(), dc("logs", "respaldo").stdout[-800:])
+    # Conserva los últimos 14 automáticos: con 15 viejos (de hace días), al reiniciar hace uno nuevo y borra los sobrantes.
+    for f in respaldos.glob("ranking_auto_*"):
+        f.unlink()
+    viejos = [f"ranking_auto_202501{d:02d}_030000" for d in range(1, 16)]
+    for n in viejos:
+        for ext in (".dump", "_archivos.tgz"):
+            (respaldos / (n + ext)).write_text("viejo")
+            os.utime(respaldos / (n + ext), (time.time() - 3 * 86400, time.time() - 3 * 86400))
+    (respaldos / "ranking_20250101_030000.dump").write_text("manual")   # los manuales no se tocan
+    dc("restart", "respaldo")
+    for _ in range(120):
+        auto = sorted(respaldos.glob("ranking_auto_*.dump"))
+        if auto and auto[-1].name[:-5] not in viejos and (respaldos / (auto[-1].name[:-5] + "_archivos.tgz")).exists():
+            break
+        time.sleep(1)
+    quedan_auto = sorted(f.name[:-5] for f in respaldos.glob("ranking_auto_*.dump"))
+    check("respaldo automático: conserva los últimos 14 (los manuales no se tocan)",
+          len(quedan_auto) == 14 and quedan_auto[:13] == viejos[2:] and quedan_auto[-1] not in viejos
+          and not (respaldos / f"{viejos[0]}_archivos.tgz").exists() and (respaldos / "ranking_20250101_030000.dump").exists(),
+          (quedan_auto, dc("logs", "respaldo").stdout[-600:]))
+    (respaldos / "ranking_20250101_030000.dump").unlink()
+
     # ================================================================ respaldo y restauración
     antes = {t: base_nueva(f"select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from {t} x")
              for t in ("public.tracks_master", "public.territory_tracks", "public.csv_uploads", "public.audit_logs", "auth.users", "storage.objects")}
@@ -511,6 +548,8 @@ try:
     check("verificar: el espejo de OneDrive se puede escribir (servicio espejo corriendo)",
           "Espejo de auditoría en OneDrive: " in r.stdout and "No se puede escribir" not in r.stdout
           and "Contenedor espejo corriendo" in r.stdout, r.stdout[-1500:])
+    check("verificar: muestra el último respaldo automático", "Contenedor respaldo corriendo" in r.stdout
+          and "Respaldo automático: ranking_auto_" in r.stdout, r.stdout[-1500:])
     check("el horario viejo de YouTube se borra de la configuración", "YOUTUBE_CRON" not in config.read_text())
 
     def subir(archivo, cambio, mensaje):
@@ -520,11 +559,11 @@ try:
         subprocess.run(git + ["-C", str(fuente), "push", "-q", "origin", "main"], check=True)
 
     subir("front/index.html", lambda t: t + "<!-- mejora 2 -->", "mejora 2: nuevo texto en el front")
-    respaldos_antes = len(list(respaldos.glob("*.dump")))
+    respaldos_antes = len(list(respaldos.glob("ranking_2*.dump")))   # los manuales (los automáticos son ranking_auto_*)
     datos_antes = base_nueva("select count(*) || md5(string_agg(x::text, '|' order by x::text)) from tracks_master x")
     r = sin_terminal("actualizar")
     check("actualizar: respaldo, versión nueva y verificación", r.returncode == 0 and "mejora 2: nuevo texto en el front" in r.stdout
-          and len(list(respaldos.glob("*.dump"))) == respaldos_antes + 1 and "Todo en orden" in r.stdout, (r.stdout + r.stderr)[-2000:])
+          and len(list(respaldos.glob("ranking_2*.dump"))) == respaldos_antes + 1 and "Todo en orden" in r.stdout, (r.stdout + r.stderr)[-2000:])
     check("actualizar: el sistema sirve la versión nueva y los datos siguen iguales",
           "mejora 2" in httpx.get(api("/"), trust_env=False).text
           and base_nueva("select count(*) || md5(string_agg(x::text, '|' order by x::text)) from tracks_master x") == datos_antes)

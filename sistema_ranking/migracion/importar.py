@@ -171,7 +171,11 @@ def main():
         # El seguimiento de envíos (mejora propia, db/mejoras) apunta a las obras: se vacía con ellas.
         propias = [t for t in ("envio_obras", "envios")
                    if cur.execute("SELECT to_regclass(%s) IS NOT NULL", (f"public.{t}",)).fetchone()[0]]
-        cur.execute("TRUNCATE " + ", ".join(f"public.{t}" for t in propias + TABLAS) + ", auth.users, storage.objects")
+        if cur.execute("SELECT to_regclass('auth.sesiones') IS NOT NULL").fetchone()[0]:
+            propias_auth = ", auth.sesiones"
+        else:
+            propias_auth = ""
+        cur.execute("TRUNCATE " + ", ".join(f"public.{t}" for t in propias + TABLAS) + propias_auth + ", auth.users, storage.objects")
 
         n = cargar(cur, "auth", "users", ORIGEN / "tablas" / "auth_users.csv")
         print("auth.users:", n)

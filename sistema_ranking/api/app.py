@@ -33,6 +33,7 @@ from psycopg import sql
 from psycopg.types.string import StrDumperUnknown
 from psycopg_pool import ConnectionPool
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 log = logging.getLogger("ranking")
@@ -47,6 +48,9 @@ STORAGE_DIR = pathlib.Path(os.environ.get("STORAGE_DIR", "/data/storage")).resol
 FRONT_DIR = pathlib.Path(os.environ.get("FRONT_DIR", pathlib.Path(__file__).resolve().parents[1] / "front")).resolve()
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "50"))
 STATEMENT_TIMEOUT = os.environ.get("STATEMENT_TIMEOUT", "120s")
+# La carga de un archivo va en una sola consulta (todo o nada): un reporte grande puede tardar más que una consulta común.
+CARGA_TIMEOUT = os.environ.get("CARGA_TIMEOUT", "900s")
+FUNCIONES_DE_CARGA = {"fn_cargar_archivo"}
 
 IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
@@ -61,6 +65,8 @@ pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=int(os.environ.get("DB_
                       configure=_configurar, check=ConnectionPool.check_connection, open=False)
 
 app = FastAPI(title="Ranking Digital API", docs_url=None, redoc_url=None)
+# Respuestas comprimidas: el front, las tablas y los CSV viajan varias veces más livianos.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.on_event("startup")
@@ -140,12 +146,24 @@ def _valor_db(v):
 
 
 # ---------------------------------------------------------------- sesión
-def emitir_token(user_id, email):
+# Cada ingreso abre una sesión en la base (auth.sesiones, db/mejoras/04_uso_diario.sql). El token dura SESSION_HOURS y
+# el front lo renueva mientras se usa la aplicación (/auth/renovar); la sesión vence tras SESSION_HOURS sin uso, al
+# cerrarla (/auth/salir), al cambiar la contraseña en otro equipo o al bloquear al usuario.
+INACTIVIDAD = f"{SESSION_HOURS} hours"
+
+
+def emitir_token(user_id, email, sesion):
     ahora = int(time.time())
     exp = ahora + int(SESSION_HOURS * 3600)
-    token = jwt.encode({"sub": str(user_id), "email": email, "role": "authenticated", "iat": ahora, "exp": exp},
-                       JWT_SECRET, algorithm="HS256")
+    token = jwt.encode({"sub": str(user_id), "email": email, "role": "authenticated", "sid": str(sesion),
+                        "iat": ahora, "exp": exp}, JWT_SECRET, algorithm="HS256")
     return token, exp
+
+
+def respuesta_sesion(user_id, email, sesion):
+    token, exp = emitir_token(user_id, email, sesion)
+    return respuesta_json({"access_token": token, "token_type": "bearer", "expires_at": exp,
+                           "expires_in": int(SESSION_HOURS * 3600), "user": {"id": str(user_id), "email": email}})
 
 
 def usuario_del_pedido(request: Request):
@@ -162,22 +180,24 @@ def usuario_del_pedido(request: Request):
 
 
 @contextmanager
-def transaccion(claims=None, rol="authenticated"):
+def transaccion(claims=None, rol="authenticated", limite=None):
     """Conexión con el rol y el usuario del pedido (auth.uid() = claims['sub'])."""
     with pool.connection() as conn:
         with conn.transaction():
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(rol)))
-                cur.execute("SELECT set_config('statement_timeout', %s, true)", (STATEMENT_TIMEOUT,))
+                cur.execute("SELECT set_config('statement_timeout', %s, true)", (limite or STATEMENT_TIMEOUT,))
                 if claims:
                     cur.execute("SELECT set_config('request.jwt.claims', %s, true), "
                                 "set_config('request.jwt.claim.sub', %s, true), "
-                                "set_config('app.current_user_id', %s, true), "
-                                "auth.usuario_activo(%s::uuid) AS activo",
-                                (json.dumps(claims), claims["sub"], claims["sub"], claims["sub"]))
-                    if rol == "authenticated" and not cur.fetchone()["activo"]:
-                        # Usuario bloqueado o borrado: la sesión deja de valer en el acto.
-                        raise ErrorApi(401, "Sesión inválida")
+                                "set_config('app.current_user_id', %s, true)",
+                                (json.dumps(claims), claims["sub"], claims["sub"]))
+                    if rol == "authenticated":
+                        # Sesión cerrada o vencida, o usuario bloqueado o borrado: deja de valer en el acto.
+                        cur.execute("SELECT auth.sesion_valida(%s::uuid, %s::uuid, %s::interval) AS activo",
+                                    (claims.get("sid"), claims["sub"], INACTIVIDAD))
+                        if not cur.fetchone()["activo"]:
+                            raise ErrorApi(401, "La sesión venció. Volvé a ingresar.")
                 yield cur
 
 
@@ -187,13 +207,18 @@ _intentos_lock = threading.Lock()
 
 
 def _frenar_fuerza_bruta(clave):
+    """Frena después de 8 intentos fallidos en 5 minutos (los correctos no cuentan)."""
     ahora = time.time()
     with _intentos_lock:
         lista = [t for t in _intentos.get(clave, []) if ahora - t < 300]
-        if len(lista) >= 8:
-            raise ErrorApi(429, "Demasiados intentos. Esperá unos minutos.")
-        lista.append(ahora)
         _intentos[clave] = lista
+        if len(lista) >= 8:
+            raise ErrorApi(429, "Demasiados intentos fallidos. Esperá unos minutos y volvé a intentar.")
+
+
+def _intento_fallido(clave):
+    with _intentos_lock:
+        _intentos.setdefault(clave, []).append(time.time())
 
 
 @app.post("/auth/login")
@@ -201,15 +226,54 @@ async def login(request: Request):
     body = await request.json()
     email = str(body.get("email") or "").strip().lower()
     password = str(body.get("password") or "")
-    _frenar_fuerza_bruta(f"{request.client.host if request.client else '-'}|{email}")
+    clave = f"{request.client.host if request.client else '-'}|{email}"
+    _frenar_fuerza_bruta(clave)
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT auth.login(%s, %s)", (email, password))
         uid = cur.fetchone()[0]
-    if not uid:
-        raise ErrorApi(400, "Invalid login credentials")
-    token, exp = emitir_token(uid, email)
-    return respuesta_json({"access_token": token, "token_type": "bearer", "expires_at": exp,
-                           "user": {"id": str(uid), "email": email}})
+        if not uid:
+            _intento_fallido(clave)
+            raise ErrorApi(400, "El email o la contraseña no son correctos.")
+        cur.execute("SELECT auth.abrir_sesion(%s)", (uid,))
+        sesion = cur.fetchone()[0]
+    return respuesta_sesion(uid, email, sesion)
+
+
+@app.post("/auth/renovar")
+def renovar(request: Request):
+    """Token nuevo para la misma sesión, si sigue vigente (el front lo pide mientras se usa la aplicación)."""
+    c = usuario_del_pedido(request)
+    with transaccion(c):
+        pass
+    return respuesta_sesion(c["sub"], c.get("email"), c.get("sid"))
+
+
+@app.post("/auth/salir")
+def salir(request: Request):
+    try:
+        c = usuario_del_pedido(request)
+    except ErrorApi:
+        return Response(status_code=204)
+    if c.get("sid"):
+        with pool.connection() as conn:
+            conn.execute("SELECT auth.cerrar_sesion(%s::uuid)", (c["sid"],))
+    return Response(status_code=204)
+
+
+@app.post("/auth/clave")
+async def cambiar_clave(request: Request):
+    c = usuario_del_pedido(request)
+    body = await request.json()
+    _frenar_fuerza_bruta(f"clave|{c['sub']}")
+    with transaccion(c):   # valida la sesión
+        pass
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT auth.cambiar_clave(%s::uuid, %s::uuid, %s, %s)",
+                    (c["sub"], c.get("sid"), str(body.get("actual") or ""), str(body.get("nueva") or "")))
+        if not cur.fetchone()[0]:
+            _intento_fallido(f"clave|{c['sub']}")
+            raise ErrorApi(400, "La contraseña actual no es correcta.")
+    return Response(status_code=204)
 
 
 @app.get("/auth/user")
@@ -351,7 +415,7 @@ async def rpc(funcion: str, request: Request):
     texto = await request.body()
     params = json.loads(texto) if texto.strip() else {}
     qp = request.query_params
-    with transaccion(claims) as cur:
+    with transaccion(claims, limite=CARGA_TIMEOUT if funcion in FUNCIONES_DE_CARGA else None) as cur:
         cur.execute("""SELECT p.proretset OR t.typtype = 'c' OR p.prorettype = 'record'::regtype AS tabla
                        FROM pg_proc p JOIN pg_type t ON t.oid = p.prorettype
                        WHERE p.pronamespace = 'public'::regnamespace AND p.proname = %s

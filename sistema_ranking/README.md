@@ -377,16 +377,30 @@ Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
   0,3 s, buscar menos de 1 s, tabla por territorio 0,4 s. Las funciones originales (`fn_master_view`,
   `fn_territory_view`) quedan iguales y se siguen usando para las descargas completas.
 
-## Comportamientos heredados de Supabase (se mantuvieron a propósito)
+### Uso diario en la empresa (`db/mejoras/04_uso_diario.sql`)
 
-Se dejaron iguales para no perder ni cambiar funciones. Si se quieren corregir, conviene hacerlo como un cambio
-aparte:
+Supabase fue el entorno de prueba; estas limitaciones venían de ahí y se corrigieron para el uso diario:
 
-- `fn_set_tempo_id`: si se le pone a una obra un Tempo ID que ya tiene otra, falla por `UNIQUE(tempo_id)` en lugar
-  de unificarlas. No se puede diferir porque `fk_territory_tempo_id` depende de ese índice.
-- El borrado lógico solo lo puede hacer el rol `admin`. Las políticas no se lo permiten a `usuario_estandar`.
+| Antes (heredado de Supabase) | Ahora |
+|---|---|
+| La sesión vencía a las 8 horas del ingreso aunque se estuviera trabajando (la página se recargaba, incluso en medio de una carga). | Sesiones en la base (`auth.sesiones`): el front renueva el token mientras se usa (`/auth/renovar`); vence tras `SESSION_HOURS` sin uso. |
+| "Cerrar sesión" solo borraba el token del navegador: una copia seguía sirviendo hasta vencer. | `/auth/salir` anula la sesión en el servidor. Bloquear al usuario o cambiar la contraseña corta las demás sesiones en el acto. |
+| La contraseña solo se cambiaba desde la consola. | **Cambiar contraseña** en la aplicación (`/auth/clave`, pide la actual). |
+| Mensaje de ingreso en inglés; el freno de intentos contaba también los ingresos correctos (8 ingresos en 5 minutos bloqueaban). | Mensajes en castellano; solo cuentan los intentos fallidos. |
+| Cada archivo se mandaba de a 250 filas, en pedidos separados: un corte dejaba el archivo cargado a medias y sin registro en el historial. | `fn_cargar_archivo`: el archivo original se guarda primero y después filas y registro van en una sola transacción. Queda todo o nada. |
+| Un chart sin semana en el nombre se cargaba con la fecha del día (semana equivocada). | Se rechaza con un mensaje, igual que en `cargar-historicos`. |
+| `fn_set_tempo_id` quería unificar obras con el mismo Tempo ID, pero `UNIQUE(tempo_id)` rechazaba el cambio antes. | `fn_asignar_tempo_id`: nombra la obra que tiene el Tempo ID y, con la confirmación de la persona, unifica las dos (charts, reportes, controles y envíos). `fn_set_tempo_id` queda igual. |
+| La descarga de la tabla por territorio ignoraba reclamos, estado de trabajo y búsqueda, y se pedía de a tandas. | `fn_territory_exportar`: lo mismo que se ve en pantalla, en un solo pedido. |
+| Sin compresión: el front y los CSV viajaban enteros. | Respuestas comprimidas (gzip). |
+| Respaldos solo a mano. | Servicio `respaldo` (`db/respaldo_automatico.sh`): un respaldo completo por día en `~/proyectos/ranking-respaldos` (`ranking_auto_*`, se restaura igual), conserva los últimos 14 y copia el `.dump` a OneDrive (`respaldos/automaticos`). `RESPALDO_HORAS=0` en `ranking.env` lo apaga. |
+| Los registros de Docker crecían sin límite. | Tope de 3 archivos de 10 MB por servicio. |
+
+## Comportamientos heredados que se mantienen
+
+- El borrado lógico solo lo puede hacer el rol `admin` (decisión de permisos: así queda).
 - `fn_upsert_territory_track` tiene un `ON CONFLICT` que no coincide con ningún índice único, así que falla si se
-  la llama. El front no la usa.
+  la llama. El front no la usa; se deja igual que en Supabase.
+- `fn_set_tempo_id` sigue existiendo tal cual (el front usa `fn_asignar_tempo_id`).
 
 ## Pruebas
 
@@ -400,8 +414,9 @@ aparte:
 | `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
 | `test_espejo.py` | Espejo de OneDrive: carpeta de cada tipo de carga, nombres que Windows no acepta, que nunca interrumpe una carga, que solo escribe, y la sincronización de todas las cargas. |
 | `test_importar_charts.py` | Carga masiva de charts históricos: mismo resultado que Carga CSV en el navegador, país por carpeta, archivos sin semana, archivos que no son charts, retomar sin duplicar. |
+| `test_uso_diario.py` | Sesiones (renovar, inactividad, cerrar, bloqueo, cambio de contraseña), freno de intentos fallidos, carga todo o nada, chart sin semana, unificación por Tempo ID y permisos, descarga con todos los filtros, compresión; y lo mismo en el navegador. |
 | `test_rendimiento.py` | Con 20.000 canciones y 208.000 filas de charts: mismos totales que las funciones originales, orden de las páginas, búsqueda literal, filtros, y que abrir, buscar, paginar y filtrar en el navegador tarde menos de 3 s. |
-| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, espejo de OneDrive (carga nueva copiada, borrado sin efecto, OneDrive sin permiso), mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
+| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, espejo de OneDrive (carga nueva copiada, borrado sin efecto, OneDrive sin permiso), respaldo automático (al arrancar, a nombre del usuario, copia en OneDrive, conserva los últimos 14), mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
 | `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, administrar usuarios, apagar, volver a abrir y actualizar. |
 | `test_componentes_windows.py` | Los componentes reales de Windows (Python y PostgreSQL): verificación por sha256, archivos alterados, descarga caída y que al descomprimir esté todo lo necesario. |
 | `test_paquetes_windows.py` | Que los paquetes de Python incluidos alcancen para Windows sin internet (dependencias evaluadas como en Windows). |

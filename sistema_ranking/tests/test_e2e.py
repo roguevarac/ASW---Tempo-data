@@ -56,7 +56,7 @@ class Cliente:
 
 # ------------------------------------------------------------------ login
 r = login("admin@prueba.local", "mal")
-check("login con contraseña mala da 'Invalid login credentials'", r.status_code == 400 and r.json()["message"] == "Invalid login credentials", r.text)
+check("login con contraseña mala da un mensaje claro", r.status_code == 400 and r.json()["message"] == "El email o la contraseña no son correctos.", r.text)
 r = login("admin@prueba.local", "clave-admin-123")
 check("login admin", r.status_code == 200 and r.json()["access_token"], r.text)
 admin = Cliente(r.json()["access_token"]); admin_id = r.json()["user"]["id"]
@@ -97,7 +97,7 @@ otra = sqlq("select id from tracks_master where track_name_raw='Otra'")
 r = est.rpc("fn_set_tempo_id", {"p_track_id": otra, "p_tempo_id": "999"})
 check("fn_set_tempo_id devuelve un número (función escalar)", r.status_code == 200 and r.json() == 0, r.text)
 # Igual que en Supabase: con un tempo_id que ya tiene otra obra, la restricción
-# UNIQUE(tempo_id) frena el UPDATE antes de fusionar (ver README, "Errores heredados").
+# UNIQUE(tempo_id) frena el UPDATE antes de fusionar (el front usa fn_asignar_tempo_id: ver test_uso_diario.py).
 r = est.rpc("fn_set_tempo_id", {"p_track_id": otra, "p_tempo_id": "0012345"})
 check("fn_set_tempo_id con tempo_id repetido: mismo error que Supabase (UNIQUE)", r.status_code == 409 and "uq_tracks_master_tempo_id" in r.json()["message"], r.text)
 

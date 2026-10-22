@@ -3,13 +3,16 @@
  * Expone window.supabase.createClient(...) con los MISMOS métodos que usa el front
  * (antes provistos por supabase-js), para que el HTML funcione sin cambiar su lógica:
  *
- *   auth.signInWithPassword({email,password}) · auth.getSession() · auth.signOut()
+ *   auth.signInWithPassword({email,password}) · auth.getSession() · auth.signOut() · auth.cambiarClave(actual, nueva)
  *   from(tabla).select(cols).eq(c,v).is(c,v).order(c,{ascending}).limit(n).range(a,b).single().csv()
  *   from(tabla).update(cambios).eq(c,v) · from(tabla).insert(fila | filas)
  *   rpc(funcion, params).select(cols).range(a,b).single().csv()
  *   storage.from(bucket).upload(ruta, archivo) · storage.from(bucket).createSignedUrl(ruta, segundos)
  *
  * Todas las llamadas devuelven { data, error } como supabase-js.
+ *
+ * La sesión se renueva sola mientras se usa la aplicación: cuando pasó la mitad de la vigencia del token, el pedido
+ * siguiente pide uno nuevo (/auth/renovar). Vence después de SESSION_HOURS sin uso o al cerrar sesión.
  */
 (function () {
   const CLAVE_SESION = 'rk_session';
@@ -23,12 +26,33 @@
     return null;
   }
 
+  function guardarSesion(datos) {
+    datos.renovar_desde = Math.floor(Date.now() / 1000) + Math.floor((datos.expires_in || 0) / 2);
+    localStorage.setItem(CLAVE_SESION, JSON.stringify(datos));
+  }
+
   function createClient(baseUrl) {
     const base = (baseUrl || '').replace(/\/$/, '');
+    let renovando = null;
+
+    // Token nuevo para la misma sesión (un solo pedido aunque haya varios en curso).
+    function renovar(s) {
+      if (!renovando) {
+        renovando = fetch(base + '/auth/renovar', { method: 'POST', headers: { Authorization: 'Bearer ' + s.access_token } })
+          .then(async (res) => { if (res.ok) guardarSesion(await res.json()); })
+          .catch(() => { /* sin conexión: se reintenta en el pedido siguiente */ })
+          .finally(() => { renovando = null; });
+      }
+      return renovando;
+    }
 
     async function pedir(metodo, ruta, { body, accept, raw, contentType } = {}) {
       const headers = {};
-      const s = leerSesion();
+      let s = leerSesion();
+      if (s && s.renovar_desde && Date.now() / 1000 > s.renovar_desde && !ruta.startsWith('/auth/')) {
+        await renovar(s);
+        s = leerSesion();
+      }
       if (s) headers['Authorization'] = 'Bearer ' + s.access_token;
       if (accept) headers['Accept'] = accept;
       let cuerpo;
@@ -123,15 +147,21 @@
       async signInWithPassword({ email, password }) {
         const r = await pedir('POST', '/auth/login', { body: { email, password } });
         if (r.error) return { data: { session: null, user: null }, error: r.error };
-        localStorage.setItem(CLAVE_SESION, JSON.stringify(r.data));
+        guardarSesion(r.data);
         return { data: { session: r.data, user: r.data.user }, error: null };
       },
       async getSession() {
         return { data: { session: leerSesion() }, error: null };
       },
       async signOut() {
+        // Anula la sesión en el servidor: el token deja de servir aunque alguien lo haya copiado.
+        if (leerSesion()) await pedir('POST', '/auth/salir');
         localStorage.removeItem(CLAVE_SESION);
         return { error: null };
+      },
+      async cambiarClave(actual, nueva) {
+        const r = await pedir('POST', '/auth/clave', { body: { actual, nueva } });
+        return { error: r.error };
       },
     };
 

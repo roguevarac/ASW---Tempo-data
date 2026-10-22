@@ -63,12 +63,12 @@ with sync_playwright() as p:
 
     pag.fill("#loginEmail", "admin@prueba.local"); pag.fill("#loginPass", "incorrecta"); pag.click("#loginBtn")
     try:
-        pag.wait_for_function("() => document.body.innerText.includes('Invalid login credentials')", timeout=10000)
+        pag.wait_for_function("() => document.body.innerText.includes('El email o la contraseña no son correctos.')", timeout=10000)
     except Exception:
         pass
     # el 400 del login incorrecto es esperado (supabase-js también lo registra en consola)
     errores_js.clear()
-    check("login incorrecto muestra el error", "Invalid login credentials" in pag.content())
+    check("login incorrecto muestra el error", "El email o la contraseña no son correctos." in pag.content())
 
     pag.fill("#loginEmail", "admin@prueba.local"); pag.fill("#loginPass", "clave-admin-123"); pag.click("#loginBtn")
     pag.wait_for_selector("#logoutBtn", timeout=10000)
