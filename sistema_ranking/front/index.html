@@ -1231,7 +1231,9 @@ function semanaCarga(u){
 }
 function quien(id){
   const email = state.historial?.usuarios?.[id];
-  return email ? email.split('@')[0] : '—';
+  if(email) return email.split('@')[0];
+  // Cargas hechas fuera de la aplicación (por ejemplo "importación histórica") guardan un nombre en lugar del usuario.
+  return id && !/^[0-9a-f-]{36}$/.test(id) ? id : '—';
 }
 function fechaCarga(u){ return fmtFecha(u.uploaded_at); }
 

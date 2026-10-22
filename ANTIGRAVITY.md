@@ -180,6 +180,7 @@ preguntarle al usuario.
 | `bash ranking.sh estado` | Contenedores y dirección |
 | `bash ranking.sh logs` | Últimos mensajes de la API y la base, para diagnosticar |
 | `bash ranking.sh espejo` | Copia al espejo de OneDrive los archivos cargados que falten (no borra ni pisa nada) |
+| `bash ranking.sh cargar-historicos` | Carga única de los charts históricos de OneDrive (solo si el usuario lo pide; agrega datos, no borra; si se corta, volver a correrlo) |
 | `bash ranking.sh abrir` / `detener` | Prender / apagar (los datos quedan) |
 
 ## Cómo está organizado (para orientarte)

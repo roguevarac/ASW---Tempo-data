@@ -544,6 +544,37 @@ try:
           and "mejora 2" in subprocess.run(["git", "-C", str(clon), "log", "-1", "--format=%s"], capture_output=True, text=True).stdout,
           (r.stdout + r.stderr)[-2000:])
 
+    # ================================================================ carga única de charts históricos desde OneDrive
+    historicos = {
+        ESPEJO / "Spotify Charts" / "ar" / "regional-ar-weekly-2021-01-07.csv":
+            "rank,uri,artist_names,track_name,source,peak_rank,previous_rank,weeks_on_chart,streams\n1,spotify:track:h,Art H,Tema Historico,S,1,1,1,500\n",
+        ESPEJO / "Youtube Charts" / "py" / "youtube-py-weekly-2023-03-09.csv":
+            "Rank,Previous Rank,Track Name,Artist Name,Weeks on Chart,Views,Weekly Growth,YouTube URL\n1,--,Video Historico,Art V,1,\"9,000\",1%,https://youtu.be/h\n",
+    }
+    for f, t in historicos.items():
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(t)
+    p = ranking("cargar-historicos", carpeta=clon_sr)
+    p.expect(r"¿Cargar los (\d+) archivos\? .*\(S/N\)", timeout=300); total_od = int(p.match.group(1)); p.sendline("S")
+    codigo = fin(p)
+    log = texto("cargar-historicos.log")
+    check("cargar-historicos: carga los charts de 'Spotify Charts' y 'Youtube Charts' de OneDrive (respaldo previo)",
+          codigo == 0 and "Cargados completos: 2" in log and "Copia en OneDrive" in log
+          and base_nueva("select string_agg(t.pais_code || ' ' || t.snapshot_date || ' ' || t.platform || ' ' || t.streams, ',' order by t.platform) "
+                         "from territory_tracks t join tracks_master m on m.id = t.track_master_id "
+                         "where m.track_name_clean in ('Tema Historico', 'Video Historico')") == "AR 2021-01-07 spotify 500,PY 2023-03-09 youtube 9000",
+          log[-2000:])
+    ya_cargados = re.search(r"ya cargados antes: (\d+)", log)
+    check("cargar-historicos: saltea las copias que el espejo ya había dejado en esas carpetas (no las registra de nuevo)",
+          total_od > 2 and ya_cargados and int(ya_cargados.group(1)) > 0
+          and base_nueva("select count(*) from csv_uploads where uploaded_by = 'importación histórica'") == "2", (total_od, log[-800:]))
+    check("cargar-historicos: deja el detalle en un registro", list(respaldos.glob("carga-historicos-*.log")))
+    p = ranking("cargar-historicos", carpeta=clon_sr)
+    p.expect(r"\(S/N\)", timeout=300); p.sendline("S")
+    codigo = fin(p)
+    check("cargar-historicos otra vez: no carga nada dos veces", codigo == 0
+          and "Cargados completos: 0" in texto("cargar-historicos.log").split("Carga de charts históricos")[-1], texto("cargar-historicos.log")[-800:])
+
     codigo = fin(ranking("detener"))
     r = sin_terminal("verificar")
     check("verificar con el sistema apagado: avisa (código distinto de 0)", r.returncode != 0 and "FALLA" in r.stdout, r.stdout[-800:])

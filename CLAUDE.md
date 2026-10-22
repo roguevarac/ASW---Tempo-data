@@ -196,6 +196,19 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
       - `espejo` copia lo que falte; `actualizar` también lo hace.
     - Pruebas: `test_espejo.py` y `test_docker_linux.py` (con `RK_ESPEJO`).
     - La versión portable de Windows no tiene espejo.
+  - **Carga única de charts históricos** (22/10/2026): `bash ranking.sh cargar-historicos` corre
+    `migracion/importar_charts.py` en el contenedor `herramientas`, sobre `/espejo/Spotify Charts` y
+    `/espejo/Youtube Charts`.
+    - Es un port en Python de la lectura del front (Papa.parse, `canonicalHeader`, `detect*`, `entero`,
+      `processRankingCsv`, `finishUpload`). **Si cambia esa lógica del front, cambiarla también ahí.**
+      `test_importar_charts.py` compara contra el front real.
+    - Diferencias a propósito:
+      - país por carpeta;
+      - sin semana no carga;
+      - la carpeta decide la plataforma si el nombre y los links no lo hacen;
+      - saltea filenames ya cargados (importados o con `updated_rows > 0`);
+      - guarda en `<fmt>/<PAIS>/importado-onedrive/` con `uploaded_by = 'importación histórica'`.
+    - El espejo saltea `/importado-onedrive/`.
 - **Como aplicación (PWA, desde el 21/10/2026):** el front es instalable (`front/manifest.webmanifest`, `front/sw.js`,
   `front/apagado.html`, `front/iconos/`); los inyecta `front/generar_index.py`, y los íconos se generan con
   `front/generar_iconos.py`.

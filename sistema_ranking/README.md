@@ -124,6 +124,7 @@ servidor.
 | `bash ranking.sh actualizar` | Respaldo, versión nueva desde GitHub y reinicio, sin perder datos (si falla, vuelve sola a la anterior) |
 | `bash ranking.sh respaldo` | Copia de la base y de los archivos en `~/proyectos/ranking-respaldos`, y también en el espejo de OneDrive (`respaldo_documentacion_sistema\respaldos`) |
 | `bash ranking.sh espejo` | Copia al espejo de OneDrive los archivos cargados que falten y actualiza la documentación |
+| `bash ranking.sh cargar-historicos` | Carga única de los charts históricos de `Spotify Charts` y `Youtube Charts` del espejo de OneDrive (antes hace un respaldo) |
 | `bash ranking.sh restaurar NOMBRE` | Vuelve a ese respaldo |
 | `bash ranking.sh vaciar-historial` | Borra solo los archivos del historial (antes hace un respaldo) |
 | `bash ranking.sh empezar-de-cero` | Borra todos los datos menos los usuarios, para empezar a cargar de cero (antes hace un respaldo) |
@@ -196,6 +197,24 @@ son cargas y no se copian.
   pisar ni borrar nada.
 - `bash ranking.sh verificar` prueba escribir en el espejo desde el servicio. Si no puede, revisá que la carpeta
   exista y esté sincronizada en OneDrive, y mirá `bash ranking.sh logs`.
+
+### Carga única de charts históricos
+
+`bash ranking.sh cargar-historicos` carga de una vez todos los charts de las carpetas `Spotify Charts` y
+`Youtube Charts` del espejo de OneDrive, incluidas las subcarpetas. Antes de empezar, muestra cuántos archivos hay,
+pide confirmación y hace un respaldo.
+- **Misma lectura que Carga CSV** (`migracion/importar_charts.py`): país, semana y plataforma salen del nombre, se
+  leen los formatos viejos y los números con separador de miles, se limpian los títulos y se usa la misma función
+  de la base. `tests/test_importar_charts.py` compara el resultado con el de Carga CSV en el navegador.
+- **Diferencias, por tratarse de históricos:**
+  - si el nombre no indica el país, se toma de la carpeta (`ar\`, `AR\`, `Argentina\`…);
+  - si no indica la semana, el archivo no se carga (Carga CSV usaría la fecha del día);
+  - los archivos que no son charts se informan y se saltean.
+- **Se puede cortar y volver a correr:** saltea lo ya cargado, sea porque se importó antes o porque se cargó con
+  datos desde la aplicación (por ejemplo, las copias del espejo).
+- Lo importado figura en el Historial de cargas con el usuario "importación histórica". El espejo no lo vuelve a
+  copiar a OneDrive, porque ya está ahí.
+- El detalle completo, con los archivos con problemas, queda en `~/proyectos/ranking-respaldos/carga-historicos-*.log`.
 
 ### Red de la empresa (proxy y certificados)
 
@@ -370,6 +389,7 @@ aparte:
 | `test_navegador.py` | El front real en Chromium: login, cargar CSV de Spotify y de YouTube, fecha de última carga por país, reporte BO y CSV con solo nuevas o todas, seguimiento, manual, editar, descargar, historial, reporte BO, sesión y auditor en solo lectura. |
 | `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
 | `test_espejo.py` | Espejo de OneDrive: carpeta de cada tipo de carga, nombres que Windows no acepta, que nunca interrumpe una carga, que solo escribe, y la sincronización de todas las cargas. |
+| `test_importar_charts.py` | Carga masiva de charts históricos: mismo resultado que Carga CSV en el navegador, país por carpeta, archivos sin semana, archivos que no son charts, retomar sin duplicar. |
 | `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, espejo de OneDrive (carga nueva copiada, borrado sin efecto, OneDrive sin permiso), mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
 | `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, administrar usuarios, apagar, volver a abrir y actualizar. |
 | `test_componentes_windows.py` | Los componentes reales de Windows (Python y PostgreSQL): verificación por sha256, archivos alterados, descarga caída y que al descomprimir esté todo lo necesario. |

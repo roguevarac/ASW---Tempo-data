@@ -12,6 +12,7 @@
 #   bash ranking.sh restaurar F     vuelve a un respaldo (F = el nombre que mostró "respaldo")
 #   bash ranking.sh vaciar-historial  borra solo los archivos del historial (antes hace un respaldo)
 #   bash ranking.sh empezar-de-cero   borra todos los datos menos los usuarios (antes hace un respaldo)
+#   bash ranking.sh cargar-historicos  carga una vez los charts de "Spotify Charts" y "Youtube Charts" de OneDrive
 #   bash ranking.sh espejo          copia a OneDrive (espejo de auditoría) los archivos cargados que falten
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
 #   bash ranking.sh acceso-directo  crea la aplicación "Ranking Digital" en Windows (escritorio, menú Inicio, inicio)
@@ -466,6 +467,36 @@ cmd_espejo() {
     publicar_documentacion && ok "Documentación actualizada en respaldo_documentacion_sistema/docs."
 }
 
+# Carga única de los charts históricos que están en las carpetas del espejo de OneDrive ("Spotify Charts" y
+# "Youtube Charts"). Misma lectura que Carga CSV (migracion/importar_charts.py). Se puede cortar y volver a correr:
+# no carga dos veces el mismo archivo. Antes hace un respaldo.
+cmd_cargar_historicos() {
+    verificar_docker; instalado
+    local e; e="$(valor ESPEJO_DIR)"
+    [ -n "$e" ] || fallar "No encontré la carpeta de OneDrive ($ONEDRIVE_ESPEJO)."
+    local nombres=("$@"); [ ${#nombres[@]} -gt 0 ] || nombres=("Spotify Charts" "Youtube Charts")
+    local n c total=0 dentro=()
+    titulo "Carga de charts históricos desde OneDrive"
+    for c in "${nombres[@]}"; do
+        [ -d "$e/$c" ] || { aviso "  No existe la carpeta: $e/$c (se saltea)"; continue; }
+        n="$(find "$e/$c" -type f -iname '*.csv' | wc -l)"
+        echo "  $c: $n archivos .csv"
+        total=$((total + n)); dentro+=("/espejo/$c")
+    done
+    [ "$total" -gt 0 ] || fallar "No hay archivos para cargar."
+    echo "Se cargan con la misma lectura que Carga CSV. Un archivo ya importado no se vuelve a cargar."
+    si "¿Cargar los $total archivos? (antes se hace un respaldo)" S || fallar "Cancelado. No se cargó nada."
+    cmd_respaldo
+    titulo "Cargando (puede tardar varios minutos)"
+    mkdir -p "$RESPALDOS"
+    local registro; registro="$RESPALDOS/carga-historicos-$(date +%Y%m%d_%H%M%S).log"
+    dc up -d db > /dev/null 2>&1
+    herramienta python /app/migracion/importar_charts.py "${dentro[@]}" 2>&1 | tee "$registro"
+    [ "${PIPESTATUS[0]}" = 0 ] || fallar "La carga se interrumpió (el motivo está arriba). Lo cargado queda; para seguir, volvé a correr el comando."
+    ok "Carga terminada. Detalle completo: $registro"
+    echo "En la aplicación: Historial de cargas muestra cada semana cargada por país."
+}
+
 cmd_restaurar() {
     verificar_docker; instalado
     local f="${1:-}"; f="${f%.dump}"; f="$(basename "$f")"
@@ -702,7 +733,7 @@ $cambios
     cmd_verificar
 }
 
-ayuda() { sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+ayuda() { sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # --automatico en cualquier posición: sin preguntas (respuestas por defecto).
 ARGS=()
@@ -728,6 +759,7 @@ case "${1:-}" in
     restaurar) shift; cmd_restaurar "$@" ;;
     certificados) cmd_certificados ;;
     espejo) cmd_espejo ;;
+    cargar-historicos) shift; cmd_cargar_historicos "$@" ;;
     vaciar-historial) cmd_vaciar_historial ;;
     empezar-de-cero) cmd_empezar_de_cero ;;
     acceso-directo|icono) cmd_acceso_directo ;;

@@ -62,5 +62,7 @@ else
     echo "== Versión portable de Windows: se saltea (no hay PowerShell)"
 fi
 
+# Al final: vacía la base de prueba (las anteriores usan los datos de la prueba del navegador como origen).
+correr "Carga masiva de charts históricos (paridad con Carga CSV)" python3 tests/test_importar_charts.py
 echo
 [ "$FALLAS" -eq 0 ] && echo "TODAS LAS PRUEBAS OK" || { echo "$FALLAS PRUEBAS CON FALLAS"; exit 1; }

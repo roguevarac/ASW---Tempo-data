@@ -79,6 +79,8 @@ def destino(carga, base):
     carpeta = CARPETAS.get(carga.get("format") or "")
     if not carpeta or not carga.get("file_path") or not carga.get("updated_rows"):
         return None
+    if "/importado-onedrive/" in str(carga["file_path"]):   # vino de OneDrive (cargar-historicos): ya está ahí
+        return None
     sub, por_pais = carpeta
     d = base / sub
     if por_pais:
