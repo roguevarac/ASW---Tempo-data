@@ -152,6 +152,16 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - el formato viejo de Spotify (aviso arriba; Position/Artist/URL);
     - el oficial de YouTube (Artist Names/Periods on Chart/Growth);
     - números con separador de miles (`entero()` en el front).
+  - **Historial de cargas** (ex "Historial CSV", 22/10/2026). Es solo lectura: sin descargar ni borrar.
+    - Pestañas YouTube y Spotify, con chips de país: con "Todos" muestra un resumen por país; con un país, cada semana
+      con su archivo.
+    - Pestañas Reportes BackOffice y Reportes Tempo Control. Tempo Control incluye las cargas de Tempo IDs.
+    - Datos: `fn_historial_charts`, `fn_historial_reportes` y `fn_nombres_usuarios` (`db/mejoras/02_historial.sql`),
+      más todas las filas de `csv_uploads`.
+    - Las descargas (`bo_generado`, `csv_principal`) no se muestran.
+    - Los archivos nuevos se guardan en `formato/PAIS/fecha/`, y el historial lee el país de esa carpeta.
+  - **Carga CSV:** sin lista de columnas. Nombra los tipos (Spotify, YouTube, Reporte BackOffice, Reporte Tempo Control,
+    Tempo IDs), da tres indicaciones y muestra el avance archivo por archivo: barra, estado, tipo, país y semana.
 - **Como aplicación (PWA, desde el 21/10/2026):** el front es instalable (`front/manifest.webmanifest`, `front/sw.js`,
   `front/apagado.html`, `front/iconos/`); los inyecta `front/generar_index.py`, y los íconos se generan con
   `front/generar_iconos.py`.

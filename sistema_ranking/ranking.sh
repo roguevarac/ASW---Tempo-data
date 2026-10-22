@@ -446,14 +446,14 @@ cmd_restaurar() {
     ok "Restaurado el respaldo $f. Sistema funcionando en $(direccion)"
 }
 
-# Deja vacío el historial de archivos (el "bucket" csv-uploads y la pestaña Historial CSV) para empezar a cargar de
+# Deja vacío el historial de archivos (el "bucket" csv-uploads y la pestaña Historial de cargas) para empezar a cargar de
 # cero. No toca obras, territorios ni usuarios. Antes hace un respaldo, y nunca corre en modo --automatico.
 cmd_vaciar_historial() {
     verificar_docker; instalado
     local n; n="$(dc up -d db > /dev/null 2>&1; consulta "select count(*) from storage.objects where bucket_id = 'csv-uploads'")" \
         || fallar "No se pudo consultar la base."
     titulo "Vaciar el historial de archivos"
-    echo "Borra los $n archivos guardados y la lista de la pestaña Historial CSV."
+    echo "Borra los $n archivos guardados y la lista de archivos del Historial de cargas."
     echo "No cambia la tabla principal, la tabla por territorio, las fechas de última carga ni los usuarios."
     [ "$AUTOMATICO" = 1 ] && fallar "Este comando lo confirma una persona: corrélo sin --automatico."
     si "¿Vaciar el historial? (antes se hace un respaldo para poder volver atrás)" || fallar "Cancelado. No se borró nada."

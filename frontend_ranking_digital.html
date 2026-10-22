@@ -100,7 +100,35 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--line);font-si
 .edit-field.empty-flag{border-color:var(--red);}
 select.edit-field{font-family:'IBM Plex Sans',sans-serif;}
 .control-country{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:12.5px;color:var(--text-muted);}
-.format-tag{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10.5px;background:var(--panel-raised);color:var(--brass);margin-left:8px;}
+.upload-guide{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px 18px;margin-bottom:16px;}
+.upload-guide h3{font-size:14px;margin:0 0 6px;font-family:'Space Grotesk',sans-serif;}
+.upload-guide p{font-size:13px;margin:0 0 10px;color:var(--text-muted);}
+.upload-guide ul{margin:10px 0 0;padding-left:18px;font-size:12.5px;color:var(--text-muted);}
+.upload-guide li{margin:4px 0;}
+.upload-guide li b{color:var(--text-primary);font-weight:500;}
+.tipos{display:flex;gap:8px;flex-wrap:wrap;}
+.tipo-chip{padding:4px 10px;border-radius:20px;font-size:12px;background:var(--panel-raised);border:1px solid var(--line);}
+.tipo-chip small{color:var(--text-muted);margin-left:4px;}
+.progreso{height:6px;background:var(--panel-raised);border-radius:3px;overflow:hidden;margin:4px 0 8px;}
+.progreso div{height:100%;background:var(--brass);transition:width .3s;}
+.progreso-txt{font-size:12.5px;color:var(--text-muted);margin-bottom:12px;}
+.estado{font-size:11.5px;white-space:nowrap;}
+.estado.ok{color:var(--green);}
+.estado.err{color:var(--red);}
+.estado.run{color:var(--brass);}
+.estado.wait{color:var(--text-muted);}
+.subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+.subtab{background:var(--panel);border:1px solid var(--line);color:var(--text-muted);border-radius:3px;padding:7px 12px;font-size:12.5px;cursor:pointer;}
+.subtab.active{border-color:var(--brass);color:var(--text-primary);}
+.subtab .cnt{font-family:'IBM Plex Mono',monospace;font-size:11px;margin-left:6px;color:var(--text-muted);}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.chip{background:none;border:1px solid var(--line);color:var(--text-muted);border-radius:20px;padding:3px 11px;font-size:12px;cursor:pointer;}
+.chip.active{background:var(--brass);border-color:var(--brass);color:#fff;}
+.chip:disabled{opacity:0.35;cursor:default;}
+.hist-nota{font-size:12.5px;color:var(--text-muted);margin:0 0 12px;}
+.hist-sec{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin:22px 0 6px;}
+tr.clic{cursor:pointer;}
+tr.clic:hover td{background:var(--panel-raised);}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:100;}
 .modal{background:var(--panel);border:1px solid var(--line);border-radius:4px;width:min(1500px,96vw);max-height:88vh;overflow:auto;padding:22px 24px;}
 .modal h2{font-size:15px;margin:0 0 4px;font-family:'Space Grotesk',sans-serif;}
@@ -148,7 +176,8 @@ let state = {
   activeTab: 'master', search: '', territoryCountry: '', reclamosFilter: '', estadoTrabajoFilter: '', showDeleted: false,
   dateFrom: '', dateTo: '', masterCountry: '', history: null, historyLoading: false,
   master: [], territoryControl: [], uploads: [], loading: true,
-  uploadResults: [], uploadProgress: null, uploading: false, controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
+  uploadQueue: [], uploadIndex: -1, uploading: false,
+  historial: null, histTab: 'youtube', histPais: '', controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
   envios: {}, envioDialog: null, envioBusy: false,
 };
 
@@ -214,10 +243,9 @@ async function loadAll(){
   state.master = m.data || [];
   state.territoryControl = t.data || [];
   await loadEnvios();
-
-  const u = await sb.from('csv_uploads').select('*').order('uploaded_at',{ascending:false}).limit(50);
-  state.uploads = u.data || [];
   await loadLastChartLoad();
+  state.historial = null;   // se vuelve a leer al abrir "Historial de cargas"
+  if(state.activeTab === 'history') loadHistorial();
 
   state.loading = false;
   render();
@@ -392,13 +420,11 @@ async function startEnvio(modo){
   } finally {
     state.envioBusy = false;
     await loadEnvios();
-    const u = await sb.from('csv_uploads').select('*').order('uploaded_at',{ascending:false}).limit(50);
-    state.uploads = u.data || [];
     render();
   }
 }
 
-// Guarda una copia de lo descargado en el historial (pestaña Historial CSV).
+// Guarda una copia de lo descargado (queda registrada; el Historial de cargas no la muestra porque no es una carga).
 async function archiveDownload(blob, filename, format, carpeta, total){
   const hoy = new Date().toISOString().slice(0,10);
   const path = `${carpeta}/${hoy}/${Date.now()}_${filename}`;
@@ -583,22 +609,22 @@ function detectFormat(row, filename){
 
 // Procesa varios CSV en secuencia (uno detrás de otro, no en paralelo,
 // para que no se pisen entre ellos al crear las mismas canciones).
+// Cada archivo queda en state.uploadQueue con su estado (pendiente, cargando, listo) y su resultado.
 async function handleFiles(fileList){
   const files = Array.from(fileList || []);
   if(!files.length) return;
-  state.uploadResults = [];
+  state.uploadQueue = files.map(f => ({ filename: f.name, result: null }));
   state.uploading = true;
-  state.uploadProgress = { done: 0, total: files.length };
   render();
 
-  for(const file of files){
-    state.uploadProgress.done++;
+  for(let i = 0; i < files.length; i++){
+    state.uploadIndex = i;
     render();
-    await handleCsv(file);
+    await handleCsv(files[i]);
   }
 
   state.uploading = false;
-  state.uploadProgress = null;
+  state.uploadIndex = -1;
   await loadLastChartLoad();
   loadAll();
 }
@@ -734,7 +760,7 @@ async function processRankingCsv(file, rows, format){
       else { updated++; if(r.track_created) created_tracks++; }
     }
   }
-  await finishUpload(file, rows.length, updated, created_tracks, errors, format, fileCountry);
+  await finishUpload(file, rows.length, updated, created_tracks, errors, format, fileCountry, fileDate || new Date().toISOString().slice(0,10));
 }
 
 async function processMasterTempoCsv(file, rows){
@@ -836,27 +862,28 @@ function sanitizeStorageName(name){
 // Carpeta donde se archiva cada tipo de CSV dentro del bucket.
 // Los que corresponden a un solo país se guardan por país; los que
 // mezclan países (Reporte Tempo) o no aplican, por fecha.
-function storageFolder(format){
+function storageFolder(format, pais){
   const hoy = new Date().toISOString().slice(0,10);
+  const p = pais || 'sin_pais';   // el historial de cargas lee el país de esta carpeta
   switch(format){
-    case 'spotify':      return `spotify/${hoy}`;
-    case 'youtube':      return `youtube/${hoy}`;
-    case 'bo_report':    return `bo_report/${hoy}`;
+    case 'spotify':      return `spotify/${p}/${hoy}`;
+    case 'youtube':      return `youtube/${p}/${hoy}`;
+    case 'bo_report':    return `bo_report/${p}/${hoy}`;
     case 'tempo_report': return `tempo_report/${hoy}`;
     case 'master_tempo': return `tempo_ids/${hoy}`;
     default:             return `otros/${hoy}`;
   }
 }
 
-async function finishUpload(file, total, updated, created_tracks, errors, format, pais){
-  const storagePath = `${storageFolder(format)}/${Date.now()}_${sanitizeStorageName(file.name)}`;
+async function finishUpload(file, total, updated, created_tracks, errors, format, pais, semana){
+  const storagePath = `${storageFolder(format, pais)}/${Date.now()}_${sanitizeStorageName(file.name)}`;
   let filePath = null;
   const { error: upErr } = await sb.storage.from('csv-uploads').upload(storagePath, file);
   if(!upErr) filePath = storagePath;
   else errors = [...errors, `No se pudo guardar el archivo en Storage: ${upErr.message}`];
 
-  state.uploadResults = state.uploadResults || [];
-  state.uploadResults.push({ filename: file.name, format, total, updated, created_tracks, errors });
+  const item = state.uploadQueue[state.uploadIndex];
+  if(item) item.result = { format, pais, semana, total, updated, created_tracks, errors };
 
   await sb.from('csv_uploads').insert({
     filename: file.name, total_rows: total, created_tracks,
@@ -901,7 +928,7 @@ async function doLogin(email, password){
 }
 async function doLogout(){
   await sb.auth.signOut();
-  state.session = null; state.profile = null; state.master=[]; state.territoryControl=[]; state.uploads=[];
+  state.session = null; state.profile = null; state.master=[]; state.territoryControl=[]; state.historial=null;
   render();
 }
 
@@ -951,7 +978,7 @@ function renderTopbar(){
 
 function renderTabs(){
   const tabs = [['master','Tabla principal', true],['territory','Tabla por territorio', true],
-    ['upload','Carga CSV', canUpload()],['history','Historial CSV', true]];
+    ['upload','Carga CSV', canUpload()],['history','Historial de cargas', true]];
   return `<div class="tabs">${tabs.map(([k,l,en]) =>
     `<div class="tab ${state.activeTab===k?'active':''}" data-tab="${k}">${l}${!en?'<span class="lock">solo lectura</span>':''}</div>`).join('')}</div>`;
 }
@@ -1066,85 +1093,233 @@ function renderTerritory(){
   </tbody></table>`;
 }
 
+// Nombres de los tipos de archivo, como los ve el usuario.
+const TIPOS_CARGA = {
+  spotify: 'Spotify', youtube: 'YouTube', bo_report: 'Reporte BackOffice',
+  tempo_report: 'Reporte Tempo Control', master_tempo: 'Tempo IDs',
+};
+
+function estadoCarga(item, i){
+  const r = item.result;
+  if(r) return r.errors.length && !r.updated ? `<span class="estado err">✕ No se cargó</span>`
+             : r.errors.length ? `<span class="estado err">✓ Con ${r.errors.length} error${r.errors.length===1?'':'es'}</span>`
+             : `<span class="estado ok">✓ Listo</span>`;
+  return i === state.uploadIndex ? `<span class="estado run">● Cargando…</span>` : `<span class="estado wait">En espera</span>`;
+}
+
 function renderUpload(){
   if(!canUpload()) return `<div class="locked"><div class="lk">Acceso restringido</div>Tu rol (${state.profile.app_role}) no tiene permiso de escritura.</div>`;
+  const q = state.uploadQueue;
+  const hechos = q.filter(x => x.result).length;
+  const rs = q.filter(x => x.result).map(x => ({ filename: x.filename, ...x.result }));
+  const sum = (k) => rs.reduce((a,x) => a + (k==='errors' ? x.errors.length : x[k]), 0);
   return `
-  <div class="control-country">
-    <span>País (solo para el Reporte BO — lo detecta del nombre del archivo, ej. "..._PAIS_PARAGUAY"; si no puede, usa lo que elijas acá. El Reporte Tempo trae el país en cada fila):</span>
-    <select id="controlCountry">
-      <option value="">Elegir país...</option>
-      ${COUNTRIES.map(c=>`<option value="${c}" ${state.controlCountry===c?'selected':''}>${c}</option>`).join('')}
-    </select>
+  <div class="upload-guide">
+    <h3>Subí los archivos</h3>
+    <p>Arrastralos al recuadro o hacé clic para elegirlos. Podés subir varios juntos y de distintos tipos: el sistema
+    reconoce cada uno solo.</p>
+    <div class="tipos">
+      <span class="tipo-chip">Spotify <small>chart semanal</small></span>
+      <span class="tipo-chip">YouTube <small>chart semanal</small></span>
+      <span class="tipo-chip">Reporte BackOffice</span>
+      <span class="tipo-chip">Reporte Tempo Control</span>
+      <span class="tipo-chip">Tempo IDs</span>
+    </div>
+    <ul>
+      <li><b>Charts:</b> subilos con el nombre con que se bajaron; de ahí salen el país y la semana.</li>
+      <li><b>Reportes:</b> solo se cargan las obras que ya tienen Tempo ID en la tabla principal.</li>
+      <li><b>Reporte BackOffice:</b> el país sale del nombre del archivo. Si no lo tiene, elegilo acá:
+        <select id="controlCountry">
+          <option value="">Elegir país...</option>
+          ${COUNTRIES.map(c=>`<option value="${c}" ${state.controlCountry===c?'selected':''}>${c}</option>`).join('')}
+        </select></li>
+    </ul>
   </div>
   <div class="drop" id="dropzone">
-    <p>${state.uploading
-        ? `Procesando ${state.uploadProgress?.done||0} de ${state.uploadProgress?.total||0}...`
-        : 'Arrastrá uno o varios CSV, o hacé click para elegirlos'}</p>
-    <p class="hint">
-      Se reconoce automáticamente el formato de cada archivo:<br>
-      <span class="format-tag">Spotify</span> rank, uri, artist_names, track_name, source, peak_rank, previous_rank, weeks_on_chart, streams (país y fecha salen del nombre del archivo)<br>
-      <span class="format-tag">YouTube</span> Source.Name, Rank, Previous Rank, Track Name, Artist Name, Weeks on Chart, Views, Weekly Growth, YouTube URL<br>
-      <span class="format-tag">Reporte Tempo</span> song_id, song_title_tx, pais, performance_pc_total, mechanical_pc_total, sync_pc_total, publishers, contratos_del_pais, song_tempo_create_date, estado_obra<br>
-      <span class="format-tag">Reporte BO</span> Submitters_Song_Code, Internal_Song_Code, Song_Owners, Internal_Status, CounterClaim_Status, Mechanicall_Collect_Share<br>
-      <span class="format-tag">Tempo IDs</span> track_artist_concat, tempo_id (carga masiva: completa el tempo_id de obras ya existentes, buscándolas por título)
-    </p>
+    <p>${state.uploading ? 'Cargando… podés seguir mirando esta pantalla' : 'Arrastrá los archivos acá, o hacé clic para elegirlos'}</p>
     <input type="file" id="fileInput" accept=".csv" multiple>
   </div>
-  ${(state.uploadResults && state.uploadResults.length) ? (() => {
-    const rs = state.uploadResults;
-    const sum = (k) => rs.reduce((a,x) => a + (k==='errors' ? x.errors.length : x[k]), 0);
-    return `<div class="summary-row">
+  ${q.length ? `
+    <div class="progreso"><div style="width:${Math.round(100 * hechos / q.length)}%"></div></div>
+    <div class="progreso-txt">${state.uploading ? `Cargando ${Math.min(hechos + 1, q.length)} de ${q.length}: <b>${q[state.uploadIndex]?.filename || ''}</b>`
+                                                : `Terminado: ${q.length} archivo${q.length===1?'':'s'}`}</div>
+    ${!state.uploading ? `<div class="summary-row">
       <div class="metric"><div class="n mono">${rs.length}</div><div class="l">Archivos</div></div>
       <div class="metric"><div class="n mono">${sum('total')}</div><div class="l">Filas leídas</div></div>
       <div class="metric ok"><div class="n mono">${sum('updated')}</div><div class="l">Cargadas</div></div>
       <div class="metric new"><div class="n mono">${sum('created_tracks')}</div><div class="l">Canciones nuevas</div></div>
       <div class="metric err"><div class="n mono">${sum('errors')}</div><div class="l">Errores</div></div>
     </div>
-    ${sum('created_tracks') ? `<p style="font-size:12.5px;color:var(--text-muted);margin:-4px 0 14px;">Las canciones nuevas se crearon en <b>Tabla principal</b> con tempo_id vacío — completalo ahí a mano.</p>` : ''}
-    <table><thead><tr><th>Archivo</th><th>Formato</th><th class="num">Filas</th><th class="num">Cargadas</th><th class="num">Nuevas</th><th class="num">Errores</th></tr></thead>
-    <tbody>${rs.map(x=>`
+    ${sum('created_tracks') ? `<p style="font-size:12.5px;color:var(--text-muted);margin:-4px 0 14px;">Las canciones nuevas se crearon en <b>Tabla principal</b> con tempo_id vacío — completalo ahí a mano.</p>` : ''}` : ''}
+    <table id="uploadQueue"><thead><tr><th>Archivo</th><th>Estado</th><th>Tipo</th><th>País</th><th>Semana</th>
+      <th class="num">Filas</th><th class="num">Cargadas</th><th class="num">Nuevas</th><th class="num">Errores</th></tr></thead>
+    <tbody>${q.map((x, i) => { const r = x.result; return `
       <tr>
         <td>${x.filename}</td>
-        <td class="mono">${x.format || '—'}</td>
-        <td class="num">${x.total}</td>
-        <td class="num">${x.updated}</td>
-        <td class="num">${x.created_tracks}</td>
-        <td class="num">${x.errors.length ? `<span class="badge dup">${x.errors.length}</span>` : '0'}</td>
-      </tr>`).join('')}
+        <td>${estadoCarga(x, i)}</td>
+        <td>${r ? (TIPOS_CARGA[r.format] || '—') : ''}</td>
+        <td class="mono">${r?.pais || (r ? '—' : '')}</td>
+        <td class="mono">${r?.semana || (r ? '—' : '')}</td>
+        <td class="num">${r ? r.total : ''}</td>
+        <td class="num">${r ? r.updated : ''}</td>
+        <td class="num">${r ? r.created_tracks : ''}</td>
+        <td class="num">${r ? (r.errors.length ? `<span class="badge dup">${r.errors.length}</span>` : '0') : ''}</td>
+      </tr>`; }).join('')}
     </tbody></table>
     ${rs.some(x=>x.errors.length) ? `<table style="margin-top:14px"><thead><tr><th>Detalle de errores</th></tr></thead><tbody>${
       rs.flatMap(x => x.errors.map(e => `<tr><td><b>${x.filename}:</b> ${e}</td></tr>`)).join('')
-    }</tbody></table>` : ''}`;
-  })() : ''}`;
+    }</tbody></table>` : ''}` : ''}`;
 }
 
-async function downloadStoredFile(path, filename){
-  const { data, error } = await sb.storage.from('csv-uploads').createSignedUrl(path, 300);
-  if(error){ alert('No se pudo generar el link: ' + error.message); return; }
-  const a = document.createElement('a');
-  a.href = data.signedUrl;
-  a.download = filename;
-  a.click();
+// ---------- Historial de cargas (solo lectura) ----------
+// Muestra lo que hay cargado en el sistema y de qué archivo salió. No descarga ni borra nada.
+const HIST_TABS = [['youtube','YouTube'], ['spotify','Spotify'], ['bo','Reportes BackOffice'], ['tempo','Reportes Tempo Control']];
+
+async function loadHistorial(){
+  const PAGE = 1000;
+  const uploads = [];
+  for(let from = 0; ; from += PAGE){
+    const { data, error } = await sb.from('csv_uploads')
+      .select('id,filename,uploaded_by,uploaded_at,total_rows,updated_rows,created_tracks,error_count,file_path,format')
+      .order('uploaded_at', { ascending: false }).range(from, from + PAGE - 1);
+    if(error){ console.error('csv_uploads:', error.message); break; }
+    uploads.push(...(data || []));
+    if(!data || data.length < PAGE) break;
+  }
+  const [charts, reportes, usuarios] = await Promise.all([
+    fetchAll('fn_historial_charts', {}), fetchAll('fn_historial_reportes', {}), fetchAll('fn_nombres_usuarios', {}),
+  ]);
+  state.historial = {
+    uploads: uploads.map(u => ({ ...u, tipo: tipoCarga(u), pais: paisCarga(u), semana: semanaCarga(u) })).filter(u => u.tipo),
+    charts: charts.data || [], reportes: reportes.data || [],
+    usuarios: Object.fromEntries((usuarios.data || []).map(x => [x.id, x.email])),
+  };
+  if(state.activeTab === 'history') render();
 }
+
+// En qué pestaña del historial va cada archivo. Las descargas (reporte BO y CSV generados) no son cargas.
+function tipoCarga(u){
+  const n = (u.filename || '').toLowerCase();
+  switch(u.format){
+    case 'youtube': case 'spotify': return u.format;
+    case 'bo_report': return 'bo';
+    case 'tempo_report': case 'master_tempo': return 'tempo';
+    case 'bo_generado': case 'csv_principal': return null;
+  }
+  // Cargas viejas sin tipo registrado: se reconocen por el nombre.
+  if(n.includes('youtube')) return 'youtube';
+  if(n.startsWith('regional') || n.includes('spotify')) return 'spotify';
+  if(n.includes('pais_') || /(^|[^a-z])bo([^a-z]|$)/.test(n) || n.includes('backoffice')) return 'bo';
+  if(n.includes('tempo')) return 'tempo';
+  // Un archivo que no se reconoció no cargó nada: no es parte de lo que hay en el sistema.
+  return u.updated_rows ? 'otros' : null;
+}
+function paisCarga(u){
+  const carpeta = (u.file_path || '').split('/')[1];
+  if(COUNTRIES.includes(carpeta)) return carpeta;
+  return detectCountryFromFilename(u.filename) || detectCountry(u.filename) || null;
+}
+function semanaCarga(u){
+  return detectDateFromFilename(u.filename) || (u.uploaded_at || '').slice(0, 10);
+}
+function quien(id){
+  const email = state.historial?.usuarios?.[id];
+  return email ? email.split('@')[0] : '—';
+}
+function fechaCarga(u){ return fmtFecha(u.uploaded_at); }
 
 function renderHistory(){
-  if(!state.uploads.length) return `<div class="empty">${state.loading?'Cargando...':'Todavía no se subió ningún CSV'}</div>`;
-  return `<table><thead><tr>
-    <th>Archivo</th><th>Subido por</th><th>Fecha</th><th class="num">Filas</th>
-    <th class="num">Cargadas</th><th class="num">Nuevas</th><th class="num">Errores</th><th></th>
-  </tr></thead>
-  <tbody>${state.uploads.map(u=>`
-    <tr>
-      <td>${u.filename}</td>
-      <td class="mono">${u.uploaded_by||''}</td>
-      <td class="mono">${(u.uploaded_at||'').replace('T',' ').slice(0,16)}</td>
-      <td class="num">${fmtNum(u.total_rows)}</td>
-      <td class="num">${fmtNum(u.updated_rows)}</td>
-      <td class="num">${fmtNum(u.created_tracks)}</td>
-      <td class="num">${u.error_count ? `<span class="badge dup">${u.error_count}</span>` : '0'}</td>
-      <td>${u.file_path ? `<button class="rowbtn" data-download-upload="${u.file_path}" data-download-name="${u.filename}">Descargar</button>` : '—'}</td>
-    </tr>`).join('')}
-  </tbody></table>`;
+  const h = state.historial;
+  if(!h) return `<div class="empty">Cargando…</div>`;
+  const cuenta = (t) => h.uploads.filter(u => u.tipo === t).length;
+  const tabs = [...HIST_TABS, ...(cuenta('otros') ? [['otros', 'Otras cargas']] : [])];
+  if(!tabs.some(([k]) => k === state.histTab)) state.histTab = 'youtube';
+  const t = state.histTab;
+  return `
+  <p class="hist-nota">Solo lectura: lo que hay cargado en el sistema y de qué archivo salió cada cosa.</p>
+  <div class="subtabs">${tabs.map(([k, l]) =>
+    `<button class="subtab ${t===k?'active':''}" data-hist-tab="${k}">${l}<span class="cnt">${cuenta(k)}</span></button>`).join('')}</div>
+  ${t === 'youtube' || t === 'spotify' ? renderHistCharts(t)
+    : t === 'bo' ? renderHistReportes('bo')
+    : t === 'tempo' ? renderHistReportes('tempo')
+    : renderArchivos(h.uploads.filter(u => u.tipo === 'otros'), false)}`;
+}
+
+function filaArchivo(u, conTipo, conPais){
+  return `<tr>
+    ${conTipo ? `<td>${TIPOS_CARGA[u.format] || '—'}</td>` : ''}
+    <td>${u.filename}</td>
+    ${conPais ? `<td class="mono">${u.pais || (u.format === 'tempo_report' ? 'varios' : '—')}</td>` : ''}
+    <td class="mono">${fechaCarga(u)}</td><td>${quien(u.uploaded_by)}</td>
+    <td class="num">${fmtNum(u.total_rows)}</td><td class="num">${fmtNum(u.updated_rows)}</td>
+    <td class="num">${u.error_count ? `<span class="badge dup">${u.error_count}</span>` : '0'}</td>
+  </tr>`;
+}
+function renderArchivos(lista, conTipo, conPais = true){
+  if(!lista.length) return `<div class="empty">Todavía no se cargó ningún archivo.</div>`;
+  return `<table><thead><tr>${conTipo ? '<th>Tipo</th>' : ''}<th>Archivo</th>${conPais ? '<th>País</th>' : ''}
+    <th>Cargado el</th><th>Por</th><th class="num">Filas</th><th class="num">Cargadas</th><th class="num">Errores</th></tr></thead>
+    <tbody>${lista.map(u => filaArchivo(u, conTipo, conPais)).join('')}</tbody></table>`;
+}
+
+function renderHistCharts(plataforma){
+  const h = state.historial;
+  const semanas = h.charts.filter(c => c.platform === plataforma);
+  const archivos = h.uploads.filter(u => u.tipo === plataforma);
+  const pais = state.histPais;
+  const chips = `<div class="chips">
+    <button class="chip ${!pais?'active':''}" data-hist-pais="">Todos</button>
+    ${COUNTRIES.map(c => { const n = semanas.filter(x => x.pais_code === c).length;
+      return `<button class="chip ${pais===c?'active':''}" data-hist-pais="${c}" ${n ? '' : 'disabled'}>${c}</button>`; }).join('')}
+  </div>`;
+  if(!pais){
+    const filas = COUNTRIES.map(c => {
+      const s = semanas.filter(x => x.pais_code === c);
+      if(!s.length) return '';
+      const fechas = s.map(x => x.snapshot_date).sort();
+      return `<tr class="clic" data-hist-pais="${c}">
+        <td class="mono">${c}</td><td class="num">${s.length}</td>
+        <td class="mono">${fechas[0]}</td><td class="mono">${fechas[fechas.length-1]}</td>
+        <td class="num">${archivos.filter(u => u.pais === c).length}</td></tr>`;
+    }).join('');
+    const sinPais = archivos.filter(u => !u.pais);
+    return chips + (filas ? `<table><thead><tr><th>País</th><th class="num">Semanas cargadas</th><th>Primera semana</th>
+        <th>Última semana</th><th class="num">Archivos</th></tr></thead><tbody>${filas}</tbody></table>
+        <p class="hist-nota" style="margin-top:8px">Elegí un país para ver cada semana y el archivo del que salió.</p>`
+      : `<div class="empty">Todavía no hay charts de ${plataforma === 'youtube' ? 'YouTube' : 'Spotify'} cargados.</div>`)
+      + (sinPais.length ? `<div class="hist-sec">Archivos sin país en el nombre</div>${renderArchivos(sinPais, false, false)}` : '');
+  }
+  const deEse = archivos.filter(u => u.pais === pais);
+  const usados = new Set();
+  const filas = semanas.filter(x => x.pais_code === pais).map(x => {
+    const fs = deEse.filter(u => u.semana === x.snapshot_date);
+    fs.forEach(u => usados.add(u.id));
+    const u = fs[0];
+    return `<tr><td class="mono">${x.snapshot_date}</td><td class="num">${fmtNum(x.canciones)}</td>
+      <td>${fs.length ? fs.map(f => f.filename).join('<br>') : '<span class="tempo">sin archivo registrado</span>'}</td>
+      <td class="mono">${u ? fechaCarga(u) : '—'}</td><td>${u ? quien(u.uploaded_by) : '—'}</td>
+      <td class="num">${u ? (u.error_count ? `<span class="badge dup">${u.error_count}</span>` : '0') : '—'}</td></tr>`;
+  }).join('');
+  const otros = deEse.filter(u => !usados.has(u.id));
+  return chips + `<table><thead><tr><th>Semana</th><th class="num">Canciones</th><th>Archivo</th><th>Cargado el</th>
+      <th>Por</th><th class="num">Errores</th></tr></thead><tbody>${filas}</tbody></table>`
+    + (otros.length ? `<div class="hist-sec">Otros archivos de ${pais} (sin semana cargada, por ejemplo con errores)</div>${renderArchivos(otros, false, false)}` : '');
+}
+
+function renderHistReportes(tipo){
+  const h = state.historial;
+  const res = h.reportes.filter(r => r.tipo === tipo);
+  const archivos = h.uploads.filter(u => u.tipo === tipo);
+  const nombre = tipo === 'bo' ? 'datos del Reporte BackOffice' : 'datos del Reporte Tempo Control';
+  const tids = h.reportes.find(r => r.tipo === 'tempo_ids');
+  return `
+    ${tipo === 'tempo' && tids ? `<p class="hist-nota">Obras de la tabla principal con Tempo ID: <b>${fmtNum(tids.obras)}</b>.</p>` : ''}
+    ${res.length ? `<table><thead><tr><th>País</th><th class="num">Obras con ${nombre}</th><th>Última actualización</th></tr></thead>
+      <tbody>${res.map(r => `<tr><td class="mono">${r.pais_code}</td><td class="num">${fmtNum(r.obras)}</td>
+        <td class="mono">${fmtFecha(r.actualizado)}</td></tr>`).join('')}</tbody></table>`
+      : `<div class="empty">Todavía no hay ${nombre} cargados.</div>`}
+    <div class="hist-sec">Archivos cargados</div>
+    ${renderArchivos(archivos, tipo === 'tempo', tipo === 'bo')}`;
 }
 
 function renderBody(){
@@ -1178,7 +1353,14 @@ function attachLoginEvents(){
 
 function attachAppEvents(){
   document.getElementById('logoutBtn').onclick = doLogout;
-  document.querySelectorAll('[data-tab]').forEach(t => t.onclick = () => { state.activeTab = t.dataset.tab; state.uploadResults=[]; state.search=''; render(); });
+  document.querySelectorAll('[data-tab]').forEach(t => t.onclick = () => {
+    state.activeTab = t.dataset.tab; state.search='';
+    if(!state.uploading) state.uploadQueue = [];
+    if(state.activeTab === 'history' && !state.historial) loadHistorial();
+    render();
+  });
+  document.querySelectorAll('[data-hist-tab]').forEach(b => b.onclick = () => { state.histTab = b.dataset.histTab; state.histPais = ''; render(); });
+  document.querySelectorAll('[data-hist-pais]').forEach(b => b.onclick = () => { state.histPais = b.dataset.histPais; render(); });
 
   const sM = document.getElementById('searchMaster');
   if(sM) sM.oninput = (e) => { state.search = e.target.value; render(); const el=document.getElementById('searchMaster'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
@@ -1228,7 +1410,6 @@ function attachAppEvents(){
   document.querySelectorAll('[data-del-territory]').forEach(b => b.onclick = () => softDelete('territory', b.dataset.delTerritory));
   document.querySelectorAll('[data-restore-territory]').forEach(b => b.onclick = () => restore('territory', b.dataset.restoreTerritory));
 
-  document.querySelectorAll('[data-download-upload]').forEach(b => b.onclick = () => downloadStoredFile(b.dataset.downloadUpload, b.dataset.downloadName));
 
   document.querySelectorAll('[data-history-track]').forEach(b => b.onclick = () =>
     openHistory(b.dataset.historyTrack, b.dataset.historyPais));

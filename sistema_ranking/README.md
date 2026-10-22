@@ -145,7 +145,7 @@ hacen un respaldo; para volver atrás: `bash ranking.sh restaurar <respaldo>`.
   - el historial de archivos.
 
   Quedan los usuarios y el número de la próxima carga del reporte BO, para no repetir números que BO ya recibió.
-- `bash ranking.sh vaciar-historial` borra solo los archivos guardados y la lista de la pestaña **Historial CSV**.
+- `bash ranking.sh vaciar-historial` borra solo los archivos guardados y su lista en **Historial de cargas** (los datos cargados quedan).
 
 **Respaldos:** los datos viven dentro de Ubuntu (en volúmenes de Docker). `bash ranking.sh respaldo` los copia
 también a OneDrive (`...\Backoffice\RANKING DIGITAL REGIONAL\respaldos`), y `actualizar` hace uno antes de cada
@@ -295,8 +295,10 @@ Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
 - **Seguimiento de envíos** (`db/mejoras/01_seguimiento.sql`): el sistema registra qué obras salieron en cada
   reporte BO y en cada descarga del CSV de la tabla principal. Al descargar se elige **Solo las nuevas** (las que
   nunca salieron en ese tipo de descarga, para el seguimiento semanal) o **Todas** (la revisión completa, por
-  ejemplo trimestral). La elección se hace en el cartel que abre cada botón de descarga; la tabla principal muestra la columna **Seguimiento**, y cada descarga queda en el
-  Historial CSV.
+  ejemplo trimestral). La elección se hace en el cartel que abre cada botón de descarga; la tabla principal muestra la columna **Seguimiento**, y cada descarga queda
+  registrada.
+- **Historial de cargas** (solo lectura): por YouTube y Spotify (con país), Reportes BackOffice y Reportes Tempo
+  Control. Muestra qué hay cargado en la base y de qué archivo salió (`db/mejoras/02_historial.sql`).
 - **Charts solo de carga manual:** Spotify y YouTube se suben desde Carga CSV; ya no hay carga automática.
 - **Fecha de última carga por país**, arriba en la aplicación.
 - **Manual de uso** dentro de la aplicación (`front/manual.html`).
