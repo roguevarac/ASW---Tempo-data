@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Ranking Digital Regional",
-  "short_name": "Ranking Digital",
-  "description": "Panel operativo de Ranking Digital: rankings de Spotify y YouTube por territorio, Tempo y reportes BO.",
+  "name": "Auditor de Rankings Digitales",
+  "short_name": "Auditor Rankings",
+  "description": "Auditor de Rankings Digitales: rankings de Spotify y YouTube por territorio, Tempo y reportes BO.",
   "lang": "es",
   "start_url": "/",
   "scope": "/",

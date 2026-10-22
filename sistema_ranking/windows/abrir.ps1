@@ -11,6 +11,6 @@ if ($SinNavegador) {
     }
 }
 Verificar-Instalado
-Write-Host "Arrancando Ranking Digital..."
+Write-Host "Arrancando Auditor de Rankings Digitales..."
 Iniciar-Sistema
 if (-not $SinNavegador) { Start-Process (Direccion) }

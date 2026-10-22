@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ranking Digital con Docker Engine en Linux / WSL2 (sin Docker Desktop). Se usa desde la terminal de Ubuntu:
+# Auditor de Rankings Digitales (ex Ranking Digital) con Docker Engine en Linux / WSL2 (sin Docker Desktop). Se usa desde la terminal de Ubuntu:
 #
 #   bash ranking.sh instalar        arma y arranca el sistema (la primera vez: crea la base y las claves)
 #   bash ranking.sh migrar          trae de Supabase los datos, los usuarios y el historial
@@ -15,7 +15,7 @@
 #   bash ranking.sh cargar-historicos  carga una vez los charts de "Spotify Charts" y "Youtube Charts" de OneDrive
 #   bash ranking.sh espejo          copia a OneDrive (espejo de auditoría) los archivos cargados que falten
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
-#   bash ranking.sh acceso-directo  crea la aplicación "Ranking Digital" en Windows (escritorio, menú Inicio, inicio)
+#   bash ranking.sh acceso-directo  crea la aplicación "Auditor de Rankings Digitales" en Windows (escritorio, menú Inicio, inicio)
 #   bash ranking.sh verificar       revisa que todo esté sano (sin cambiar nada)
 #   bash ranking.sh actualizar      respaldo + versión nueva desde GitHub + reinicio, sin perder datos
 #   (agregando --automatico, instalar no hace preguntas: lo usan los agentes como Antigravity)
@@ -222,7 +222,7 @@ cmd_instalar() {
         mkdir -p "$(dirname "$CONFIG")" && chmod 700 "$(dirname "$CONFIG")"
         umask 077
         cat > "$CONFIG" <<EOF
-# Ranking Digital: claves internas generadas al azar. No compartir este archivo.
+# Auditor de Rankings Digitales: claves internas generadas al azar. No compartir este archivo.
 POSTGRES_PASSWORD=$(clave_nueva)
 AUTHENTICATOR_PASSWORD=$(clave_nueva)
 JWT_SECRET=$(clave_nueva)
@@ -259,7 +259,7 @@ EOF
         fi
     fi
     if command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ]; then
-        si "¿Crear el ícono 'Ranking Digital' en el escritorio de Windows?" S && cmd_acceso_directo
+        si "¿Crear el ícono 'Auditor de Rankings Digitales' en el escritorio de Windows?" S && cmd_acceso_directo
     fi
     ok $'\n'"Listo. Entrá desde el navegador de Windows: $(direccion)"
     echo "Para los próximos días:  bash ranking.sh abrir   (y  bash ranking.sh detener  para apagarlo)."
@@ -364,14 +364,14 @@ cmd_abrir() {
     local mantener=0 navegador=1 a
     for a in "$@"; do case "$a" in --mantener) mantener=1 ;; --sin-navegador) navegador=0 ;; esac; done
     verificar_docker; instalado
-    echo "Arrancando Ranking Digital..."
+    echo "Arrancando Auditor de Rankings Digitales..."
     # --no-recreate: si ya está funcionando, no lo reinicia (las versiones nuevas las aplica actualizar). Solo si
     # recién se guardó un proxy o una carpeta de espejo nueva, la API se reinicia una vez para tomarlos.
     local recrear=(--no-recreate); [ "$PROXY_CAMBIADO" = 1 ] || [ "$ESPEJO_CAMBIADO" = 1 ] && recrear=()
     dc up -d "${recrear[@]+"${recrear[@]}"}" > /dev/null 2>&1 \
         || { dc up -d "${recrear[@]+"${recrear[@]}"}"; fallar "No arrancó (el motivo está arriba)."; }
     esperar_sistema
-    ok "Ranking Digital funcionando: $(direccion)"
+    ok "Auditor de Rankings Digitales funcionando: $(direccion)"
     [ "$navegador" = 1 ] && abrir_navegador "$(direccion)"
     if [ "$mantener" = 1 ]; then
         # Lo usa el lanzador de Windows (oculto): mientras este proceso viva, Ubuntu (y con él Docker y el sistema)
@@ -455,6 +455,19 @@ cmd_respaldo() {
     echo "Para volver a este respaldo:  bash ranking.sh restaurar $f"
 }
 
+# Cuántos charts de "Spotify Charts" y "Youtube Charts" (OneDrive) no están cargados todavía (por nombre de archivo).
+charts_pendientes() {
+    local e c; e="$(valor ESPEJO_DIR)"
+    [ -n "$e" ] || { echo 0; return; }
+    local cargados; cargados="$(mktemp)"
+    consulta "select filename from public.csv_uploads where updated_rows > 0 or file_path like '%/importado-onedrive/%'" \
+        > "$cargados" 2> /dev/null
+    for c in "$e/Spotify Charts" "$e/Youtube Charts"; do
+        [ -d "$c" ] && find "$c" -type f -iname '*.csv' -printf '%f\n' 2> /dev/null
+    done | grep -Fxv -f "$cargados" | wc -l
+    rm -f "$cargados"
+}
+
 # Copia al espejo de OneDrive los archivos cargados que todavía no están (no borra ni pisa nada) y la documentación.
 cmd_espejo() {
     verificar_docker; instalado
@@ -491,7 +504,9 @@ cmd_cargar_historicos() {
     mkdir -p "$RESPALDOS"
     local registro; registro="$RESPALDOS/carga-historicos-$(date +%Y%m%d_%H%M%S).log"
     dc up -d db > /dev/null 2>&1
-    herramienta python /app/migracion/importar_charts.py "${dentro[@]}" 2>&1 | tee "$registro"
+    # Como root, igual que el espejo: en WSL, OneDrive (/mnt/c) puede no dejar leer a otros usuarios. Lo que guarda en
+    # el sistema queda a nombre del usuario de la API.
+    herramienta_root python /app/migracion/importar_charts.py "${dentro[@]}" 2>&1 | tee "$registro"
     [ "${PIPESTATUS[0]}" = 0 ] || fallar "La carga se interrumpió (el motivo está arriba). Lo cargado queda; para seguir, volvé a correr el comando."
     ok "Carga terminada. Detalle completo: $registro"
     echo "En la aplicación: Historial de cargas muestra cada semana cargada por país."
@@ -607,7 +622,7 @@ cmd_acceso_directo() {
         || fallar "Los accesos de Windows son para WSL (Ubuntu dentro de Windows). Acá no encuentro Windows."
     instalado
     case "$DIR" in /mnt/*) fallar "Primero copiá el proyecto dentro de Ubuntu (~/proyectos) y corré este comando desde ahí.";; esac
-    titulo "Creando la aplicación 'Ranking Digital' en Windows"
+    titulo "Creando la aplicación 'Auditor de Rankings Digitales' en Windows"
     local win_local carpeta_win carpeta lanzar_win ico_win
     win_local="$(cd /mnt/c 2>/dev/null || true; powershell.exe -NoProfile -Command '$env:LOCALAPPDATA' 2>/dev/null | tr -d '\r')"
     [ -n "$win_local" ] || fallar "No pude leer la carpeta de Windows del usuario."
@@ -642,21 +657,26 @@ cmd_acceso_directo() {
             Write-Output (Join-Path \$carpeta (\$nombre + '.lnk'))
         }
         \$escritorio = [Environment]::GetFolderPath('Desktop')
-        \$menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Ranking Digital'
+        \$programas = [Environment]::GetFolderPath('Programs')
+        \$menu = Join-Path \$programas 'Auditor de Rankings Digitales'
         \$inicio = [Environment]::GetFolderPath('Startup')
-        Acceso \$escritorio 'Ranking Digital' '' 'Abrir Ranking Digital'
-        Acceso \$menu 'Ranking Digital' '' 'Abrir Ranking Digital'
-        Acceso \$menu 'Apagar Ranking Digital' ' -Apagar' 'Apagar Ranking Digital (los datos quedan guardados)'
+        # Accesos con el nombre anterior del sistema (Ranking Digital): se reemplazan por los nuevos.
+        Remove-Item (Join-Path \$escritorio 'Ranking Digital.lnk') -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path \$programas 'Ranking Digital') -Recurse -ErrorAction SilentlyContinue
         Remove-Item (Join-Path \$inicio 'Ranking Digital.lnk') -ErrorAction SilentlyContinue
-        if ($inicio -eq 1) { Acceso \$inicio 'Ranking Digital' ' -SoloServidor' 'Encender el servidor de Ranking Digital' }"
+        Acceso \$escritorio 'Auditor de Rankings Digitales' '' 'Abrir Auditor de Rankings Digitales'
+        Acceso \$menu 'Auditor de Rankings Digitales' '' 'Abrir Auditor de Rankings Digitales'
+        Acceso \$menu 'Apagar Auditor de Rankings Digitales' ' -Apagar' 'Apagar Auditor de Rankings Digitales (los datos quedan guardados)'
+        Remove-Item (Join-Path \$inicio 'Auditor de Rankings Digitales.lnk') -ErrorAction SilentlyContinue
+        if ($inicio -eq 1) { Acceso \$inicio 'Auditor de Rankings Digitales' ' -SoloServidor' 'Encender el servidor del Auditor de Rankings Digitales' }"
     local donde; donde="$(cd /mnt/c 2>/dev/null || true; powershell.exe -NoProfile -Command "$ps" 2>&1 | tr -d '\r')" \
         || fallar "No pude crear los accesos: $donde"
     poner ACCESO_DIRECTO 1; poner INICIO_AUTOMATICO "$([ "$inicio" = 1 ] && echo S || echo N)"
     ok "Listo. Accesos creados:"; printf '  %s\n' "$donde"
-    echo "Doble clic en 'Ranking Digital' (escritorio o menú Inicio, o buscándolo en Windows): abre la aplicación en su"
+    echo "Doble clic en 'Auditor de Rankings Digitales' (escritorio o menú Inicio, o buscándolo en Windows): abre la aplicación en su"
     echo "propia ventana y, si hace falta, enciende el servidor sin ventanas negras."
     echo "Para instalarla también como aplicación de Edge (barra de tareas): en esa ventana, menú ··· > Aplicaciones >"
-    echo "Instalar Ranking Digital. 'Apagar Ranking Digital' (menú Inicio) apaga todo."
+    echo "Instalar Auditor de Rankings Digitales. 'Apagar Auditor de Rankings Digitales' (menú Inicio) apaga todo."
 }
 
 version_programa() {
@@ -669,7 +689,7 @@ version_programa() {
 cmd_verificar() {
     local fallo=0 n
     linea() { if [ "$1" = ok ]; then ok "  OK     $2"; else printf '%s  FALLA  %s%s\n' "$R" "$2" "$N"; fallo=1; fi; }
-    titulo "Verificación de Ranking Digital"
+    titulo "Verificación de Auditor de Rankings Digitales"
     if docker info > /dev/null 2>&1; then linea ok "Docker funcionando"; else linea mal "Docker no está corriendo (sudo service docker start)"; fi
     if [ -f "$CONFIG" ]; then linea ok "Configuración en $CONFIG"; else linea mal "Sin configuración: falta bash ranking.sh instalar"; fi
     if [ "$fallo" = 0 ]; then
@@ -687,6 +707,8 @@ cmd_verificar() {
         elif dc exec -T espejo sh -c 'test -n "$ESPEJO" && touch /espejo/.prueba-escritura && rm -f /espejo/.prueba-escritura' > /dev/null 2>&1; then
             linea ok "Espejo de auditoría en OneDrive: $(valor ESPEJO_DIR)"
         else aviso "  AVISO  No se puede escribir en el espejo de OneDrive ($(valor ESPEJO_DIR)); ver README, sección Espejo"; fi
+        n="$(charts_pendientes)"
+        [ "${n:-0}" -gt 0 ] && aviso "  AVISO  $n charts en OneDrive (Spotify Charts / Youtube Charts) sin cargar: bash ranking.sh cargar-historicos"
     fi
     echo "  Versión del programa: $(version_programa)"
     [ "$fallo" = 0 ] && ok "Todo en orden." || { printf '%sHay problemas: revisá las líneas FALLA.%s\n' "$R" "$N"; return 1; }

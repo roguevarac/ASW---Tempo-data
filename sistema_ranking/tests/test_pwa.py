@@ -59,8 +59,8 @@ with sync_playwright() as p:
     pag.reload(); pag.wait_for_selector("#loginEmail")   # ya controlada por el service worker
     ctx.set_offline(True)
     pag.reload()
-    pag.wait_for_selector("text=Ranking Digital está iniciando o apagado", timeout=10000)
-    check("sin servidor: muestra 'Ranking Digital está iniciando o apagado'", True)
+    pag.wait_for_selector("text=Auditor de Rankings Digitales está iniciando o apagado", timeout=10000)
+    check("sin servidor: muestra 'Auditor de Rankings Digitales está iniciando o apagado'", True)
     ctx.set_offline(False)
     pag.wait_for_selector("#loginEmail", timeout=15000)
     check("cuando el servidor vuelve, entra solo al sistema", pag.url.rstrip("/") == BASE)
@@ -76,7 +76,7 @@ with sync_playwright() as p:
     archivo = pathlib.Path(perfil) / "iniciando.html"
     archivo.write_text(plantilla.replace("__PUERTO__", "1"))   # puerto donde no hay nadie
     pag.goto(archivo.as_uri()); pag.wait_for_timeout(3500)
-    check("pantalla 'iniciando': sin servidor, espera", "Iniciando Ranking Digital" in pag.content() and pag.url.startswith("file://"))
+    check("pantalla 'iniciando': sin servidor, espera", "Iniciando Auditor de Rankings Digitales" in pag.content() and pag.url.startswith("file://"))
     archivo.write_text(plantilla.replace("__PUERTO__", str(puerto)))
     pag.goto(archivo.as_uri())
     pag.wait_for_url(lambda u: u.startswith(BASE.replace("127.0.0.1", "localhost")), timeout=15000)

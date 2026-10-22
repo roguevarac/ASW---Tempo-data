@@ -40,10 +40,10 @@ CARPETAS = {
     "master_tempo": ("Reportes Tempo Control/Tempo IDs", False),
 }
 PAISES = {"AR", "CL", "PE", "UY", "PY", "CO", "EC", "MX"}
-LEEME = """RANKING DIGITAL REGIONAL - Respaldo y auditoría
-================================================
+LEEME = """AUDITOR DE RANKINGS DIGITALES - Respaldo y auditoría
+====================================================
 
-Esta carpeta es una copia de respaldo y auditoría del sistema Ranking Digital. No es el sistema.
+Esta carpeta es una copia de respaldo y auditoría del sistema Auditor de Rankings Digitales. No es el sistema.
 
 - Fuente de verdad: la base de datos del sistema (PostgreSQL en Docker). Todo lo que muestra la aplicación sale de ahí.
 - Espejo: cada vez que se carga un chart o un reporte, el sistema copia acá el archivo original. Los respaldos

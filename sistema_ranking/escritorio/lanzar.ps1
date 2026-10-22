@@ -1,4 +1,4 @@
-# Ranking Digital: abre la aplicacion (y enciende el servidor en Ubuntu si hace falta), sin ventanas negras.
+# Auditor de Rankings Digitales: abre la aplicacion (y enciende el servidor en Ubuntu si hace falta), sin ventanas negras.
 # Lo genera "bash ranking.sh acceso-directo" en %LOCALAPPDATA%\RankingDigital (no editar: se regenera al actualizar).
 #   (sin opciones)   abre la aplicacion en su propia ventana; si el servidor no estaba prendido, lo enciende
 #   -SoloServidor    enciende el servidor sin abrir nada (arranque automatico al iniciar Windows)

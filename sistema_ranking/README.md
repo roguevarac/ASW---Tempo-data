@@ -1,4 +1,7 @@
-# Sistema Ranking Digital (propio, sin Supabase)
+# Auditor de Rankings Digitales (ex Ranking Digital; sistema propio, sin Supabase)
+
+El sistema se llama **Auditor de Rankings Digitales** desde el 22/10/2026. Los nombres internos (carpetas, `ranking.sh`, Docker
+`ranking-digital`, `%LOCALAPPDATA%\RankingDigital`) no cambian, para no afectar la instalación.
 
 Este es el mismo sistema que corría en Supabase, ahora en un servidor propio. El front es el mismo HTML con la misma
 lógica. Lo único que cambió es a quién le habla: antes era Supabase, ahora es nuestra API.
@@ -84,15 +87,15 @@ contra lo que había en Supabase; si algo no coincide, no se importa nada.
 
 ### La aplicación en Windows
 
-Ranking Digital se usa como una **aplicación**: tiene ventana propia, sin pestañas ni barra del navegador, y su
+El Auditor de Rankings Digitales se usa como una **aplicación**: tiene ventana propia, sin pestañas ni barra del navegador, y su
 ícono. Por dentro es una aplicación web instalable (PWA) que corre en Microsoft Edge, y el servidor en Ubuntu queda
 en segundo plano, sin ventanas negras. No hace falta ser administrador.
 
 `instalar` la crea al final. También se puede crear (o rehacer) con `bash ranking.sh acceso-directo`. Deja:
-- **Ranking Digital** en el escritorio y en el **menú Inicio**, así aparece en la búsqueda de Windows. Abre la
-  aplicación en su ventana. Si el servidor estaba apagado, lo enciende y muestra "Iniciando Ranking Digital…" hasta
+- **Auditor de Rankings Digitales** en el escritorio y en el **menú Inicio**, así aparece en la búsqueda de Windows. Abre la
+  aplicación en su ventana. Si el servidor estaba apagado, lo enciende y muestra "Iniciando Auditor de Rankings Digitales…" hasta
   que está listo.
-- **Apagar Ranking Digital**, en el menú Inicio. Apaga todo; los datos quedan guardados.
+- **Apagar Auditor de Rankings Digitales**, en el menú Inicio. Los accesos con el nombre anterior se reemplazan solos al actualizar. Apaga todo; los datos quedan guardados.
 - **Arranque oculto al iniciar Windows**, si lo aceptás (recomendado). El servidor queda prendido mientras la sesión
   de Windows esté abierta.
 
@@ -105,7 +108,7 @@ Si querés tenerla también en la barra de tareas, instalala desde Edge:
 Edge solo la ofrece si la página cargó bien, con su manifiesto, sus íconos y el service worker activo. El sistema ya
 trae todo eso. Si el servidor se estaba reiniciando, recargá la página y esperá unos segundos.
 
-Si abrís la aplicación con el servidor apagado, en lugar de un error muestra "Ranking Digital está iniciando o
+Si abrís la aplicación con el servidor apagado, en lugar de un error muestra "Auditor de Rankings Digitales está iniciando o
 apagado" y entra sola cuando el servidor responde. Nunca guarda datos en el navegador: todo viene siempre del
 servidor.
 
@@ -116,7 +119,7 @@ servidor.
 
 | Comando | Para qué |
 |---|---|
-| Aplicación **Ranking Digital** (escritorio, menú Inicio) o `bash ranking.sh abrir` | Lo arranca si estaba apagado (incluso Docker) y lo abre en el navegador de Windows |
+| Aplicación **Auditor de Rankings Digitales** (escritorio, menú Inicio) o `bash ranking.sh abrir` | Lo arranca si estaba apagado (incluso Docker) y lo abre en el navegador de Windows |
 | `bash ranking.sh detener` | Lo apaga; los datos quedan guardados |
 | `bash ranking.sh usuarios` | Crear usuarios, cambiar contraseñas, roles y oficina, bloquear y desbloquear |
 | `bash ranking.sh estado` / `logs` | Qué está corriendo / últimos mensajes, si algo falla |
@@ -259,7 +262,7 @@ de tu usuario (`%LOCALAPPDATA%\RankingDigital`), como cualquier programa portabl
 
    Cada archivo se verifica por su sha256 antes de usarlo. Los paquetes de Python ya vienen en el ZIP
    (`windows\paquetes`). Después arma la base, deja el sistema funcionando en http://localhost:8000 (o el siguiente
-   puerto libre) y crea el acceso directo **Ranking Digital** en el escritorio. También te pregunta si querés que
+   puerto libre) y crea el acceso directo **Auditor de Rankings Digitales** en el escritorio. También te pregunta si querés que
    arranque solo al prender la PC.
 3. **`2_MIGRAR_DESDE_SUPABASE.bat`**. Trae de Supabase los datos, los usuarios y el historial de cargas. Te pide:
    - la URL del proyecto: Enter para usar la tuya;

@@ -554,6 +554,11 @@ try:
     for f, t in historicos.items():
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(t)
+        os.chown(f, 1000, 1000)
+        f.chmod(0o600)   # como en OneDrive: solo el dueño los puede leer (el contenedor de herramientas corre como 10001)
+    r = sin_terminal("verificar")
+    pendientes = re.search(r"(\d+) charts en OneDrive \(Spotify Charts / Youtube Charts\) sin cargar", r.stdout)
+    check("verificar: avisa cuántos charts de OneDrive faltan cargar", pendientes and int(pendientes.group(1)) >= 2, r.stdout[-800:])
     p = ranking("cargar-historicos", carpeta=clon_sr)
     p.expect(r"¿Cargar los (\d+) archivos\? .*\(S/N\)", timeout=300); total_od = int(p.match.group(1)); p.sendline("S")
     codigo = fin(p)
@@ -569,6 +574,16 @@ try:
           total_od > 2 and ya_cargados and int(ya_cargados.group(1)) > 0
           and base_nueva("select count(*) from csv_uploads where uploaded_by = 'importación histórica'") == "2", (total_od, log[-800:]))
     check("cargar-historicos: deja el detalle en un registro", list(respaldos.glob("carga-historicos-*.log")))
+    r = sin_terminal("verificar")
+    despues = re.search(r"(\d+) charts en OneDrive \(Spotify Charts / Youtube Charts\) sin cargar", r.stdout)
+    check("verificar: después de la carga, faltan 2 charts menos", (int(despues.group(1)) if despues else 0) == int(pendientes.group(1)) - 2,
+          r.stdout[-800:])
+    duenios = dc("exec", "-T", "api", "sh", "-c", "find /data/storage/csv-uploads ! -user ranking | head -5").stdout.strip()
+    check("cargar-historicos: lo guardado en el sistema queda a nombre del usuario de la API (no de root)", duenios == "", duenios)
+    tok_admin = {"Authorization": "Bearer " + login("admin@prueba.local", "clave-migrada-123").json().get("access_token", "")}
+    subida = httpx.post(api("/storage/upload/csv-uploads/spotify/AR/2026-10-23/1_nuevo.csv"), content=b"rank\n1\n",
+                        headers=dict(tok_admin, **{"Content-Type": "text/csv"}), trust_env=False)
+    check("después de la carga masiva, la aplicación sigue pudiendo cargar archivos en esas carpetas", subida.status_code == 200, subida.text)
     p = ranking("cargar-historicos", carpeta=clon_sr)
     p.expect(r"\(S/N\)", timeout=300); p.sendline("S")
     codigo = fin(p)

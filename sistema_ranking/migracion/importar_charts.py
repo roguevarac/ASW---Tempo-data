@@ -306,22 +306,47 @@ def preparar(nombre, rel, raiz, datos):
     return formato, pais, semana, filas, errores, aviso, preparadas
 
 
+def a_nombre_del_sistema(storage, destino):
+    """Corre como root (para leer OneDrive): lo guardado queda a nombre del dueño del almacenamiento (el usuario de la
+    API), así la API puede seguir creando carpetas y archivos ahí."""
+    if os.geteuid() != 0:
+        return
+    st = storage.stat() if storage.exists() else storage.parent.stat()
+    p = destino
+    while p != storage and storage in p.parents:
+        os.chown(p, st.st_uid, st.st_gid)
+        p = p.parent
+
+
 def importar(pgurl, storage_dir, carpetas, salida=print):
     import psycopg
     storage = pathlib.Path(storage_dir) / "csv-uploads"
+    if not storage.exists():
+        storage.mkdir(parents=True)
+        if os.geteuid() == 0:   # mismo dueño que la carpeta del almacenamiento (el usuario de la API)
+            st = storage.parent.stat()
+            os.chown(storage, st.st_uid, st.st_gid)
     archivos = []
+    ilegibles = []
     for c in carpetas:
         raiz = pathlib.Path(c)
         if not raiz.is_dir():
             salida(f"No existe la carpeta {raiz}: se saltea.")
             continue
-        for p in raiz.rglob("*"):
-            if es_chart(p):
-                rel = p.relative_to(raiz)
-                archivos.append((detect_date_from_filename(p.name) or "", str(rel).lower(), p, rel, raiz))
+        antes = len(archivos)
+        # os.walk sigue aunque una subcarpeta no se pueda leer (queda informada).
+        for actual, _, nombres in os.walk(raiz, onerror=lambda e: ilegibles.append(f"{e.filename}: {e.strerror}")):
+            for n in nombres:
+                p = pathlib.Path(actual) / n
+                if es_chart(p):
+                    rel = p.relative_to(raiz)
+                    archivos.append((detect_date_from_filename(p.name) or "", str(rel).lower(), p, rel, raiz))
+        salida(f"{raiz.name}: {len(archivos) - antes} archivos")
     archivos.sort()
     total = len(archivos)
     salida(f"Archivos encontrados: {total}")
+    for x in ilegibles:
+        salida(f"  No se pudo leer la carpeta {x}")
     res = {"cargados": 0, "con_errores": 0, "no_cargados": 0, "ya_importados": 0, "filas": 0, "nuevas": 0}
     problemas, avisos = [], []
     inicio = time.time()
@@ -337,7 +362,13 @@ def importar(pgurl, storage_dir, carpetas, salida=print):
             if nombre in ya:
                 res["ya_importados"] += 1
                 continue
-            datos = p.read_bytes()
+            try:
+                datos = p.read_bytes()
+            except OSError as e:   # por ejemplo, un archivo de OneDrive que está solo en la nube y no se descargó
+                res["no_cargados"] += 1
+                problemas.append(f"{rel}: no se pudo leer el archivo ({e.strerror or e}). Abrí la carpeta en OneDrive y "
+                                 "marcá \"Mantener siempre en este dispositivo\"; después volvé a correr la carga.")
+                continue
             r = preparar(nombre, rel, raiz, datos)
             formato, pais, semana, filas, errores, aviso = r[:6]
             preparadas = r[6] if len(r) > 6 else []
@@ -366,6 +397,7 @@ def importar(pgurl, storage_dir, carpetas, salida=print):
                 destino = storage / ruta
                 destino.parent.mkdir(parents=True, exist_ok=True)
                 destino.write_bytes(datos)
+                a_nombre_del_sistema(storage, destino)
                 cur.execute("INSERT INTO public.csv_uploads (filename, total_rows, created_tracks, updated_rows, error_count, "
                             "errors, file_path, format, uploaded_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                             (nombre, len(filas), nuevas, cargadas, len(errores), json.dumps(errores[:100]), ruta, formato, QUIEN))

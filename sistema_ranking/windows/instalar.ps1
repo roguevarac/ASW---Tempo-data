@@ -79,13 +79,15 @@ if ($cantidad -gt 0) {
 if ($EsWindows) {
     $shell = New-Object -ComObject WScript.Shell
     $abrir = Unir $App 'windows' 'abrir.ps1'
-    $acceso = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Ranking Digital.lnk'))
+    Remove-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Ranking Digital.lnk') -ErrorAction SilentlyContinue   # nombre anterior
+    $acceso = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Auditor de Rankings Digitales.lnk'))
     $acceso.TargetPath = 'powershell.exe'
     $acceso.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$abrir`""
     $acceso.WorkingDirectory = $App
     $acceso.Save()
-    Ok "Acceso directo 'Ranking Digital' creado en el escritorio."
-    $inicio = Join-Path ([Environment]::GetFolderPath('Startup')) 'Ranking Digital.lnk'
+    Ok "Acceso directo 'Auditor de Rankings Digitales' creado en el escritorio."
+    Remove-Item (Join-Path ([Environment]::GetFolderPath('Startup')) 'Ranking Digital.lnk') -ErrorAction SilentlyContinue
+    $inicio = Join-Path ([Environment]::GetFolderPath('Startup')) 'Auditor de Rankings Digitales.lnk'
     if (Preguntar-SiNo "Arrancar el sistema solo cada vez que prendes la PC?") {
         $auto = $shell.CreateShortcut($inicio)
         $auto.TargetPath = 'powershell.exe'
@@ -96,6 +98,6 @@ if ($EsWindows) {
     } elseif (Test-Path $inicio) { Remove-Item $inicio }
 }
 
-Ok "`nListo. Para entrar: el acceso directo 'Ranking Digital' del escritorio (o $(Direccion) en el navegador)."
+Ok "`nListo. Para entrar: el acceso directo 'Auditor de Rankings Digitales' del escritorio (o $(Direccion) en el navegador)."
 Start-Process (Direccion)
 Read-Host "Presiona Enter para cerrar" | Out-Null

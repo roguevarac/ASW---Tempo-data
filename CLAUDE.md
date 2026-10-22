@@ -209,6 +209,14 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
       - saltea filenames ya cargados (importados o con `updated_rows > 0`);
       - guarda en `<fmt>/<PAIS>/importado-onedrive/` con `uploaded_by = 'importación histórica'`.
     - El espejo saltea `/importado-onedrive/`.
+  - **Nombre del sistema: "Auditor de Rankings Digitales"** (22/10/2026; antes "Ranking Digital Regional").
+    - Se usa en el front, el manifest (short_name "Auditor Rankings"), el manual, las pantallas de inicio, los accesos
+      de Windows (que borran los viejos "Ranking Digital") y los mensajes de `ranking.sh`.
+    - Los identificadores internos no cambian: `ranking.sh`, compose `ranking-digital`, `ranking.env`,
+      `%LOCALAPPDATA%\RankingDigital` y la carpeta de OneDrive "RANKING DIGITAL REGIONAL".
+  - `cargar-historicos` corre como root (`herramienta_root`), igual que el espejo, porque OneDrive puede no dejar leer
+    a otros usuarios. Lo que guarda queda a nombre del dueño del almacenamiento. `verificar` avisa cuántos charts de
+    OneDrive faltan cargar (`charts_pendientes`).
 - **Como aplicación (PWA, desde el 21/10/2026):** el front es instalable (`front/manifest.webmanifest`, `front/sw.js`,
   `front/apagado.html`, `front/iconos/`); los inyecta `front/generar_index.py`, y los íconos se generan con
   `front/generar_iconos.py`.

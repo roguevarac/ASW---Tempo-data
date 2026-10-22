@@ -1,6 +1,6 @@
-# Instrucciones para Antigravity: dejar funcionando Ranking Digital en la PC del usuario
+# Instrucciones para Antigravity: dejar funcionando el Auditor de Rankings Digitales en la PC del usuario
 
-Estas instrucciones son para vos, el agente que trabaja en la PC del usuario. El objetivo es dejar Ranking Digital
+Estas instrucciones son para vos, el agente que trabaja en la PC del usuario. El objetivo es dejar el Auditor de Rankings Digitales (ex Ranking Digital)
 funcionando en contenedores Docker, de forma limpia y prolija, con el ícono en el escritorio. Después, mantenerlo
 actualizado con las mejoras que se suban a GitHub.
 
@@ -71,7 +71,7 @@ Qué hace, en orden:
    base sigue igual.
 2. Baja PostgreSQL 17 y Python. Si Docker Hub falla, usa solo los espejos `mirror.gcr.io` y `public.ecr.aws`.
 3. Arma la imagen, levanta los contenedores (`ranking-digital-db-1` y `ranking-digital-api-1`) y crea la base.
-4. Crea la aplicación **Ranking Digital** en Windows: escritorio, menú Inicio (abrir y "Apagar Ranking Digital") y
+4. Crea la aplicación **Auditor de Rankings Digitales** en Windows: escritorio, menú Inicio (abrir y "Apagar Auditor de Rankings Digitales") y
    arranque oculto del servidor al iniciar Windows.
 
 | Si la salida dice | Hacé esto |
@@ -129,9 +129,9 @@ espacios.
 ## Paso 7. Entregar
 
 Confirmale al usuario:
-- que tiene la aplicación **Ranking Digital** en el escritorio y en el menú Inicio (la encuentra buscándola en
+- que tiene la aplicación **Auditor de Rankings Digitales** en el escritorio y en el menú Inicio (la encuentra buscándola en
   Windows). Se abre en su propia ventana; si el servidor estaba apagado, lo enciende solo y muestra "Iniciando…";
-- que el servidor arranca solo y oculto al iniciar Windows, sin ventanas negras, y que "Apagar Ranking Digital"
+- que el servidor arranca solo y oculto al iniciar Windows, sin ventanas negras, y que "Apagar Auditor de Rankings Digitales"
   (menú Inicio) lo apaga;
 - que, si la quiere en la barra de tareas, la instala desde Edge:
   1. abre `http://localhost:8000` en una pestaña común de Edge (no InPrivate);

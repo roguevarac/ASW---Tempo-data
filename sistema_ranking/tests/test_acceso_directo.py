@@ -47,7 +47,7 @@ for a in "$@"; do ultimo="$a"; done
 case "$ultimo" in
   *'$env:LOCALAPPDATA'*) printf '%s\\r\\n' '{LOCAL_SH}' ;;
   *CreateShortcut*) n=$(ls '{base}'/ps_*.txt 2>/dev/null | wc -l); printf '%s' "$ultimo" > '{base}'/ps_$n.txt
-                    printf 'C:\\\\Users\\\\Juan\\\\OneDrive\\\\Desktop\\\\Ranking Digital.lnk\\r\\n' ;;
+                    printf 'C:\\\\Users\\\\Juan\\\\OneDrive\\\\Desktop\\\\Auditor de Rankings Digitales.lnk\\r\\n' ;;
 esac
 """)
 (bin_ / "wslpath").write_text(f"""#!/bin/sh
@@ -73,7 +73,7 @@ def correr(respuesta):
 
 # ================================================================ 1) archivos
 codigo, salida = correr("N")
-check("termina bien y lista los accesos creados", codigo == 0 and "Ranking Digital.lnk" in salida, salida[-600:])
+check("termina bien y lista los accesos creados", codigo == 0 and "Auditor de Rankings Digitales.lnk" in salida, salida[-600:])
 lanzar = (carpeta / "lanzar.ps1").read_bytes() if (carpeta / "lanzar.ps1").exists() else b""
 check("lanzar.ps1 con BOM y fin de línea de Windows (para PowerShell 5.1)",
       lanzar.startswith(b"\xef\xbb\xbf") and lanzar.count(b"\n") == lanzar.count(b"\r\n") > 20)
@@ -89,8 +89,9 @@ check("recuerda la elección para regenerarlo al actualizar", "ACCESO_DIRECTO=1"
 # ================================================================ 2) accesos
 ps = (base / "ps_0.txt").read_text() if (base / "ps_0.txt").exists() else ""
 check("accesos en el escritorio y en el menú Inicio (abrir y apagar)",
-      "Acceso $escritorio 'Ranking Digital' ''" in ps and "Acceso $menu 'Ranking Digital' ''" in ps
-      and "Acceso $menu 'Apagar Ranking Digital' ' -Apagar'" in ps, ps)
+      "Acceso $escritorio 'Auditor de Rankings Digitales' ''" in ps and "Acceso $menu 'Auditor de Rankings Digitales' ''" in ps
+      and "Acceso $menu 'Apagar Auditor de Rankings Digitales' ' -Apagar'" in ps
+      and "Remove-Item (Join-Path $escritorio 'Ranking Digital.lnk')" in ps and "Remove-Item (Join-Path $programas 'Ranking Digital') -Recurse" in ps, ps)
 check("ocultos: PowerShell sin ventana, minimizado, con el ícono",
       "-WindowStyle Hidden -File" in ps and "$a.WindowStyle = 7" in ps
       and r"$a.IconLocation = 'C:\Users\Juan O''Neil\AppData\Local\RankingDigital\ranking.ico' + ',0'" in ps, ps)
@@ -104,7 +105,7 @@ if HAY_PWSH:
         check(f"{nombre} se lee sin errores en PowerShell", r.stdout.strip() == "0", r.stdout + r.stderr)
 codigo, salida = correr("S")
 ps = (base / "ps_1.txt").read_text() if (base / "ps_1.txt").exists() else ""
-check("si se pide, enciende el servidor (oculto) al iniciar Windows", codigo == 0 and "if (1 -eq 1) { Acceso $inicio 'Ranking Digital' ' -SoloServidor'" in ps, ps)
+check("si se pide, enciende el servidor (oculto) al iniciar Windows", codigo == 0 and "if (1 -eq 1) { Acceso $inicio 'Auditor de Rankings Digitales' ' -SoloServidor'" in ps, ps)
 check("y lo recuerda", "INICIO_AUTOMATICO=S" in config.read_text())
 
 # ================================================================ 3) el lanzador funcionando
