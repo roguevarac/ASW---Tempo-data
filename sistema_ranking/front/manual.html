@@ -80,6 +80,7 @@ th{color:var(--text-muted);font-weight:500;font-size:12px;text-transform:upperca
     <li><a href="#descargas">Reporte BO y CSV: nuevas o todas</a></li>
     <li><a href="#territorio">Tabla por territorio</a></li>
     <li><a href="#historial">Historial de cargas</a></li>
+    <li><a href="#onedrive">Respaldo en OneDrive</a></li>
     <li><a href="#problemas">Mensajes frecuentes</a></li>
   </ol>
   <a class="volver" href="./">← Volver a la aplicación</a>
@@ -352,6 +353,24 @@ permite descargar ni eliminar archivos. Se organiza en cuatro secciones:</p>
 que los datos de esa semana están en el sistema, pero no hay un archivo con ese territorio y esa semana en el nombre.
 Las descargas (reporte BO y CSV de la tabla principal) no se incluyen porque no son cargas; la última de cada tipo
 se informa en la ventana de su botón de descarga.</p>
+</section>
+
+<section id="onedrive">
+<h2>Respaldo en OneDrive</h2>
+<p>Cada archivo cargado en el sistema se copia automáticamente en la carpeta compartida de OneDrive
+<code>SMP-Administration Argentina - Documents\Latam\RANKING DIGITAL REGIONAL</code>, como respaldo y registro de
+auditoría:</p>
+<table>
+  <tr><th>Carpeta</th><th>Contenido</th></tr>
+  <tr><td><code>Spotify Charts\&lt;país&gt;</code></td><td>Charts de Spotify cargados.</td></tr>
+  <tr><td><code>Youtube Charts\&lt;país&gt;</code></td><td>Charts de YouTube cargados.</td></tr>
+  <tr><td><code>Reportes BackOffice\&lt;país&gt;</code></td><td>Reportes BackOffice cargados.</td></tr>
+  <tr><td><code>Reportes Tempo Control</code></td><td>Reportes Tempo Control y archivos de Tempo IDs cargados.</td></tr>
+  <tr><td><code>respaldo_documentacion_sistema</code></td><td>Respaldos completos del sistema y documentación técnica.</td></tr>
+</table>
+<div class="caja"><p>La información del sistema reside en su base de datos. La carpeta de OneDrive es una copia: el sistema
+no la lee, por lo que borrar o modificar un archivo allí no altera la información de la aplicación. Para incorporar
+datos, utilizá siempre <b>Carga CSV</b>.</p></div>
 </section>
 
 <section id="problemas">

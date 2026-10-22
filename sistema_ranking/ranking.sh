@@ -12,6 +12,7 @@
 #   bash ranking.sh restaurar F     vuelve a un respaldo (F = el nombre que mostró "respaldo")
 #   bash ranking.sh vaciar-historial  borra solo los archivos del historial (antes hace un respaldo)
 #   bash ranking.sh empezar-de-cero   borra todos los datos menos los usuarios (antes hace un respaldo)
+#   bash ranking.sh espejo          copia a OneDrive (espejo de auditoría) los archivos cargados que falten
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
 #   bash ranking.sh acceso-directo  crea la aplicación "Ranking Digital" en Windows (escritorio, menú Inicio, inicio)
 #   bash ranking.sh verificar       revisa que todo esté sano (sin cambiar nada)
@@ -27,6 +28,8 @@ CONFIG="${RK_CONFIG:-$HOME/.config/ranking-digital/ranking.env}"
 RESPALDOS="${RK_RESPALDOS:-$HOME/proyectos/ranking-respaldos}"
 PROYECTO_SUPABASE="https://ltosqbvzlnncxijzodvd.supabase.co"
 ONEDRIVE_BACKOFFICE="OneDrive - Sony/SMP-Administration Argentina - Documents/Latam/Backoffice"
+# Espejo de auditoría (respaldos, charts y reportes cargados, documentación). Solo escritura: ver api/espejo.py.
+ONEDRIVE_ESPEJO="OneDrive - Sony/SMP-Administration Argentina - Documents/Latam/RANKING DIGITAL REGIONAL"
 
 if [ -t 1 ]; then R=$'\e[31m'; V=$'\e[32m'; A=$'\e[33m'; C=$'\e[36m'; N=$'\e[0m'; else R='' V='' A='' C='' N=''; fi
 titulo() { printf '\n%s== %s%s\n' "$C" "$*" "$N"; }
@@ -48,7 +51,7 @@ si() {
 # oculto de Windows sin él), cada "up" vería otra configuración y reiniciaría la API.
 CLAVES_PROXY=(HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy)
 CLAVES_CONFIG=(POSTGRES_PASSWORD AUTHENTICATOR_PASSWORD JWT_SECRET PUERTO ESCUCHAR SESSION_HOURS MAX_UPLOAD_MB
-               STATEMENT_TIMEOUT DB_POOL IMAGEN_POSTGRES IMAGEN_PYTHON "${CLAVES_PROXY[@]}")
+               STATEMENT_TIMEOUT DB_POOL IMAGEN_POSTGRES IMAGEN_PYTHON ESPEJO_DIR "${CLAVES_PROXY[@]}")
 dc() {
     local sin=() k; for k in "${CLAVES_CONFIG[@]}"; do sin+=(-u "$k"); done
     env "${sin[@]}" docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" --env-file "$CONFIG" "$@"
@@ -176,6 +179,32 @@ carpeta_backoffice() {
     local p; p="$(perfil_windows)"
     [ -n "$p" ] && [ -d "$p/$ONEDRIVE_BACKOFFICE" ] && printf '%s' "$p/$ONEDRIVE_BACKOFFICE"
 }
+# Carpeta del espejo en OneDrive (ruta de Ubuntu), o vacío si no hay OneDrive. RK_ESPEJO la fija (pruebas).
+carpeta_espejo() {
+    if [ -n "${RK_ESPEJO:-}" ]; then printf '%s' "$RK_ESPEJO"; return; fi
+    local p; p="$(perfil_windows)"
+    [ -n "$p" ] && [ -d "$p/$(dirname "$ONEDRIVE_ESPEJO")" ] && printf '%s' "$p/$ONEDRIVE_ESPEJO"
+}
+# Guarda la carpeta del espejo en la configuración (la usan la API y los respaldos). Si ya está y existe, no busca.
+ESPEJO_CAMBIADO=0
+configurar_espejo() {
+    local actual nueva; actual="$(valor ESPEJO_DIR)"
+    if [ -z "${RK_ESPEJO:-}" ] && [ -n "$actual" ] && [ -d "$actual" ]; then return 0; fi
+    nueva="$(carpeta_espejo)"
+    [ -n "$nueva" ] || return 0
+    mkdir -p "$nueva" 2> /dev/null || return 0
+    if [ "$nueva" != "$actual" ]; then poner ESPEJO_DIR "'$nueva'"; ESPEJO_CAMBIADO=1; fi
+}
+# Documentación técnica, manual de uso y esquema de datos, en el espejo (se reemplaza en cada respaldo).
+publicar_documentacion() {
+    local e d; e="$(valor ESPEJO_DIR)"
+    [ -n "$e" ] || return 0
+    d="$e/respaldo_documentacion_sistema/docs"
+    mkdir -p "$d/esquema" && cp "$DIR/README.md" "$DIR/front/manual.html" "$d/" && cp "$DIR/../ANTIGRAVITY.md" "$d/" 2> /dev/null
+    cp "$DIR/db/03_esquema.sql" "$DIR/db/04_rls_politicas.sql" "$DIR"/db/mejoras/*.sql "$d/esquema/" \
+        && herramienta python /app/api/espejo.py --leeme > /dev/null 2>&1
+}
+
 consulta() { dc exec -T db psql -U postgres -d ranking -At -c "$1"; }
 usuarios_py() { dc run --rm herramientas python /app/admin/usuarios.py "$@"; }
 herramienta() { dc run --rm --no-deps -T herramientas "$@"; }
@@ -201,6 +230,7 @@ EOF
         ok "Configuración creada con claves al azar en $CONFIG"
     fi
     guardar_proxy
+    configurar_espejo
 
     titulo "2/4 Bajando PostgreSQL y armando el sistema (la primera vez tarda unos minutos)"
     elegir_imagen IMAGEN_POSTGRES postgres:17 || fallar "No se pudo bajar PostgreSQL (el motivo está arriba)."
@@ -333,8 +363,8 @@ cmd_abrir() {
     verificar_docker; instalado
     echo "Arrancando Ranking Digital..."
     # --no-recreate: si ya está funcionando, no lo reinicia (las versiones nuevas las aplica actualizar). Solo si
-    # recién se guardó un proxy nuevo, la API se reinicia una vez para tomarlo.
-    local recrear=(--no-recreate); [ "$PROXY_CAMBIADO" = 1 ] && recrear=()
+    # recién se guardó un proxy o una carpeta de espejo nueva, la API se reinicia una vez para tomarlos.
+    local recrear=(--no-recreate); [ "$PROXY_CAMBIADO" = 1 ] || [ "$ESPEJO_CAMBIADO" = 1 ] && recrear=()
     dc up -d "${recrear[@]+"${recrear[@]}"}" > /dev/null 2>&1 \
         || { dc up -d "${recrear[@]+"${recrear[@]}"}"; fallar "No arrancó (el motivo está arriba)."; }
     esperar_sistema
@@ -406,19 +436,32 @@ cmd_respaldo() {
     dc exec -T db pg_dump -U postgres -Fc ranking > "$RESPALDOS/$f.dump" || { rm -f "$RESPALDOS/$f.dump"; fallar "No se pudo respaldar la base."; }
     herramienta tar -C /data/storage -czf - . > "$RESPALDOS/${f}_archivos.tgz" || { rm -f "$RESPALDOS/$f"*; fallar "No se pudieron respaldar los archivos."; }
     ok "Listo: $RESPALDOS/$f.dump y ${f}_archivos.tgz"
-    # Copia en OneDrive (fuera de Ubuntu: si algún día se reinstala, el respaldo sigue ahí).
-    local bo destino; bo="$(carpeta_backoffice)"
-    if [ -n "$bo" ]; then
-        destino="$bo/RANKING DIGITAL REGIONAL/respaldos"
+    # Copia en el espejo de OneDrive (fuera de Ubuntu: si algún día se reinstala, el respaldo sigue ahí).
+    local e destino; e="$(valor ESPEJO_DIR)"
+    if [ -n "$e" ]; then
+        destino="$e/respaldo_documentacion_sistema/respaldos"
         if mkdir -p "$destino" && cp "$RESPALDOS/$f.dump" "$RESPALDOS/${f}_archivos.tgz" "$destino/"; then
             ok "Copia en OneDrive: $destino"
         else
             aviso "No pude copiarlo a OneDrive ($destino); quedó en $RESPALDOS."
         fi
+        publicar_documentacion || aviso "No pude actualizar la documentación en OneDrive."
     else
         echo "(No encontré la carpeta de OneDrive: el respaldo quedó solo en $RESPALDOS.)"
     fi
     echo "Para volver a este respaldo:  bash ranking.sh restaurar $f"
+}
+
+# Copia al espejo de OneDrive los archivos cargados que todavía no están (no borra ni pisa nada) y la documentación.
+cmd_espejo() {
+    verificar_docker; instalado
+    local e; e="$(valor ESPEJO_DIR)"
+    [ -n "$e" ] || fallar "No encontré la carpeta de OneDrive ($ONEDRIVE_ESPEJO)."
+    dc up -d db > /dev/null 2>&1
+    titulo "Espejo de auditoría en OneDrive"
+    echo "Carpeta: $e"
+    herramienta python /app/api/espejo.py || aviso "Algunos archivos no se pudieron copiar (el detalle está arriba)."
+    publicar_documentacion && ok "Documentación actualizada en respaldo_documentacion_sistema/docs."
 }
 
 cmd_restaurar() {
@@ -607,6 +650,10 @@ cmd_verificar() {
                                          || ' obras, ' || (select count(*) from public.territory_tracks) || ' registros por territorio, '
                                          || (select count(*) from storage.objects) || ' archivos en el historial'" 2> /dev/null)"
         if [ -n "$datos" ]; then linea ok "Base: $datos"; else linea mal "No se pudo consultar la base"; fi
+        if [ -z "$(valor ESPEJO_DIR)" ]; then aviso "  AVISO  Sin espejo en OneDrive (no se encontró la carpeta $ONEDRIVE_ESPEJO)"
+        elif dc exec -T api sh -c 'test -n "$ESPEJO" && test -w /espejo' > /dev/null 2>&1; then
+            linea ok "Espejo de auditoría en OneDrive: $(valor ESPEJO_DIR)"
+        else aviso "  AVISO  La API no puede escribir en el espejo de OneDrive ($(valor ESPEJO_DIR)); ver README, sección Espejo"; fi
     fi
     echo "  Versión del programa: $(version_programa)"
     [ "$fallo" = 0 ] && ok "Todo en orden." || { printf '%sHay problemas: revisá las líneas FALLA.%s\n' "$R" "$N"; return 1; }
@@ -644,11 +691,16 @@ $cambios
             && ok "Accesos de Windows actualizados." || aviso "No pude actualizar los accesos de Windows (bash ranking.sh acceso-directo)."
         AUTOMATICO="$antes_auto"
     fi
+    if [ -n "$(valor ESPEJO_DIR)" ]; then
+        titulo "Espejo de auditoría en OneDrive"
+        herramienta python /app/api/espejo.py || aviso "Algunos archivos no se pudieron copiar a OneDrive (bash ranking.sh espejo)."
+        publicar_documentacion || true
+    fi
     titulo "4/4 Verificación"
     cmd_verificar
 }
 
-ayuda() { sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+ayuda() { sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # --automatico en cualquier posición: sin preguntas (respuestas por defecto).
 ARGS=()
@@ -657,6 +709,7 @@ set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 if [ -f "$CONFIG" ]; then
     guardar_proxy
+    configurar_espejo
     # La carga automática de YouTube ya no existe (los charts se cargan a mano): se borra su horario viejo.
     grep -q '^YOUTUBE_CRON' "$CONFIG" && sed -i '/^YOUTUBE_CRON/d' "$CONFIG"
 fi
@@ -672,6 +725,7 @@ case "${1:-}" in
     respaldo) cmd_respaldo ;;
     restaurar) shift; cmd_restaurar "$@" ;;
     certificados) cmd_certificados ;;
+    espejo) cmd_espejo ;;
     vaciar-historial) cmd_vaciar_historial ;;
     empezar-de-cero) cmd_empezar_de_cero ;;
     acceso-directo|icono) cmd_acceso_directo ;;

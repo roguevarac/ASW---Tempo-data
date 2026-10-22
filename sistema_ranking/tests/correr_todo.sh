@@ -41,6 +41,7 @@ correr "API de punta a punta" python3 tests/test_e2e.py
 base_nueva
 correr "Front en el navegador" python3 tests/test_navegador.py
 correr "Aplicación instalable (PWA)" python3 tests/test_pwa.py
+correr "Espejo de auditoría en OneDrive" python3 tests/test_espejo.py
 correr "Migración (exportar + importar)" env PGHOST_URL="$SERVIDOR" STORAGE_ORIGEN="$STORAGE_DIR" python3 tests/test_migracion.py
 correr "Comando de certificados de la empresa" python3 tests/test_certificados.py
 correr "Ícono del escritorio (WSL)" python3 tests/test_acceso_directo.py

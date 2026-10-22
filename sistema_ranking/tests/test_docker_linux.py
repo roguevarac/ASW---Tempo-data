@@ -17,6 +17,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import time
 import sys
 import tempfile
 
@@ -55,9 +56,14 @@ respaldos = base / "respaldos"
 # Proyecto e imagen propios de la prueba: nunca toca los datos ni la imagen de un sistema real en la misma máquina.
 PROYECTO_COMPOSE, IMAGEN = "rk-prueba", "rk-prueba-api:local"
 ENTORNO = dict(os.environ, RK_CONFIG=str(config), RK_RESPALDOS=str(respaldos), HOME=str(base), TERM="dumb",
-               RK_BACKOFFICE=str(base / "onedrive" / "Backoffice"),
+               RK_BACKOFFICE=str(base / "onedrive" / "Backoffice"), RK_ESPEJO=str(base / "onedrive" / "Latam" / "RANKING DIGITAL REGIONAL"),
                COMPOSE_PROJECT_NAME=PROYECTO_COMPOSE, IMAGEN_API=IMAGEN)
 subprocess.run(["docker", "compose", "-p", PROYECTO_COMPOSE, "--profile", "herramientas", "down", "-v"], capture_output=True)
+# Espejo de auditoría (la carpeta compartida de OneDrive). En WSL, /mnt/c deja escribir a cualquier usuario: igual acá.
+ESPEJO = pathlib.Path(ENTORNO["RK_ESPEJO"])
+ESPEJO.mkdir(parents=True)
+for d in (ESPEJO, ESPEJO.parent, ESPEJO.parent.parent):
+    d.chmod(0o777)
 
 # Carpetas "OneDrive" con los CSV del historial por su nombre original, salvo uno (tiene que bajarse del bucket).
 onedrive = base / "onedrive" / "Backoffice"
@@ -250,6 +256,52 @@ try:
                                                      "cat /exportacion/* /exportacion/*/* 2>/dev/null").stdout else []
     check("migrar: la service_role key no quedó guardada en ningún lado", not filtrada, filtrada)
 
+    # ================================================================ espejo de auditoría en OneDrive (solo escritura)
+    check("espejo: instalar guarda la carpeta de OneDrive en la configuración", valor("ESPEJO_DIR") == str(ESPEJO), valor("ESPEJO_DIR"))
+    r = subprocess.run(["bash", str(proyecto / "ranking.sh"), "espejo"], cwd=proyecto, env=ENTORNO, capture_output=True,
+                       text=True, stdin=subprocess.DEVNULL, timeout=600)
+    cargados = [f for f in ESPEJO.rglob("*.csv") if "respaldo_documentacion_sistema" not in f.parts]
+    check("espejo: copia a OneDrive todas las cargas migradas, con el LEEME y la documentación",
+          r.returncode == 0 and cargados and (ESPEJO / "LEEME - Respaldo y auditoria.txt").exists()
+          and (ESPEJO / "respaldo_documentacion_sistema" / "docs" / "manual.html").exists()
+          and (ESPEJO / "respaldo_documentacion_sistema" / "docs" / "esquema" / "03_esquema.sql").exists(), (r.stdout + r.stderr)[-1000:])
+    tok_admin = {"Authorization": "Bearer " + login("admin@prueba.local", "clave-migrada-123").json().get("access_token", "")}
+    nombre_chart = "regional-ar-weekly-2026-10-15.csv"
+    ruta_chart = f"spotify/AR/2026-10-22/123_{nombre_chart}"
+    httpx.post(api(f"/storage/upload/csv-uploads/{ruta_chart}"), content=b"rank,track\n1,Tema Espejo\n",
+               headers=dict(tok_admin, **{"Content-Type": "text/csv"}), trust_env=False)
+    httpx.post(api("/rest/csv_uploads"), json={"filename": nombre_chart, "file_path": ruta_chart, "format": "spotify", "total_rows": 1,
+                                               "updated_rows": 1, "created_tracks": 0, "error_count": 0}, headers=tok_admin, trust_env=False)
+    en_od = ESPEJO / "Spotify Charts" / "ar" / nombre_chart
+    for _ in range(50):
+        if en_od.exists():
+            break
+        time.sleep(0.2)
+    check("espejo: cada carga nueva se copia sola a 'Spotify Charts/ar' en OneDrive",
+          en_od.exists() and en_od.read_bytes() == b"rank,track\n1,Tema Espejo\n", sorted(str(x) for x in ESPEJO.rglob("*"))[:20])
+    estado_base = base_nueva("select (select count(*) from csv_uploads) || '|' || (select count(*) from tracks_master) || '|' || (select count(*) from storage.objects)")
+    shutil.rmtree(ESPEJO / "Spotify Charts")
+    firma = httpx.post(api(f"/storage/sign/csv-uploads/{ruta_chart}"), json={"expiresIn": 60}, headers=tok_admin, trust_env=False).json()
+    check("espejo: borrar archivos en OneDrive no afecta al sistema (base, archivos y API siguen igual)",
+          httpx.get(api("/health"), trust_env=False).status_code == 200 and estado_base == base_nueva(
+              "select (select count(*) from csv_uploads) || '|' || (select count(*) from tracks_master) || '|' || (select count(*) from storage.objects)")
+          and httpx.get(api(firma.get("signedUrl", "")), trust_env=False).content == b"rank,track\n1,Tema Espejo\n")
+    r = subprocess.run(["bash", str(proyecto / "ranking.sh"), "espejo"], cwd=proyecto, env=ENTORNO, capture_output=True,
+                       text=True, stdin=subprocess.DEVNULL, timeout=600)
+    check("espejo: 'ranking.sh espejo' vuelve a copiar lo que falta en OneDrive", r.returncode == 0 and en_od.exists(), (r.stdout + r.stderr)[-600:])
+    ESPEJO.chmod(0o555)
+    try:
+        r2 = httpx.post(api("/rest/csv_uploads"), json={"filename": "otra.csv", "file_path": ruta_chart, "format": "youtube", "total_rows": 1,
+                                                         "updated_rows": 1, "error_count": 0}, headers=tok_admin, trust_env=False)
+        time.sleep(1)
+        check("espejo: si OneDrive no deja escribir, la carga se registra igual",
+              r2.status_code == 201 and httpx.get(api("/health"), trust_env=False).status_code == 200, r2.text)
+    finally:
+        ESPEJO.chmod(0o777)
+    # Deja la base como estaba para las pruebas que siguen.
+    base_nueva(f"delete from csv_uploads where file_path = '{ruta_chart}'; delete from storage.objects where name = '{ruta_chart}'")
+    dc("exec", "-T", "api", "rm", "-f", f"/data/storage/csv-uploads/{ruta_chart}")
+
     # ================================================================ usuarios
     p = ranking("usuarios")
     p.expect("Opción"); p.sendline("1")
@@ -272,8 +324,8 @@ try:
     codigo = fin(p)
     nombre = re.search(r"restaurar (ranking_\d+_\d+)", texto("respaldo.log"))
     check("respaldo: deja la base y los archivos", codigo == 0 and nombre and (respaldos / f"{nombre.group(1)}.dump").stat().st_size > 0, texto("respaldo.log")[-600:])
-    copia_od = onedrive / "RANKING DIGITAL REGIONAL" / "respaldos"
-    check("respaldo: también queda copiado en OneDrive (ruta con espacios)",
+    copia_od = ESPEJO / "respaldo_documentacion_sistema" / "respaldos"
+    check("respaldo: también queda copiado en OneDrive, en respaldo_documentacion_sistema/respaldos (ruta con espacios)",
           (copia_od / f"{nombre.group(1)}.dump").read_bytes() == (respaldos / f"{nombre.group(1)}.dump").read_bytes()
           and (copia_od / f"{nombre.group(1)}_archivos.tgz").exists(), texto("respaldo.log")[-600:])
     base_nueva("update tracks_master set track_name_raw = 'ROTO'; delete from territory_tracks")

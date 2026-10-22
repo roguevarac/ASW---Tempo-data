@@ -171,6 +171,24 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - Los archivos nuevos se guardan en `formato/PAIS/fecha/`, y el historial lee el país de esa carpeta.
   - **Carga CSV:** sin lista de columnas. Nombra los tipos (Spotify, YouTube, Reporte BackOffice, Reporte Tempo Control,
     Tempo IDs), da tres indicaciones y muestra el avance archivo por archivo: barra, estado, tipo, país y semana.
+  - **Espejo de respaldo y auditoría en OneDrive** (22/10/2026):
+    - Carpeta: `C:\Users\7000042560\OneDrive - Sony\SMP-Administration Argentina - Documents\Latam\RANKING DIGITAL
+      REGIONAL`. Está en `Latam`, no en `Backoffice`.
+    - Principio: la base en Docker es la fuente de verdad. El espejo es solo escritura (nunca se lee ni se borra), y un
+      error de copia nunca frena una carga.
+    - `api/espejo.py`: la API copia cada carga cuando se registra en `csv_uploads` (POST `/rest/csv_uploads`, en un
+      hilo aparte). Solo copia cargas con `updated_rows > 0`.
+      - Destinos: `Spotify Charts/<pais>/`, `Youtube Charts/<pais>/`, `Reportes BackOffice/<pais>/`,
+        `Reportes Tempo Control/` (con `Tempo IDs/`).
+      - También escribe el LEEME.
+    - Compose monta `${ESPEJO_DIR:-espejo_apagado}:/espejo` y pasa `ESPEJO: ${ESPEJO_DIR:+/espejo}`.
+    - `ranking.sh`:
+      - `configurar_espejo` guarda `ESPEJO_DIR`;
+      - `respaldo` copia el `.dump` y el `.tgz` a `respaldo_documentacion_sistema/respaldos` y la documentación a
+        `respaldo_documentacion_sistema/docs`;
+      - `espejo` copia lo que falte; `actualizar` también lo hace.
+    - Pruebas: `test_espejo.py` y `test_docker_linux.py` (con `RK_ESPEJO`).
+    - La versión portable de Windows no tiene espejo.
 - **Como aplicación (PWA, desde el 21/10/2026):** el front es instalable (`front/manifest.webmanifest`, `front/sw.js`,
   `front/apagado.html`, `front/iconos/`); los inyecta `front/generar_index.py`, y los íconos se generan con
   `front/generar_iconos.py`.

@@ -35,6 +35,8 @@ from psycopg_pool import ConnectionPool
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
+import espejo
+
 log = logging.getLogger("ranking")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -339,7 +341,19 @@ async def insertar(tabla: str, request: Request):
             q = sql.SQL("INSERT INTO public.{} ({}) VALUES ({})").format(
                 _ident(tabla), cols, sql.SQL(", ").join(sql.Placeholder() * len(f)))
             cur.execute(q, [_valor_db(v) for v in f.values()])
+    if tabla == "csv_uploads":
+        # Carga registrada: copia de auditoría en OneDrive, en segundo plano y sin afectar la respuesta.
+        threading.Thread(target=_copiar_al_espejo, args=(filas,), daemon=True).start()
     return Response(status_code=201)
+
+
+_espejo_lock = threading.Lock()
+
+
+def _copiar_al_espejo(filas):
+    with _espejo_lock:
+        for f in filas:
+            espejo.copiar(f, STORAGE_DIR)
 
 
 # ---------------------------------------------------------------- funciones (RPC)

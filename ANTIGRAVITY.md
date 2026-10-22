@@ -116,8 +116,15 @@ Cuando termine, corré `bash ranking.sh verificar` y confirmá:
 bash ranking.sh respaldo
 ```
 
-Deja la copia en `~/proyectos/ranking-respaldos` y también, sola, en OneDrive (`...\Backoffice\RANKING DIGITAL
-REGIONAL\respaldos`). No copies a mano: las rutas tienen espacios.
+Deja la copia en `~/proyectos/ranking-respaldos`. También la copia sola al espejo de OneDrive:
+`...\Latam\RANKING DIGITAL REGIONAL\respaldo_documentacion_sistema\respaldos`. No copies a mano: las rutas tienen
+espacios.
+
+**Espejo de OneDrive** (`...\Latam\RANKING DIGITAL REGIONAL`):
+- el sistema copia ahí cada carga de charts y reportes, y la documentación;
+- es solo de respaldo y auditoría: nunca borres ni edites nada ahí pensando que cambia el sistema, porque no lo
+  cambia;
+- si faltan archivos, `bash ranking.sh espejo` los vuelve a copiar.
 
 ## Paso 7. Entregar
 
@@ -172,6 +179,7 @@ preguntarle al usuario.
 | `bash ranking.sh verificar` | Estado completo; código 0 si está todo bien |
 | `bash ranking.sh estado` | Contenedores y dirección |
 | `bash ranking.sh logs` | Últimos mensajes de la API y la base, para diagnosticar |
+| `bash ranking.sh espejo` | Copia al espejo de OneDrive los archivos cargados que falten (no borra ni pisa nada) |
 | `bash ranking.sh abrir` / `detener` | Prender / apagar (los datos quedan) |
 
 ## Cómo está organizado (para orientarte)

@@ -122,7 +122,8 @@ servidor.
 | `bash ranking.sh estado` / `logs` | Qué está corriendo / últimos mensajes, si algo falla |
 | `bash ranking.sh verificar` | Revisa que todo esté sano, sin cambiar nada |
 | `bash ranking.sh actualizar` | Respaldo, versión nueva desde GitHub y reinicio, sin perder datos (si falla, vuelve sola a la anterior) |
-| `bash ranking.sh respaldo` | Copia de la base y de los archivos en `~/proyectos/ranking-respaldos`, y también en OneDrive (`RANKING DIGITAL REGIONAL\respaldos`) |
+| `bash ranking.sh respaldo` | Copia de la base y de los archivos en `~/proyectos/ranking-respaldos`, y también en el espejo de OneDrive (`respaldo_documentacion_sistema\respaldos`) |
+| `bash ranking.sh espejo` | Copia al espejo de OneDrive los archivos cargados que falten y actualiza la documentación |
 | `bash ranking.sh restaurar NOMBRE` | Vuelve a ese respaldo |
 | `bash ranking.sh vaciar-historial` | Borra solo los archivos del historial (antes hace un respaldo) |
 | `bash ranking.sh empezar-de-cero` | Borra todos los datos menos los usuarios, para empezar a cargar de cero (antes hace un respaldo) |
@@ -147,12 +148,53 @@ hacen un respaldo; para volver atrás: `bash ranking.sh restaurar <respaldo>`.
   Quedan los usuarios y el número de la próxima carga del reporte BO, para no repetir números que BO ya recibió.
 - `bash ranking.sh vaciar-historial` borra solo los archivos guardados y su lista en **Historial de cargas** (los datos cargados quedan).
 
-**Respaldos:** los datos viven dentro de Ubuntu (en volúmenes de Docker). `bash ranking.sh respaldo` los copia
-también a OneDrive (`...\Backoffice\RANKING DIGITAL REGIONAL\respaldos`), y `actualizar` hace uno antes de cada
-cambio. Si algún día se reinstala Ubuntu, alcanza con `instalar` y `restaurar`.
+**Respaldos:** los datos viven dentro de Ubuntu, en volúmenes de Docker.
+- `bash ranking.sh respaldo` los copia también al espejo de OneDrive (ver la sección siguiente).
+- `actualizar` hace un respaldo antes de cada cambio.
+- Si algún día se reinstala Ubuntu, alcanza con `instalar` y `restaurar`.
 
 **Versión nueva del proyecto:** bajala en otra carpeta y corré `bash ranking.sh instalar` desde ahí. Usa la misma
 configuración y los mismos datos, y actualiza el programa.
+
+### Espejo de respaldo y auditoría en OneDrive
+
+**Principio operativo:**
+- **Fuente de verdad:** la base PostgreSQL y el almacenamiento de archivos del sistema, en Docker. La aplicación lee
+  y escribe solo ahí.
+- **Espejo:** la carpeta compartida
+  `C:\Users\7000042560\OneDrive - Sony\SMP-Administration Argentina - Documents\Latam\RANKING DIGITAL REGIONAL`
+  recibe una copia de cada carga y de cada respaldo, para transparencia y auditoría.
+- **Sin efecto sobre el sistema:** el sistema solo escribe en el espejo. Nunca lee de él ni borra nada. Si alguien
+  borra o modifica un archivo en OneDrive, la base y la aplicación no cambian, y `bash ranking.sh espejo` vuelve a
+  copiar lo que falte.
+- **Una copia que falla no frena nada:** si la copia falla (OneDrive sin la carpeta o sin permiso), la carga se
+  registra igual y el motivo queda en `bash ranking.sh logs`.
+
+**Estructura:**
+
+| Carpeta | Contenido | Cuándo se escribe |
+|---|---|---|
+| `Spotify Charts\<país>\` | Charts de Spotify cargados (país en minúsculas: `ar`, `cl`…) | En cada carga |
+| `Youtube Charts\<país>\` | Charts de YouTube cargados | En cada carga |
+| `Reportes BackOffice\<país>\` | Reportes BackOffice cargados | En cada carga |
+| `Reportes Tempo Control\` (y `Tempo IDs\`) | Reportes Tempo Control y archivos de Tempo IDs cargados | En cada carga |
+| `respaldo_documentacion_sistema\respaldos\` | `.dump` de la base y `.tgz` de los archivos | En `respaldo` y antes de cada `actualizar` |
+| `respaldo_documentacion_sistema\docs\` | README, manual de uso, runbook de Antigravity y esquema de datos (`esquema\`) | En `respaldo`, `actualizar` y `espejo` |
+| `LEEME - Respaldo y auditoria.txt` | Explicación de la carpeta para quien la abra | Siempre que se escribe en el espejo |
+
+Solo se copian las cargas que cargaron datos. Las descargas (reporte BO generado y CSV de la tabla principal) no
+son cargas y no se copian.
+
+**Cómo funciona:**
+- `ranking.sh` detecta la carpeta y la guarda en la configuración (`ESPEJO_DIR`). Docker la monta en la API en
+  `/espejo`.
+- La API copia cada archivo cuando se registra la carga (`api/espejo.py`), en segundo plano. Si no se encuentra la
+  carpeta de OneDrive, el espejo queda apagado y el sistema funciona igual.
+- `bash ranking.sh espejo` y `actualizar` copian lo que falte, por ejemplo las cargas anteriores a esta función, sin
+  pisar ni borrar nada.
+- `bash ranking.sh verificar` muestra si la API puede escribir en el espejo. Si dice que no puede, revisá que la
+  carpeta exista en OneDrive y que `/etc/wsl.conf` no limite los permisos de `/mnt/c`: con la configuración normal
+  de WSL, cualquier proceso puede escribir ahí.
 
 ### Red de la empresa (proxy y certificados)
 
@@ -302,6 +344,8 @@ Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
 - **Charts solo de carga manual:** Spotify y YouTube se suben desde Carga CSV; ya no hay carga automática.
 - **Fecha de última carga por país**, arriba en la aplicación.
 - **Manual de uso** dentro de la aplicación (`front/manual.html`).
+- **Espejo de respaldo y auditoría en OneDrive** (`api/espejo.py`): cada carga y cada respaldo se copian a la carpeta
+  compartida, sin que el sistema dependa de ella.
 
 ## Comportamientos heredados de Supabase (se mantuvieron a propósito)
 
@@ -324,7 +368,8 @@ aparte:
 | `test_e2e.py` | Por HTTP, cada operación del front: login, cargas, ediciones, reportes, historial, archivos, exportaciones, permisos por rol y bloqueo. |
 | `test_navegador.py` | El front real en Chromium: login, cargar CSV de Spotify y de YouTube, fecha de última carga por país, reporte BO y CSV con solo nuevas o todas, seguimiento, manual, editar, descargar, historial, reporte BO, sesión y auditor en solo lectura. |
 | `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
-| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
+| `test_espejo.py` | Espejo de OneDrive: carpeta de cada tipo de carga, nombres que Windows no acepta, que nunca interrumpe una carga, que solo escribe, y la sincronización de todas las cargas. |
+| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, espejo de OneDrive (carga nueva copiada, borrado sin efecto, OneDrive sin permiso), mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
 | `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, administrar usuarios, apagar, volver a abrir y actualizar. |
 | `test_componentes_windows.py` | Los componentes reales de Windows (Python y PostgreSQL): verificación por sha256, archivos alterados, descarga caída y que al descomprimir esté todo lo necesario. |
 | `test_paquetes_windows.py` | Que los paquetes de Python incluidos alcancen para Windows sin internet (dependencias evaluadas como en Windows). |
