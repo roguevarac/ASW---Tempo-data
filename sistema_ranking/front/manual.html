@@ -71,129 +71,132 @@ th{color:var(--text-muted);font-weight:500;font-size:12px;text-transform:upperca
   <div class="mark"><span>RD</span><b>Manual de uso</b></div>
   <ol>
     <li><a href="#que-es">Qué es Ranking Digital</a></li>
-    <li><a href="#entrar">Entrar y permisos</a></li>
-    <li><a href="#pantalla">La pantalla</a></li>
-    <li><a href="#rutina">La rutina de trabajo</a></li>
+    <li><a href="#entrar">Ingreso y permisos</a></li>
+    <li><a href="#pantalla">Estructura de la pantalla</a></li>
+    <li><a href="#rutina">Rutina de trabajo</a></li>
     <li><a href="#carga">Carga CSV</a></li>
-    <li><a href="#titulos">Cómo se ordenan los títulos</a></li>
+    <li><a href="#titulos">Normalización de títulos</a></li>
     <li><a href="#principal">Tabla principal</a></li>
     <li><a href="#descargas">Reporte BO y CSV: nuevas o todas</a></li>
     <li><a href="#territorio">Tabla por territorio</a></li>
     <li><a href="#historial">Historial de cargas</a></li>
-    <li><a href="#problemas">Mensajes y problemas comunes</a></li>
+    <li><a href="#problemas">Mensajes frecuentes</a></li>
   </ol>
   <a class="volver" href="./">← Volver a la aplicación</a>
 </nav>
 
 <main>
 <h1>Manual de uso</h1>
-<p class="lead">Cómo usar Ranking Digital Regional: cargar los charts y los reportes, buscar y filtrar, completar los
-Tempo ID, generar el reporte BO y revisar cada obra por país.</p>
+<p class="lead">Guía de uso de Ranking Digital Regional: carga de charts y reportes, búsqueda y filtros, registro de
+Tempo ID, generación del reporte BO y control de cada obra por territorio.</p>
 
 <section id="que-es">
 <h2>Qué es Ranking Digital</h2>
-<p>Reúne en un solo lugar las canciones que aparecen en los charts semanales de Spotify y YouTube de cada país, y
-sigue su estado:</p>
+<p>Ranking Digital reúne las canciones de los charts semanales de Spotify y YouTube de cada territorio y permite
+controlar su estado:</p>
 <ul>
-  <li><b>Tabla principal:</b> cada canción aparece una sola vez, aunque esté en los charts de varios países o
-    semanas, con su <b>Tempo ID</b>.</li>
-  <li><b>Tabla por territorio:</b> cada canción en cada país, con lo que dicen el <b>Reporte Tempo Control</b> y el
-    <b>Reporte BackOffice</b>, y un <b>estado de trabajo</b> que indica si los porcentajes coinciden o hay que revisarla.</li>
+  <li><b>Tabla principal:</b> cada canción figura una sola vez, aunque aparezca en charts de varios territorios o
+    semanas, junto con su <b>Tempo ID</b>.</li>
+  <li><b>Tabla por territorio:</b> cada canción en cada territorio, con los datos del <b>Reporte Tempo Control</b> y del
+    <b>Reporte BackOffice</b>, y un <b>estado de trabajo</b> que indica si los porcentajes coinciden o requieren
+    revisión.</li>
 </ul>
-<p>Los países son: AR, CL, PE, UY, PY, CO, EC y MX. Todo lo que se carga queda guardado en el sistema. No se guarda
-nada en tu computadora: si cerrás la aplicación, la información sigue ahí.</p>
+<p>Territorios disponibles: AR, CL, PE, UY, PY, CO, EC y MX. La información cargada queda guardada en el sistema, no
+en la computadora del usuario.</p>
 </section>
 
 <section id="entrar">
-<h2>Entrar y permisos</h2>
-<p>Entrás con tu email y tu contraseña. La sesión dura unas horas; después vuelve a pedir la contraseña. Si te
-olvidaste la contraseña, pedile a quien administra el sistema que te ponga una nueva.</p>
+<h2>Ingreso y permisos</h2>
+<p>El ingreso se realiza con email y contraseña. La sesión vence a las pocas horas y luego se solicita nuevamente la
+contraseña. Para restablecer una contraseña, contactá a la persona que administra el sistema.</p>
 <table>
-  <tr><th>Rol</th><th>Qué puede hacer</th></tr>
-  <tr><td><b>admin</b></td><td>Todo: cargar CSV, editar Tempo ID y estados de trabajo, descargar. Además ve las obras
-    eliminadas (casilla <b>Ver eliminados</b>).</td></tr>
-  <tr><td><b>usuario_estandar</b></td><td>Cargar CSV, editar Tempo ID y estados de trabajo, descargar.</td></tr>
-  <tr><td><b>auditor</b></td><td>Solo mira y descarga. La pestaña Carga CSV aparece como "solo lectura" y las tablas
-    no se pueden editar.</td></tr>
+  <tr><th>Rol</th><th>Permisos</th></tr>
+  <tr><td><b>admin</b></td><td>Carga de archivos, edición de Tempo ID y estados de trabajo, y descargas. Además, puede ver
+    las obras eliminadas (casilla <b>Ver eliminados</b>).</td></tr>
+  <tr><td><b>usuario_estandar</b></td><td>Carga de archivos, edición de Tempo ID y estados de trabajo, y descargas.</td></tr>
+  <tr><td><b>auditor</b></td><td>Consulta y descargas. La pestaña Carga CSV figura como "solo lectura" y las tablas no
+    son editables.</td></tr>
 </table>
 </section>
 
 <section id="pantalla">
-<h2>La pantalla</h2>
+<h2>Estructura de la pantalla</h2>
 <ul>
-  <li><b>Arriba a la izquierda:</b> la fecha del último chart cargado de Spotify y de YouTube <b>del país elegido</b>.
-    Cada país se carga en su momento, por eso con "Todos los países" dice <i>"Seleccionar país para ver fecha de
-    última carga"</i>. Se toma el país del filtro de la pestaña abierta; en Carga CSV e Historial, el último que
-    elegiste. La fecha es la <b>semana del chart</b>, no el día en que se subió el archivo. Por eso cargar hoy un
-    chart viejo no la cambia.</li>
-  <li><b>Arriba a la derecha:</b> tu usuario y tu rol, este <b>Manual de uso</b> y <b>Cerrar sesión</b>.</li>
+  <li><b>Superior izquierda:</b> fecha del último chart cargado de Spotify y de YouTube <b>del territorio
+    seleccionado</b>. Como cada territorio se carga por separado, con "Todos los países" se muestra el mensaje
+    <i>"Seleccionar país para ver fecha de última carga"</i>. Se toma el territorio del filtro de la pestaña activa; en
+    Carga CSV e Historial de cargas, el último seleccionado. La fecha corresponde a la <b>semana del chart</b>, no al
+    día de la carga: cargar hoy un chart anterior no la modifica.</li>
+  <li><b>Superior derecha:</b> usuario y rol, <b>Manual de uso</b> y <b>Cerrar sesión</b>.</li>
   <li><b>Pestañas:</b> Tabla principal, Tabla por territorio, Carga CSV e Historial de cargas.</li>
-  <li><b>Abajo:</b> cuántas filas muestra la tabla con los filtros de ese momento.</li>
+  <li><b>Pie de página:</b> cantidad de filas visibles con los filtros aplicados.</li>
 </ul>
 </section>
 
 <section id="rutina">
-<h2>La rutina de trabajo</h2>
-<h3>Cada semana, o cuando entran canciones nuevas</h3>
+<h2>Rutina de trabajo</h2>
+<h3>Semanal, o cuando ingresan canciones nuevas</h3>
 <ol class="pasos">
-  <li><b>Cargá los charts</b> de Spotify y YouTube de cada país en <b>Carga CSV</b>. Las canciones que no estaban se
+  <li><b>Cargar los charts</b> de Spotify y YouTube de cada territorio en <b>Carga CSV</b>. Las canciones nuevas se
     agregan a la tabla principal sin Tempo ID.</li>
-  <li><b>Completá los Tempo ID.</b> Hay dos formas:
+  <li><b>Completar los Tempo ID</b>, de una de estas formas:
     <ul>
-      <li>a mano, en la columna Tempo ID de la tabla principal;</li>
-      <li>con un archivo: en la tabla principal, <b>Descargar CSV</b> &gt; <b>Solo las nuevas</b>. Completá la
-        columna <code>tempo_id</code> en Excel y subí ese mismo archivo en Carga CSV. Se reconoce como "Tempo
-        IDs".</li>
+      <li>manualmente, en la columna Tempo ID de la tabla principal;</li>
+      <li>por archivo: en la tabla principal, <b>Descargar CSV</b> &gt; <b>Solo las nuevas</b>; completar la columna
+        <code>tempo_id</code> en Excel y cargar ese mismo archivo en Carga CSV, donde se identifica como "Tempo IDs".</li>
     </ul>
   </li>
-  <li><b>Generá el reporte BO</b> con <b>Descargar reporte BO</b> &gt; <b>Solo las nuevas</b>. Salen solo las obras
-    que nunca estuvieron en un reporte BO, así no se vuelve a pedir lo mismo en tan poco tiempo. Ese archivo se sube a
+  <li><b>Generar el reporte BO</b> con <b>Descargar reporte BO</b> &gt; <b>Solo las nuevas</b>. Incluye únicamente las
+    obras que nunca formaron parte de un reporte BO, para no repetir consultas en poco tiempo. Ese archivo se carga en
     BO.</li>
-  <li><b>Cargá las respuestas</b> en Carga CSV: el <b>Reporte BackOffice</b> que devuelve BO (uno por país) y el
-    <b>Reporte Tempo Control</b>.</li>
-  <li><b>Revisá la tabla por territorio:</b> filtrá <b>Estado de trabajo: REVISAR</b> y resolvé cada obra.</li>
+  <li><b>Cargar las respuestas</b> en Carga CSV: el <b>Reporte BackOffice</b> (uno por territorio) y el <b>Reporte Tempo
+    Control</b>.</li>
+  <li><b>Revisar la tabla por territorio:</b> filtrar <b>Estado de trabajo: REVISAR</b> y resolver cada obra.</li>
 </ol>
-<h3>Cada trimestre (o cuando haga falta una revisión completa)</h3>
-<p>Repetí los pasos 3 a 5 eligiendo <b>Todas</b> en lugar de <b>Solo las nuevas</b>: el reporte BO incluye todas
-las obras con Tempo ID, también las que ya se habían enviado. Lo mismo vale para el CSV de la tabla principal. Ver
+<h3>Trimestral, o cuando se requiera una revisión completa</h3>
+<p>Repetir los pasos 3 a 5 con la opción <b>Todas</b> en lugar de <b>Solo las nuevas</b>: el reporte BO incluye todas
+las obras con Tempo ID, también las ya enviadas. El mismo criterio aplica al CSV de la tabla principal. Ver
 <a href="#descargas">Reporte BO y CSV: nuevas o todas</a>.</p>
 </section>
 
 <section id="carga">
 <h2>Carga CSV</h2>
 <ol class="pasos">
-  <li>Arrastrá uno o varios archivos al recuadro, o hacé clic para elegirlos. Pueden ser de distintos tipos: el sistema
-    reconoce cada uno solo.</li>
-  <li>Mirá cómo avanza: una barra muestra el progreso, y cada archivo aparece en la lista como <i>En espera</i>,
-    <i>Cargando…</i> y después <i>Listo</i>, <i>Con errores</i> o <i>No se cargó</i>. Al lado se ven el tipo, el país, la
-    semana y cuántas filas se cargaron.</li>
-  <li>Al terminar, revisá los totales y, si hay, el detalle de los errores.</li>
+  <li>Arrastrá uno o varios archivos .csv al recuadro, o hacé clic para seleccionarlos. Pueden ser de distintos tipos:
+    el sistema identifica cada uno.</li>
+  <li>El avance se muestra con una barra y una lista. Cada archivo figura <i>En espera</i>, <i>Procesando</i> y, al
+    finalizar, <i>Cargado</i>, <i>Con errores</i> o <i>Sin cargar</i>, junto con su tipo, territorio, semana y filas
+    cargadas.</li>
+  <li>Al finalizar se muestran los totales y, si corresponde, el detalle de los errores.</li>
 </ol>
 <table>
-  <tr><th>Tipo de archivo</th><th>Qué carga</th></tr>
-  <tr><td><b>Spotify</b> (chart semanal)</td><td>La semana del chart de un país: posiciones y streams. Crea las canciones
-    que no estaban.</td></tr>
-  <tr><td><b>YouTube</b> (chart semanal)</td><td>Lo mismo con el chart de YouTube (las vistas cuentan como streams).</td></tr>
-  <tr><td><b>Reporte BackOffice</b></td><td>Lo que informa BO de cada obra en un país: código BO, C/A, estado, reclamos y
+  <tr><th>Tipo de archivo</th><th>Información que carga</th></tr>
+  <tr><td><b>Spotify</b> (chart semanal)</td><td>La semana del chart de un territorio: posiciones y streams. Crea las
+    canciones que no existían.</td></tr>
+  <tr><td><b>YouTube</b> (chart semanal)</td><td>Igual que Spotify, con el chart de YouTube (las vistas se registran como
+    streams).</td></tr>
+  <tr><td><b>Reporte BackOffice</b></td><td>Datos de BO de cada obra en un territorio: código BO, C/A, estado, reclamos y
     % Mech BO.</td></tr>
-  <tr><td><b>Reporte Tempo Control</b></td><td>Los porcentajes de Tempo (% Perf y % Mech), la fecha de creación y el estado
-    de cada obra, para todos los países que traiga.</td></tr>
-  <tr><td><b>Tempo IDs</b></td><td>Completa el Tempo ID de obras de la tabla principal. Es el CSV que se descarga de la
-    tabla principal, con la columna tempo_id completada.</td></tr>
+  <tr><td><b>Reporte Tempo Control</b></td><td>Porcentajes de Tempo (% Perf y % Mech), fecha de creación y estado de cada
+    obra, para todos los territorios que incluya.</td></tr>
+  <tr><td><b>Tempo IDs</b></td><td>Tempo ID de obras de la tabla principal. Corresponde al CSV descargado de la tabla
+    principal, con la columna tempo_id completa.</td></tr>
 </table>
 <div class="caja">
-  <p><b>Charts:</b> subilos con el nombre con que se bajaron; de ahí salen el país y la semana (ver abajo).</p>
-  <p><b>Reportes:</b> solo se cargan las obras cuyo Tempo ID ya está en la tabla principal, así que conviene completar
-  los Tempo ID antes.</p>
-  <p><b>Reporte BackOffice:</b> el país sale del nombre del archivo (por ejemplo <code>…_PAIS_PARAGUAY…</code>). Si no lo
-  tiene, elegí el país en el selector de la pantalla antes de subirlo.</p>
-  <p><b>Volver a subir un archivo no duplica nada:</b> se actualizan esa semana y ese país, o los datos de esas obras.</p>
+  <p><b>Charts:</b> subí los archivos .csv con el nombre de descarga; el territorio y la semana del título se utilizan
+  para interpretar el archivo (ver <a href="#nombres">Nombres de los charts</a>).</p>
+  <p><b>Reportes:</b> solo se cargan las obras cuyo Tempo ID ya figura en la tabla principal. Conviene completar los
+  Tempo ID antes de cargar los reportes.</p>
+  <p><b>Reporte BackOffice:</b> el territorio se toma del nombre del archivo (por ejemplo <code>…_PAIS_PARAGUAY…</code>). Si
+  no figura, seleccionalo en la pantalla de carga antes de subir el archivo.</p>
+  <p><b>Archivos repetidos:</b> volver a cargar un archivo no duplica información; se actualizan la semana y el
+  territorio correspondientes, o los datos de esas obras.</p>
 </div>
 <h3 id="nombres">Nombres de los charts</h3>
-<p>De los charts, el país, la semana y la plataforma se toman del <b>nombre del archivo</b>. Se reconocen todas
-estas formas, tal como se bajaron en cada época:</p>
+<p>En los charts, el territorio, la semana y la plataforma se obtienen del <b>nombre del archivo</b>. Se reconocen los
+siguientes formatos:</p>
 <table>
-  <tr><th>Nombre del archivo</th><th>Plataforma</th><th>País</th><th>Semana</th></tr>
+  <tr><th>Nombre del archivo</th><th>Plataforma</th><th>Territorio</th><th>Semana</th></tr>
   <tr><td><code>regional-ar-weekly-2021-01-07.csv</code></td><td>Spotify</td><td>AR</td><td>07/01/2021</td></tr>
   <tr><td><code>regional-ar-weekly-2024-07-04.csv</code></td><td>Spotify</td><td>AR</td><td>04/07/2024</td></tr>
   <tr><td><code>regional-py-weekly-2023-12-14 -ult.csv</code></td><td>Spotify</td><td>PY</td><td>14/12/2023</td></tr>
@@ -202,177 +205,174 @@ estas formas, tal como se bajaron en cada época:</p>
   <tr><td><code>youtube-charts-top-songs-py-weekly-20230309.csv</code></td><td>YouTube</td><td>PY</td><td>09/03/2023</td></tr>
 </table>
 <ul>
-  <li><b>Plataforma:</b> es YouTube si el nombre dice "youtube" (o los links son de YouTube); si no, Spotify.</li>
-  <li><b>País:</b> el código de dos letras entre guiones (<code>-ar-</code>, <code>-py-</code>…) o el nombre del país.</li>
-  <li><b>Semana:</b> la fecha como <code>2021-01-07</code> o <code>20210107</code>. Si el nombre no tiene fecha, se usa
-    la de hoy. Por eso conviene no renombrar los archivos, o mantener esas partes.</li>
-  <li>Lo que se agregue al final del nombre (como <code>-ult</code>) no molesta.</li>
+  <li><b>Plataforma:</b> YouTube si el nombre contiene "youtube" (o los enlaces son de YouTube); en otro caso, Spotify.</li>
+  <li><b>Territorio:</b> código de dos letras entre guiones (<code>-ar-</code>, <code>-py-</code>…) o nombre del país.</li>
+  <li><b>Semana:</b> fecha con formato <code>2021-01-07</code> o <code>20210107</code>. Si el nombre no incluye fecha, se
+    utiliza la del día de la carga; por eso se recomienda no modificar esas partes del nombre.</li>
+  <li>Los agregados al final del nombre (como <code>-ult</code>) no afectan la lectura.</li>
 </ul>
-<p>También se leen el formato viejo de los charts de Spotify y el oficial de YouTube, y los números con separador
-de miles (por ejemplo, si el archivo pasó por Excel). Los archivos con acentos o "ñ" se leen bien.</p>
+<p>También se interpretan el formato anterior de los charts de Spotify, el formato oficial de YouTube, los números con
+separador de miles (por ejemplo, en archivos editados con Excel) y los caracteres con acentos o "ñ".</p>
 </section>
 
 <section id="titulos">
-<h2>Cómo se ordenan los títulos</h2>
-<p>Un mismo tema suele aparecer escrito de formas distintas según el chart o la semana. Para que cuente como una
-sola obra, al cargarlo el sistema limpia el título y el artista:</p>
+<h2>Normalización de títulos</h2>
+<p>Una misma canción puede figurar escrita de distintas formas según el chart o la semana. Para registrarla como una
+sola obra, el sistema normaliza el título y el artista al cargarlos:</p>
 <ul>
-  <li><b>Saca los acentos:</b> "Canción" queda "Cancion". Los signos <code>¿</code> y <code>¡</code> se mantienen.</li>
-  <li><b>Cambia "&amp;" por una coma:</b> "Artista A &amp; Artista B" queda "Artista A, Artista B".</li>
-  <li><b>Saca las marcas de versión en vivo:</b> paréntesis o corchetes con "en vivo", "vivo" o "live", y los tramos
-    entre guiones que empiezan con esas palabras.</li>
-  <li><b>Junta los espacios de más</b> y saca los del principio y el final.</li>
-  <li>Si el chart no trae artista (pasa en algunos videos de YouTube), lo guarda como <b>"Sin artista"</b>.</li>
+  <li><b>Elimina los acentos:</b> "Canción" se registra como "Cancion". Los signos <code>¿</code> y <code>¡</code> se
+    conservan.</li>
+  <li><b>Reemplaza "&amp;" por una coma:</b> "Artista A &amp; Artista B" se registra como "Artista A, Artista B".</li>
+  <li><b>Elimina las marcas de versión en vivo:</b> paréntesis o corchetes con "en vivo", "vivo" o "live", y los tramos
+    entre guiones que comienzan con esas palabras.</li>
+  <li><b>Elimina los espacios sobrantes</b>, incluidos los del inicio y el final.</li>
+  <li>Si el chart no informa el artista (caso de algunos videos de YouTube), se registra como <b>"Sin artista"</b>.</li>
 </ul>
 <p>Ejemplos:</p>
 <div class="ej"><code>¿Qué Pasó? [Live Session]</code><span>→</span><code>¿Que Paso?</code></div>
 <div class="ej"><code>Tema - En Vivo Gran Rex - Remix</code><span>→</span><code>Tema - Remix</code></div>
 <div class="ej"><code>Tema - Live at Luna Park</code><span>→</span><code>Tema</code></div>
-<p>Con el título y el artista limpios se arma la columna <b>Track - Artista</b> ("Título - Artista"). Dos filas con
-el mismo título y artista limpios son la misma obra, aunque cambien las mayúsculas. Sus charts se suman a esa obra y
-no se crea otra.</p>
-<div class="caja"><p>En el <b>reporte BO</b> además se sacan las comas y los punto y coma del título: Excel y BO los
-toman como separadores y partirían el nombre en dos columnas.</p></div>
+<p>Con el título y el artista normalizados se forma la columna <b>Track - Artista</b> ("Título - Artista"). Dos filas
+con el mismo título y artista normalizados corresponden a la misma obra, sin importar mayúsculas y minúsculas: sus
+charts se asocian a esa obra y no se crea una nueva.</p>
+<div class="caja"><p>En el <b>reporte BO</b> también se eliminan las comas y los punto y coma del título, ya que Excel
+y BO los interpretan como separadores de columna.</p></div>
 </section>
 
 <section id="principal">
 <h2>Tabla principal</h2>
-<p>Una fila por canción. Las más recientes en los charts aparecen primero.</p>
-<h3>Buscar y filtrar</h3>
+<p>Una fila por canción, ordenadas desde la aparición más reciente en los charts.</p>
+<h3>Búsqueda y filtros</h3>
 <ul>
-  <li><b>Buscar:</b> por título, artista o Tempo ID, mientras escribís. Busca dentro de lo que ya filtraste.</li>
-  <li><b>País:</b> muestra solo las canciones que estuvieron en los charts de ese país.</li>
-  <li><b>Desde / Hasta:</b> las canciones que estuvieron en los charts en esas semanas. Combinado con el país, por
-    ejemplo: "lo que entró en AR en octubre". <b>Limpiar</b> saca el país y las fechas.</li>
-  <li><b>Ver eliminados</b> (solo admin): muestra también las obras dadas de baja, en gris.</li>
+  <li><b>Buscar:</b> por título, artista o Tempo ID, sobre los resultados ya filtrados.</li>
+  <li><b>País:</b> canciones que figuraron en los charts de ese territorio.</li>
+  <li><b>Desde / Hasta:</b> canciones que figuraron en los charts en ese período. Combinado con el país, por ejemplo:
+    "lo ingresado en AR en octubre". <b>Limpiar</b> quita el país y las fechas.</li>
+  <li><b>Ver eliminados</b> (solo admin): incluye, en gris, las obras dadas de baja.</li>
 </ul>
 <h3>Columna Seguimiento</h3>
-<p>Para cada obra muestra:</p>
+<p>Para cada obra indica:</p>
 <ul>
-  <li><b>BO:</b> el número de carga y la fecha del último reporte BO en que salió;</li>
-  <li><b>CSV:</b> la fecha de la última descarga del CSV en que salió.</li>
+  <li><b>BO:</b> número de carga y fecha del último reporte BO que la incluyó;</li>
+  <li><b>CSV:</b> fecha de la última descarga del CSV que la incluyó.</li>
 </ul>
-<p>"nunca" quiere decir que todavía no salió en ninguno. Lo que se descarga ("solo las nuevas" o "todas") se elige
-al apretar cada botón de descarga.</p>
-<h3>Completar el Tempo ID</h3>
-<p>Escribí el número en la celda y salí de ella (clic afuera o Tab): se guarda solo. Las celdas vacías están marcadas
-en rojo. Un Tempo ID no puede estar en dos obras: si ya lo tiene otra, el sistema no lo guarda y avisa. Al cargarlo,
-el Tempo ID pasa también a todas las filas de esa obra en la tabla por territorio.</p>
+<p>"nunca" indica que la obra todavía no fue incluida. El alcance de cada descarga ("solo las nuevas" o "todas") se
+elige al presionar el botón correspondiente.</p>
+<h3>Registro del Tempo ID</h3>
+<p>Ingresá el número en la celda y salí de ella (clic fuera o Tab): se guarda automáticamente. Las celdas vacías se
+marcan en rojo. Un Tempo ID no puede asignarse a dos obras: si ya está asignado, el sistema no lo guarda y lo
+informa. El Tempo ID registrado se aplica también a todas las filas de esa obra en la tabla por territorio.</p>
 <h3>Botones de descarga</h3>
 <ul>
-  <li><b>Descargar CSV:</b> "Track - Artista" y Tempo ID, para completar los Tempo ID en Excel o buscarlos en Tempo.</li>
-  <li><b>Descargar reporte BO:</b> el archivo para subir a BO.</li>
+  <li><b>Descargar CSV:</b> "Track - Artista" y Tempo ID, para completar los Tempo ID en Excel o consultarlos en Tempo.</li>
+  <li><b>Descargar reporte BO:</b> archivo para cargar en BO.</li>
 </ul>
-<p>Al apretar cualquiera de los dos se abre un cartel para elegir <b>solo las nuevas</b> (las que todavía no se
-trackearon) o <b>todas</b> (descarga general). Ver la sección siguiente. Respetan los filtros de país y fechas, pero
-no la búsqueda.</p>
+<p>Ambos abren una ventana para elegir <b>solo las nuevas</b> (obras aún no incluidas) o <b>todas</b> (descarga
+general); ver la sección siguiente. Respetan los filtros de país y fechas, no la búsqueda.</p>
 </section>
 
 <section id="descargas">
 <h2>Reporte BO y CSV: nuevas o todas</h2>
-<p>Al tocar <b>Descargar reporte BO</b> o <b>Descargar CSV</b> se abre una ventana con dos opciones y la cantidad de
-obras de cada una. También muestra cuándo fue la última descarga de ese tipo, con cuántas obras y si fue de nuevas o
-de todas.</p>
+<p><b>Descargar reporte BO</b> y <b>Descargar CSV</b> abren una ventana con dos opciones y la cantidad de obras de cada
+una. También se informa la última descarga de ese tipo: fecha, cantidad de obras y alcance (nuevas o todas).</p>
 <table>
-  <tr><th>Opción</th><th>Qué incluye</th><th>Cuándo usarla</th></tr>
-  <tr><td><b>Solo las nuevas</b></td><td>Las obras que <b>nunca</b> salieron en ese tipo de descarga (en un reporte BO, o
-    en un CSV, según el botón).</td><td>En el seguimiento de cada semana, para no volver a pedir lo mismo.</td></tr>
-  <tr><td><b>Todas</b></td><td>Todas las obras, también las que ya salieron.</td><td>En la revisión completa, por
-    ejemplo cada trimestre.</td></tr>
+  <tr><th>Opción</th><th>Incluye</th><th>Uso recomendado</th></tr>
+  <tr><td><b>Solo las nuevas</b></td><td>Obras que <b>nunca</b> se incluyeron en ese tipo de descarga (reporte BO o CSV,
+    según el botón).</td><td>Seguimiento semanal, para no repetir consultas.</td></tr>
+  <tr><td><b>Todas</b></td><td>Todas las obras, incluidas las ya enviadas.</td><td>Revisión completa, por ejemplo
+    trimestral.</td></tr>
 </table>
 <ul>
-  <li>Cada descarga queda registrada con sus obras. Desde ese momento, esas obras ya no cuentan como "nuevas" para
-    ese botón. Las del reporte BO y las del CSV se cuentan por separado.</li>
-  <li>El <b>reporte BO</b> solo lleva obras con Tempo ID numérico. Una obra sin Tempo ID sigue siendo "nueva" para
-    el reporte BO hasta que tenga uno y salga en un reporte.</li>
-  <li>El archivo del reporte BO no tiene encabezado. Cada línea es <code>TempoID;Título;BOcargaN</code>, donde N es el
-    número de carga, que sube de a uno en cada reporte. El nombre del archivo lo indica: <code>reporte_bo_carga12.csv</code>
-    para todas y <code>reporte_bo_carga12_nuevas.csv</code> para las nuevas.</li>
-  <li>El cartel muestra la última descarga de ese tipo: cuándo fue, cuántas obras tenía y si fue de nuevas o de todas.</li>
+  <li>Cada descarga queda registrada con sus obras, que a partir de ese momento dejan de contarse como "nuevas" para ese
+    botón. El reporte BO y el CSV se registran por separado.</li>
+  <li>El <b>reporte BO</b> incluye solo obras con Tempo ID numérico. Una obra sin Tempo ID se mantiene como "nueva" para
+    el reporte BO hasta que se le asigne uno y se incluya en un reporte.</li>
+  <li>El archivo del reporte BO no tiene encabezado. Cada línea tiene el formato <code>TempoID;Título;BOcargaN</code>,
+    donde N es el número de carga, que aumenta en uno con cada reporte. El nombre del archivo lo refleja:
+    <code>reporte_bo_carga12.csv</code> (todas) o <code>reporte_bo_carga12_nuevas.csv</code> (solo nuevas).</li>
 </ul>
-<div class="caja ojo"><p>Si no hay obras nuevas, la opción aparece apagada: no se genera un archivo vacío ni se gasta un
-número de carga.</p></div>
+<div class="caja ojo"><p>Si no hay obras nuevas, la opción figura deshabilitada: no se genera un archivo vacío ni se
+utiliza un número de carga.</p></div>
 </section>
 
 <section id="territorio">
 <h2>Tabla por territorio</h2>
-<p>Una fila por obra y país (la semana más reciente en que esa obra estuvo en el chart de ese país), con lo que dicen
-Tempo y BO.</p>
+<p>Una fila por obra y territorio (la semana más reciente en que la obra figuró en el chart de ese territorio), con
+los datos de Tempo y de BO.</p>
 <table>
-  <tr><th>Columna</th><th>Qué es</th></tr>
-  <tr><td>País, Track - Artista, Tempo ID</td><td>La obra y el país.</td></tr>
-  <tr><td>Created date</td><td>La fecha de creación de la obra en Tempo (del Reporte Tempo Control).</td></tr>
-  <tr><td>BO, C/A</td><td>El código de la obra en BO y su C/A (song owner), del Reporte BackOffice.</td></tr>
-  <tr><td>% Perf Tempo, % Mech Tempo</td><td>Los porcentajes del Reporte Tempo Control para ese país, tal cual vienen. Si
-    Tempo informa un texto (por ejemplo NVFT o NOP), se muestra ese texto.</td></tr>
-  <tr><td>Estado, Reclamos, % Mech BO</td><td>Lo que informa BO: estado de la obra, reclamos (counterclaims) y su %
+  <tr><th>Columna</th><th>Descripción</th></tr>
+  <tr><td>País, Track - Artista, Tempo ID</td><td>Obra y territorio.</td></tr>
+  <tr><td>Created date</td><td>Fecha de creación de la obra en Tempo (del Reporte Tempo Control).</td></tr>
+  <tr><td>BO, C/A</td><td>Código de la obra en BO y su C/A (song owner), del Reporte BackOffice.</td></tr>
+  <tr><td>% Perf Tempo, % Mech Tempo</td><td>Porcentajes del Reporte Tempo Control para ese territorio, tal como se
+    informan. Si Tempo informa un texto (por ejemplo NVFT o NOP), se muestra ese texto.</td></tr>
+  <tr><td>Estado, Reclamos, % Mech BO</td><td>Datos de BO: estado de la obra, reclamos (counterclaims) y porcentaje
     mecánico.</td></tr>
-  <tr><td>Estado de trabajo</td><td>El resultado de comparar Tempo con BO (ver abajo). Se puede cambiar a mano.</td></tr>
-  <tr><td>Show prior</td><td>El histórico de cambios de esa obra en ese país, con su fecha. Registra cada cambio del
-    Reporte BackOffice, del Reporte Tempo Control y del estado de trabajo.</td></tr>
+  <tr><td>Estado de trabajo</td><td>Resultado de la comparación entre Tempo y BO (ver abajo). Puede modificarse
+    manualmente.</td></tr>
+  <tr><td>Show prior</td><td>Histórico de cambios de la obra en ese territorio, con fecha: cada cambio del Reporte
+    BackOffice, del Reporte Tempo Control y del estado de trabajo.</td></tr>
 </table>
 <h3>Estado de trabajo automático</h3>
-<p>Cuando hay % Mech de Tempo y de BO para la obra en ese país, el sistema los compara:</p>
+<p>Cuando la obra tiene % Mech de Tempo y de BO en ese territorio, el sistema los compara:</p>
 <ul>
-  <li><b>OK BO-Tempo:</b> los dos porcentajes coinciden (diferencia de 0,1 o menos).</li>
-  <li><b>OK - Obra AR / OK - Obra MX:</b> BO informa 0% y Tempo tiene porcentaje, pero la obra se originó en la
+  <li><b>OK BO-Tempo:</b> los porcentajes coinciden (diferencia igual o menor a 0,1).</li>
+  <li><b>OK - Obra AR / OK - Obra MX:</b> BO informa 0% y Tempo informa un porcentaje, pero la obra se originó en la
     oficina de Argentina o de México. Es un caso esperado.</li>
-  <li><b>REVISAR:</b> no coinciden. Hay que mirarla.</li>
-  <li>Vacío: todavía falta el Reporte Tempo Control o el Reporte BackOffice de esa obra en ese país.</li>
+  <li><b>REVISAR:</b> los porcentajes no coinciden y la obra requiere revisión.</li>
+  <li>Sin valor: falta el Reporte Tempo Control o el Reporte BackOffice de la obra en ese territorio.</li>
 </ul>
-<p>Se recalcula cada vez que se carga un Reporte BackOffice o Tempo Control nuevo. Los estados automáticos (REVISAR, OK BO-Tempo y
-OK - Obra AR / MX) los decide siempre el sistema. Para marcar otro caso elegí <b>duplicada</b> o <b>dif de split</b>:
-esos se mantienen aunque se carguen reportes nuevos.</p>
+<p>El estado se recalcula con cada carga de un Reporte BackOffice o Tempo Control. Los estados automáticos (REVISAR,
+OK BO-Tempo y OK - Obra AR / MX) los define siempre el sistema. Para registrar otro caso, seleccioná
+<b>duplicada</b> o <b>dif de split</b>: esos estados se mantienen aunque se carguen reportes nuevos.</p>
 <h3>Filtros y descarga</h3>
 <ul>
   <li><b>País</b> y <b>Desde / Hasta</b> (semanas del chart).</li>
-  <li><b>Reclamos</b> y <b>Estado de trabajo</b>, con los valores que hay hoy en la tabla, como el filtro de Excel.</li>
+  <li><b>Reclamos</b> y <b>Estado de trabajo</b>, con los valores presentes en la tabla, como el filtro de Excel.</li>
   <li><b>Buscar</b> por Tempo ID o título.</li>
-  <li><b>Descargar CSV</b> baja la tabla con los filtros de país y fechas, con las mismas columnas que se ven en
-    pantalla.</li>
+  <li><b>Descargar CSV</b> genera la tabla con los filtros de país y fechas y las mismas columnas de la pantalla.</li>
 </ul>
 </section>
 
 <section id="historial">
 <h2>Historial de cargas</h2>
-<p>Muestra lo que hay cargado en el sistema y de qué archivo salió cada cosa. Es <b>solo informativo</b>: no se puede
-descargar ni borrar nada desde acá. Tiene cuatro partes:</p>
+<p>Muestra la información cargada en el sistema y el archivo de origen de cada dato. Es de carácter informativo: no
+permite descargar ni eliminar archivos. Se organiza en cuatro secciones:</p>
 <table>
-  <tr><th>Parte</th><th>Qué muestra</th></tr>
-  <tr><td><b>YouTube</b> y <b>Spotify</b></td><td>Con <b>Todos</b>, un resumen por país: cuántas semanas hay cargadas, la
-    primera y la última, y cuántos archivos. Elegí un país (o hacé clic en su fila) para ver cada semana cargada, con
-    cuántas canciones tiene, el archivo del que salió, cuándo se cargó y quién lo cargó.</td></tr>
-  <tr><td><b>Reportes BackOffice</b></td><td>Cuántas obras tienen datos de BO en cada país y cuándo cambiaron por
-    última vez, y la lista de archivos cargados con su país.</td></tr>
-  <tr><td><b>Reportes Tempo Control</b></td><td>Cuántas obras tienen datos de Tempo en cada país, cuántas obras de la tabla
-    principal tienen Tempo ID, y los archivos cargados (reportes Tempo y archivos de Tempo IDs).</td></tr>
+  <tr><th>Sección</th><th>Contenido</th></tr>
+  <tr><td><b>YouTube</b> y <b>Spotify</b></td><td>Con <b>Todos</b>, un resumen por territorio: semanas cargadas, primera y
+    última semana, y cantidad de archivos. Al seleccionar un territorio (botón o fila), el detalle de cada semana:
+    cantidad de canciones, archivo de origen, fecha de carga y usuario.</td></tr>
+  <tr><td><b>Reportes BackOffice</b></td><td>Obras con datos de BO por territorio y fecha de la última actualización, y
+    los archivos cargados con su territorio.</td></tr>
+  <tr><td><b>Reportes Tempo Control</b></td><td>Obras con datos de Tempo por territorio, obras de la tabla principal con
+    Tempo ID, y los archivos cargados (reportes de Tempo y archivos de Tempo IDs).</td></tr>
 </table>
-<p>En cada archivo se ve cuántas filas tenía, cuántas se cargaron y si tuvo errores. Si una semana dice "sin archivo
-registrado", los datos están en el sistema pero no se encontró el archivo con ese país y esa semana en el nombre.
-Las descargas (reporte BO y CSV de la tabla principal) no aparecen acá porque no son cargas: la última de cada
-tipo se ve en el cartel que abre cada botón de descarga.</p>
+<p>Para cada archivo se informan las filas leídas, las filas cargadas y los errores. "Archivo no registrado" indica
+que los datos de esa semana están en el sistema, pero no hay un archivo con ese territorio y esa semana en el nombre.
+Las descargas (reporte BO y CSV de la tabla principal) no se incluyen porque no son cargas; la última de cada tipo
+se informa en la ventana de su botón de descarga.</p>
 </section>
 
 <section id="problemas">
-<h2>Mensajes y problemas comunes</h2>
+<h2>Mensajes frecuentes</h2>
 <table>
-  <tr><th>Mensaje o situación</th><th>Qué hacer</th></tr>
-  <tr><td>"No se pudo determinar el país…"</td><td>El nombre del archivo no tiene el país. En un chart, usá el nombre
-    original que da Spotify o YouTube. En un Reporte BackOffice, elegí el país en el selector de Carga CSV y subilo de
-    nuevo.</td></tr>
-  <tr><td>"tempo_id … no existe en la tabla principal"</td><td>El Reporte BackOffice o Tempo Control trae una obra cuyo Tempo ID no
-    está cargado en ninguna obra. Completá ese Tempo ID en la tabla principal y volvé a subir el reporte.</td></tr>
+  <tr><th>Mensaje o situación</th><th>Acción</th></tr>
+  <tr><td>"No se pudo determinar el país…"</td><td>El nombre del archivo no indica el territorio. En un chart, utilizá el
+    nombre original de descarga. En un Reporte BackOffice, seleccioná el país en Carga CSV y volvé a cargar el
+    archivo.</td></tr>
+  <tr><td>"tempo_id … no existe en la tabla principal"</td><td>El Reporte BackOffice o Tempo Control incluye una obra cuyo
+    Tempo ID no está registrado. Registrá ese Tempo ID en la tabla principal y volvé a cargar el reporte.</td></tr>
   <tr><td>"No se encontró la obra … en la tabla principal"</td><td>En un archivo de Tempo IDs, el "Track - Artista" no
-    coincide exactamente con ninguna obra. Usá el CSV que se descarga de la tabla principal, sin cambiar esa
-    columna.</td></tr>
-  <tr><td>"No se reconoce el formato del CSV"</td><td>Faltan las columnas que identifican el archivo (ver <a
-    href="#carga">Carga CSV</a>). Revisá que sea el export original y que esté guardado como CSV.</td></tr>
-  <tr><td>No puedo guardar un Tempo ID</td><td>Ya lo tiene otra obra. Buscalo en la tabla principal para ver
-    cuál.</td></tr>
-  <tr><td>La fecha de última carga no cambió</td><td>Elegí el país. Recordá que muestra la semana del chart más
-    reciente, no el día de la carga.</td></tr>
-  <tr><td>"Ranking Digital está iniciando o apagado"</td><td>El servidor está arrancando (por ejemplo, después de
-    prender la computadora). La pantalla entra sola apenas esté listo.</td></tr>
+    coincide con ninguna obra. Utilizá el CSV descargado de la tabla principal sin modificar esa columna.</td></tr>
+  <tr><td>"No se reconoce el formato del CSV"</td><td>El archivo no tiene las columnas de ninguno de los tipos admitidos
+    (ver <a href="#carga">Carga CSV</a>). Verificá que sea el archivo original y que esté guardado como CSV.</td></tr>
+  <tr><td>No se guarda un Tempo ID</td><td>Ese Tempo ID ya está asignado a otra obra. Buscalo en la tabla principal para
+    identificarla.</td></tr>
+  <tr><td>La fecha de última carga no cambia</td><td>Seleccioná el país. La fecha corresponde a la semana del chart más
+    reciente, no al día de la carga.</td></tr>
+  <tr><td>"Ranking Digital está iniciando o apagado"</td><td>El servidor se está iniciando (por ejemplo, después de
+    encender la computadora). La aplicación se abre automáticamente cuando está disponible.</td></tr>
 </table>
 </section>
 </main>

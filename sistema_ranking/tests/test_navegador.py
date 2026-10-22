@@ -77,19 +77,21 @@ with sync_playwright() as p:
     # ---- carga de CSV (Spotify y Tempo IDs), en secuencia como el front
     pag.click('[data-tab="upload"]')
     pag.set_input_files("#fileInput", [str(spotify)])
-    pag.wait_for_function("() => !document.body.innerText.includes('Cargando')", timeout=20000)
+    pag.wait_for_function("() => !document.body.innerText.includes('Procesando')", timeout=20000)
     pag.wait_for_timeout(1500)
     check("CSV de Spotify cargado: 2 obras con el país y la fecha del nombre del archivo",
           sqlq("select count(*) || '|' || min(pais_code) || '|' || min(snapshot_date) from territory_tracks where platform='spotify'") == "2|AR|2026-10-08")
     check("archivo de Spotify archivado en el bucket",
           sqlq("select count(*) from storage.objects where name like 'spotify/AR/%regional-ar-weekly-2026-10-08.csv'") == "1")
     guia = pag.inner_text(".upload-guide")
+    check("Carga CSV indica cómo subir los charts (registro formal)",
+          "subí los archivos .csv con el nombre de descarga" in guia and "acá" not in guia and "subilos" not in guia, guia)
     check("Carga CSV nombra los tipos de archivo y no lista columnas",
           all(t in guia for t in ("Spotify", "YouTube", "Reporte BackOffice", "Reporte Tempo Control", "Tempo IDs"))
           and "artist_names" not in pag.inner_text(".panel-body") and "Submitters_Song_Code" not in pag.inner_text(".panel-body"), guia)
     fila_carga = pag.inner_text("#uploadQueue tbody tr")
     check("la carga muestra cada archivo con su estado, tipo, país y semana",
-          all(t in fila_carga for t in ("regional-ar-weekly-2026-10-08.csv", "Listo", "Spotify", "AR", "2026-10-08")), fila_carga)
+          all(t in fila_carga for t in ("regional-ar-weekly-2026-10-08.csv", "Cargado", "Spotify", "AR", "2026-10-08")), fila_carga)
     pag.set_input_files("#fileInput", [str(tempo)])
     pag.wait_for_timeout(2500)
     check("CSV de Tempo IDs cargado", sqlq("select tempo_id from tracks_master where track_name_clean='Tema Navegador'") == "777001")
@@ -105,7 +107,7 @@ with sync_playwright() as p:
     pag.click('[data-tab="upload"]')
     # YouTube se carga a mano, igual que Spotify (no hay carga automática)
     pag.set_input_files("#fileInput", [str(youtube)])
-    pag.wait_for_function("() => !document.body.innerText.includes('Cargando')", timeout=20000)
+    pag.wait_for_function("() => !document.body.innerText.includes('Procesando')", timeout=20000)
     pag.wait_for_timeout(1500)
     check("CSV de YouTube cargado a mano: país y fecha del nombre del archivo",
           sqlq("select count(*) || '|' || min(pais_code) || '|' || min(snapshot_date) || '|' || min(streams) from territory_tracks where platform='youtube'")
@@ -150,7 +152,7 @@ with sync_playwright() as p:
     # ---- formatos de chart: el oficial de YouTube y el viejo de Spotify (con aviso arriba)
     pag.click('[data-tab="upload"]')
     pag.set_input_files("#fileInput", [str(youtube_oficial), str(spotify_viejo)])
-    pag.wait_for_function("() => !document.body.innerText.includes('Cargando')", timeout=20000)
+    pag.wait_for_function("() => !document.body.innerText.includes('Procesando')", timeout=20000)
     pag.wait_for_timeout(1500)
     fila = ("select t.platform || '|' || t.pais_code || '|' || t.snapshot_date || '|' || t.rank || '|' || coalesce(t.previous_rank::text, '-') "
             "|| '|' || t.streams || '|' || coalesce(t.weeks_on_chart::text, '-') || '|' || coalesce(t.uri, '-') "
@@ -233,9 +235,9 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Cómo se ordenan los títulos", "Solo las nuevas", "Estado de trabajo automático",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Solo las nuevas", "Estado de trabajo automático",
                                           "Nombres de los charts", "youtube-TopSongs-ar-weekly-2021-01-07.csv",
-                                          "Historial de cargas", "solo informativo", "Reporte Tempo Control")),
+                                          "Historial de cargas", "carácter informativo", "Reporte Tempo Control")),
           texto_manual[:300])
     manual.close()
 
@@ -247,6 +249,7 @@ with sync_playwright() as p:
           [re.sub(r"\d+$", "", t).strip() for t in subtabs] == ["YouTube", "Spotify", "Reportes BackOffice", "Reportes Tempo Control"], subtabs)
     def panel():
         return pag.inner_text(".panel-body")
+    check("el historial no tiene la nota redundante de solo lectura", "Solo lectura" not in panel(), panel()[:200])
     check("el historial es solo informativo: sin descargas ni borrados",
           pag.locator(".panel-body button", has_text="Descargar").count() == 0
           and pag.locator(".panel-body button", has_text="Eliminar").count() == 0)

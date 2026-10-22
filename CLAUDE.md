@@ -139,6 +139,15 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     **Regla fija (pedido del usuario): toda mejora o agregado que cambie lo que ve o hace el usuario se entrega con el
     manual actualizado en el mismo commit, sin que lo pida.** Solo si la información le sirve a quien usa el sistema;
     lo interno (back, cruces, scripts) no va. Si una prueba del navegador cubre la función, chequear también el manual.
+  - **Redacción de los textos para el usuario** (front, manual, pantallas de inicio). Regla fija, pedido del usuario el
+    22/10/2026:
+    - Registro intermedio: voseo, pero con vocabulario formal y preciso. Ejemplo: "Charts: subí los archivos .csv con
+      el nombre de descarga; el territorio y la semana del título se utilizan para interpretar el archivo".
+    - Sin giros coloquiales ("acá", "de ahí salen", "mirá", "ojo", "podés seguir mirando").
+    - Nada redundante con lo que la pantalla ya muestra. Por ejemplo, no poner "Solo lectura" en una sección sin
+      acciones: las dudas se resuelven en el manual.
+    - Mensajes breves que indiquen qué hacer o qué representa la información.
+    - Términos: "territorio/país", "Reporte BackOffice", "Reporte Tempo Control", "seleccionar", "cargar".
   - **Descargas (reporte BO y CSV):** la elección "Solo las nuevas" / "Todas" va en el cartel que se abre al apretar cada
     botón. El usuario no quiere desplegables de seguimiento en la barra; solo queda la columna "Seguimiento".
   - **Nombres de charts que se deben leer** (país, semana y plataforma salen del nombre; `test_navegador.py` los prueba):
