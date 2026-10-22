@@ -37,6 +37,15 @@ spotify.write_text("rank,uri,artist_names,track_name,source,peak_rank,previous_r
 youtube = tmp / "youtube-charts-top-songs-uy-weekly-20261001.csv"
 youtube.write_text("Rank,Previous Rank,Track Name,Artist Name,Weeks on Chart,Views,Weekly Growth,YouTube URL\n"
                    "1,3,Tema Video,Artista Video,4,90000,12.5%,https://www.youtube.com/watch?v=abc\n", encoding="utf-8")
+# Formato oficial de YouTube Charts (Artist Names, Periods on Chart, Growth; vistas con separador de miles).
+youtube_oficial = tmp / "youtube-charts-top-songs-py-weekly-20230309.csv"
+youtube_oficial.write_text("Rank,Previous Rank,Track Name,Artist Names,Periods on Chart,Views,Growth,YouTube URL\n"
+                           '1,--,Tema Oficial,Artista Oficial,1,"1,234,567",N/A,https://www.youtube.com/watch?v=xyz\n', encoding="utf-8")
+# Formato viejo de Spotify Charts: una línea de aviso antes de los encabezados Position, Track Name, Artist, Streams, URL.
+spotify_viejo = tmp / "regional-py-weekly-2023-12-14 -ult.csv"
+spotify_viejo.write_text("Note that these figures are generated using a formula that protects against any artificial inflation of streams.,,,,\n"
+                         "Position,Track Name,Artist,Streams,URL\n"
+                         "1,Tema Viejo,Artista Viejo,345678,https://open.spotify.com/track/abc\n", encoding="utf-8")
 tempo = tmp / "tempo_ids.csv"
 tempo.write_text("Track - Artista,Tempo ID\nTema Navegador - Artista Navegador,777001\n", encoding="utf-8")
 
@@ -114,6 +123,42 @@ with sync_playwright() as p:
           ultima_carga() == "Seleccionar país para ver fecha de última carga", ultima_carga())
     pag.click('[data-tab="master"]'); pag.select_option("#masterCountry", ""); pag.wait_for_timeout(1500)
 
+    # ---- nombres de archivo de los charts: país, semana y plataforma salen del nombre
+    nombres = {
+        "regional-ar-weekly-2021-01-07.csv": ["AR", "2021-01-07", "spotify"],
+        "regional-py-weekly-2023-12-14 -ult.csv": ["PY", "2023-12-14", "spotify"],
+        "youtube-py-weekly-2023-03-09.csv": ["PY", "2023-03-09", "youtube"],
+        "youtube-TopSongs-ar-weekly-2021-01-07.csv": ["AR", "2021-01-07", "youtube"],
+        "regional-ar-weekly-2024-07-04.csv": ["AR", "2024-07-04", "spotify"],
+        "youtube-charts-top-songs-py-weekly-20230309": ["PY", "2023-03-09", "youtube"],
+        "youtube-charts-top-songs-py-weekly-20230309.csv": ["PY", "2023-03-09", "youtube"],
+    }
+    leidos = pag.evaluate("""(nombres) => Object.fromEntries(nombres.map(n => [n, [
+        detectCountryFromFilename(n) || detectCountry(n), detectDateFromFilename(n),
+        detectFormat({ track_name: 'x', artist_names: 'y' }, n)]]))""", list(nombres))
+    for n, esperado in nombres.items():
+        check(f"nombre de chart '{n}': país, semana y plataforma", leidos[n] == esperado, leidos[n])
+
+    # ---- formatos de chart: el oficial de YouTube y el viejo de Spotify (con aviso arriba)
+    pag.click('[data-tab="upload"]')
+    pag.set_input_files("#fileInput", [str(youtube_oficial), str(spotify_viejo)])
+    pag.wait_for_function("() => !document.body.innerText.includes('Procesando')", timeout=20000)
+    pag.wait_for_timeout(1500)
+    fila = ("select t.platform || '|' || t.pais_code || '|' || t.snapshot_date || '|' || t.rank || '|' || coalesce(t.previous_rank::text, '-') "
+            "|| '|' || t.streams || '|' || coalesce(t.weeks_on_chart::text, '-') || '|' || coalesce(t.uri, '-') "
+            "from territory_tracks t join tracks_master m on m.id = t.track_master_id where m.track_name_clean = ")
+    check("YouTube formato oficial: Artist Names, Periods on Chart y vistas \"1,234,567\"",
+          sqlq(fila + "'Tema Oficial'") == "youtube|PY|2023-03-09|1|-|1234567|1|https://www.youtube.com/watch?v=xyz"
+          and sqlq("select artist_name_clean from tracks_master where track_name_clean = 'Tema Oficial'") == "Artista Oficial",
+          sqlq(fila + "'Tema Oficial'"))
+    check("Spotify formato viejo (aviso arriba; Position, Artist, URL) con nombre '... -ult.csv'",
+          sqlq(fila + "'Tema Viejo'") == "spotify|PY|2023-12-14|1|-|345678|-|https://open.spotify.com/track/abc"
+          and sqlq("select artist_name_clean from tracks_master where track_name_clean = 'Tema Viejo'") == "Artista Viejo",
+          sqlq(fila + "'Tema Viejo'"))
+    check("los dos archivos cargados sin errores", pag.inner_text(".metric.ok .n").strip() == "2"
+          and pag.inner_text(".metric.err .n").strip() == "0", pag.inner_text(".summary-row"))
+    pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
+
     # ---- descarga de la tabla principal: elige "solo las nuevas" o "todas" y queda registrada
     total_obras = int(sqlq("select count(*) from tracks_master where deleted_at is null"))
     pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="nuevas"]')
@@ -148,9 +193,8 @@ with sync_playwright() as p:
     # ---- reporte BO: solo las nuevas (contador + descarga + copia en el bucket + seguimiento)
     pag.click('[data-tab="master"]'); pag.wait_for_timeout(800)
     con_tempo = int(sqlq("select count(*) from tracks_master where deleted_at is null and tempo_id ~ '^[0-9]+$'"))
-    pag.select_option("#segFilter", "bo_nunca"); pag.wait_for_timeout(300)
-    check("filtro Seguimiento: nunca en un reporte BO muestra todas al principio",
-          pag.locator("tbody tr").count() == total_obras, pag.locator("tbody tr").count())
+    check("la barra de la tabla principal no tiene un desplegable de seguimiento (se elige al descargar)",
+          pag.locator("#segFilter").count() == 0)
     pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="nuevas"]')
     with pag.expect_download() as d:
         pag.click('[data-envio-modo="nuevas"]')
@@ -163,13 +207,9 @@ with sync_playwright() as p:
     pag.wait_for_timeout(1000)
     check("copia del reporte BO guardada y registrada",
           sqlq("select count(*) from csv_uploads where format='bo_generado' and file_path like 'bo_generado/%'") == "1")
-    check("la columna Seguimiento muestra la carga del reporte BO",
-          pag.locator(".seg", has_text=f"BO: carga {carga}").count() == 0  # con el filtro "nunca", ya no aparecen
-          and pag.locator("tbody tr .seg").count() == 2 * (total_obras - con_tempo), pag.inner_text("tbody"))
-    pag.select_option("#segFilter", "bo_ya"); pag.wait_for_timeout(300)
-    check("filtro Seguimiento: ya en un reporte BO",
-          pag.locator(".seg", has_text=f"BO: carga {carga}").count() == con_tempo, pag.inner_text("tbody"))
-    pag.select_option("#segFilter", "")
+    check("la columna Seguimiento muestra la carga del reporte BO (y 'nunca' en las que no salieron)",
+          pag.locator(".seg", has_text=f"BO: carga {carga}").count() == con_tempo
+          and pag.locator(".seg", has_text="BO: nunca").count() == total_obras - con_tempo, pag.inner_text("tbody"))
     pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="todas"]')
     check("reporte BO: sin nuevas, 'solo las nuevas' queda apagada", pag.is_disabled('[data-envio-modo="nuevas"]'), pag.inner_text(".modal"))
     with pag.expect_download() as d:
@@ -185,7 +225,8 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Cómo se ordenan los títulos", "Solo las nuevas", "Estado de trabajo automático")),
+          all(t in texto_manual for t in ("Carga CSV", "Cómo se ordenan los títulos", "Solo las nuevas", "Estado de trabajo automático",
+                                          "Nombres de los charts", "youtube-TopSongs-ar-weekly-2021-01-07.csv")),
           texto_manual[:300])
     manual.close()
 

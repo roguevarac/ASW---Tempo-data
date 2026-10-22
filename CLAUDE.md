@@ -135,8 +135,23 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 
     Así llegan a la base ya instalada. Nunca editar `db/03`/`db/04` para esto. Si una tabla nueva apunta a
     `tracks_master`, agregarla a los TRUNCATE de `restaurar`, `empezar-de-cero` y `migracion/importar.py`.
-  - **Manual de uso:** `front/manual.html` (enlace "Manual de uso" arriba a la derecha). Actualizarlo cuando cambie el
-    front.
+  - **Manual de uso:** `front/manual.html` (enlace "Manual de uso" arriba a la derecha).
+    **Regla fija (pedido del usuario): toda mejora o agregado que cambie lo que ve o hace el usuario se entrega con el
+    manual actualizado en el mismo commit, sin que lo pida.** Solo si la información le sirve a quien usa el sistema;
+    lo interno (back, cruces, scripts) no va. Si una prueba del navegador cubre la función, chequear también el manual.
+  - **Descargas (reporte BO y CSV):** la elección "Solo las nuevas" / "Todas" va en el cartel que se abre al apretar cada
+    botón. El usuario no quiere desplegables de seguimiento en la barra; solo queda la columna "Seguimiento".
+  - **Nombres de charts que se deben leer** (país, semana y plataforma salen del nombre; `test_navegador.py` los prueba):
+    - `regional-ar-weekly-2021-01-07.csv`
+    - `regional-py-weekly-2023-12-14 -ult.csv`
+    - `youtube-py-weekly-2023-03-09.csv`
+    - `youtube-TopSongs-ar-weekly-2021-01-07.csv`
+    - `youtube-charts-top-songs-py-weekly-20230309[.csv]`
+
+    También se leen:
+    - el formato viejo de Spotify (aviso arriba; Position/Artist/URL);
+    - el oficial de YouTube (Artist Names/Periods on Chart/Growth);
+    - números con separador de miles (`entero()` en el front).
 - **Como aplicación (PWA, desde el 21/10/2026):** el front es instalable (`front/manifest.webmanifest`, `front/sw.js`,
   `front/apagado.html`, `front/iconos/`); los inyecta `front/generar_index.py`, y los íconos se generan con
   `front/generar_iconos.py`.

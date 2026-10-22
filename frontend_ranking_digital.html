@@ -149,7 +149,7 @@ let state = {
   dateFrom: '', dateTo: '', masterCountry: '', history: null, historyLoading: false,
   master: [], territoryControl: [], uploads: [], loading: true,
   uploadResults: [], uploadProgress: null, uploading: false, controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
-  envios: {}, segFilter: '', envioDialog: null, envioBusy: false,
+  envios: {}, envioDialog: null, envioBusy: false,
 };
 
 function fmtNum(n){ return n===null || n===undefined ? '—' : Number(n).toLocaleString('es-AR'); }
@@ -498,6 +498,8 @@ const HEADER_ALIASES = {
   streams:'streams', views:'streams',
   weekly_growth:'weekly_growth', growth:'weekly_growth',
   uri:'uri', youtube_url:'uri', source:'source',
+  // Formato viejo de Spotify Charts: Position, Track Name, Artist, Streams, URL.
+  position:'rank', artist:'artist_names', url:'uri',
   tempo_id:'tempo_id', bo_id:'bo_id', ctrl:'percent_ctrl', percent_ctrl:'percent_ctrl',
   collect_mec:'collect_mec', collect_ejec:'collect_ejec', control:'control', cwr:'cwr', nota:'nota',
   submitters_song_code:'tempo_id', internal_song_code:'bo_id',
@@ -614,10 +616,16 @@ async function readFileText(file){
   return text;
 }
 
+// Los CSV viejos de Spotify Charts traen una primera línea de aviso ("Note that these figures are generated
+// using a formula...") antes de los encabezados: se saltea.
+function quitarNotaInicial(text){
+  return /^\uFEFF?\s*"?note that/i.test(text) ? text.slice(text.indexOf('\n') + 1) : text;
+}
+
 function handleCsv(file){
   return new Promise(async (resolve) => {
     let text;
-    try { text = await readFileText(file); }
+    try { text = quitarNotaInicial(await readFileText(file)); }
     catch(err){ await finishUpload(file, 0, 0, 0, [`No se pudo leer el archivo: ${err}`], null, null); return resolve(); }
 
     Papa.parse(text, {
@@ -665,6 +673,15 @@ function chunkArray(arr, size){
   return out;
 }
 
+// Números enteros de los charts (posiciones, semanas, streams/vistas). Acepta separador de miles ("1,234,567" o
+// "1.234.567", por ejemplo si el archivo pasó por Excel) y decimales ("12.0"). "--", "NEW" o vacío: sin dato.
+function entero(v){
+  const t = String(v ?? '').trim().replace(/\s/g, '');
+  if(/^\d{1,3}([.,]\d{3})+$/.test(t)) return t.replace(/[.,]/g, '');
+  const m = t.match(/^(\d+)([.,]\d+)?$/);
+  return m ? m[1] : null;
+}
+
 async function processRankingCsv(file, rows, format){
   const prepared = [];
   let errors = [];
@@ -701,8 +718,8 @@ async function processRankingCsv(file, rows, format){
 
     prepared.push({
       track_name: trackName, artist_names: artistNames, pais_code: pais,
-      rank: row.rank || null, peak_rank: row.peak_rank || null, previous_rank: row.previous_rank || null,
-      weeks_on_chart: row.weeks_on_chart || null, streams: row.streams || null,
+      rank: entero(row.rank), peak_rank: entero(row.peak_rank), previous_rank: entero(row.previous_rank),
+      weeks_on_chart: entero(row.weeks_on_chart), streams: entero(row.streams),
       source: row.source || null, uri: row.uri || null, weekly_growth: weeklyGrowth,
       snapshot_date: fileDate,
     });
@@ -939,14 +956,6 @@ function renderTabs(){
     `<div class="tab ${state.activeTab===k?'active':''}" data-tab="${k}">${l}${!en?'<span class="lock">solo lectura</span>':''}</div>`).join('')}</div>`;
 }
 
-// Filtro "Seguimiento" de la tabla principal: [campo de fn_envios_por_obra, ¿tiene que existir?].
-const SEG_FILTROS = {
-  bo_nunca:  { label: 'Nunca en un reporte BO', condicion: ['ult_bo_at', false] },
-  bo_ya:     { label: 'Ya en un reporte BO',    condicion: ['ult_bo_at', true] },
-  csv_nunca: { label: 'Nunca descargadas en CSV', condicion: ['ult_csv_at', false] },
-  csv_ya:    { label: 'Ya descargadas en CSV',    condicion: ['ult_csv_at', true] },
-};
-
 function renderSeguimiento(r){
   const e = state.envios[r.id] || {};
   const bo = e.ult_bo_at ? `carga ${e.ult_bo_carga} · ${fmtFecha(e.ult_bo_at).slice(0,10)}` : '<span class="nunca">nunca</span>';
@@ -957,10 +966,6 @@ function renderSeguimiento(r){
 function renderMaster(){
   let rows = state.master;
   if(state.search) rows = rows.filter(r => ((r.track_artist_concat||'')+' '+(r.tempo_id||'')).toLowerCase().includes(state.search.toLowerCase()));
-  if(state.segFilter){
-    const [campo, quiere] = SEG_FILTROS[state.segFilter].condicion;
-    rows = rows.filter(r => !!state.envios[r.id]?.[campo] === quiere);
-  }
   const canToggleDeleted = state.profile.app_role==='admin';
   return `
   <div class="toolbar">
@@ -973,10 +978,6 @@ function renderMaster(){
       <label class="check">Desde <input type="date" class="edit-field" style="width:auto" id="dateFrom" value="${state.dateFrom}"></label>
       <label class="check">Hasta <input type="date" class="edit-field" style="width:auto" id="dateTo" value="${state.dateTo}"></label>
       ${(state.dateFrom||state.dateTo||state.masterCountry)?`<button class="btn" id="clearFilters">Limpiar</button>`:''}
-      <select id="segFilter">
-        <option value="">Seguimiento: todas</option>
-        ${Object.entries(SEG_FILTROS).map(([k,f])=>`<option value="${k}" ${state.segFilter===k?'selected':''}>${f.label}</option>`).join('')}
-      </select>
       ${canToggleDeleted?`<label class="check"><input type="checkbox" id="toggleDeleted" ${state.showDeleted?'checked':''}> Ver eliminados</label>`:''}
     </div>
     <div style="display:flex;gap:10px;align-items:center;">
@@ -1240,8 +1241,6 @@ function attachAppEvents(){
   if(exM) exM.onclick = () => openEnvioDialog('csv_principal');
   const exBo = document.getElementById('exportBo');
   if(exBo) exBo.onclick = () => openEnvioDialog('reporte_bo');
-  const sf = document.getElementById('segFilter');
-  if(sf) sf.onchange = (e) => { state.segFilter = e.target.value; render(); };
   document.querySelectorAll('[data-envio-modo]').forEach(b => b.onclick = () => startEnvio(b.dataset.envioModo));
   const closeE = document.getElementById('closeEnvio');
   if(closeE) closeE.onclick = () => { if(!state.envioBusy){ state.envioDialog = null; render(); } };

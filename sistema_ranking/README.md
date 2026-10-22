@@ -295,7 +295,7 @@ Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
 - **Seguimiento de envíos** (`db/mejoras/01_seguimiento.sql`): el sistema registra qué obras salieron en cada
   reporte BO y en cada descarga del CSV de la tabla principal. Al descargar se elige **Solo las nuevas** (las que
   nunca salieron en ese tipo de descarga, para el seguimiento semanal) o **Todas** (la revisión completa, por
-  ejemplo trimestral). La tabla principal muestra la columna y el filtro **Seguimiento**, y cada descarga queda en el
+  ejemplo trimestral). La elección se hace en el cartel que abre cada botón de descarga; la tabla principal muestra la columna **Seguimiento**, y cada descarga queda en el
   Historial CSV.
 - **Charts solo de carga manual:** Spotify y YouTube se suben desde Carga CSV; ya no hay carga automática.
 - **Fecha de última carga por país**, arriba en la aplicación.

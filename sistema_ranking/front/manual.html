@@ -169,8 +169,8 @@ leen bien, aunque vengan en otra codificación.</p>
   <tr><td><b>Spotify</b><br><span class="mono">rank, uri, artist_names, track_name, …, streams</span></td>
     <td>Agrega la semana del chart: posición, pico, posición anterior, semanas en el chart y streams. Crea las
       canciones que no existían.</td>
-    <td>Del nombre del archivo, tal como lo baja Spotify: <code>regional-ar-weekly-2026-10-08.csv</code> = AR,
-      semana del 08/10/2026.</td></tr>
+    <td>Del nombre del archivo (ver <a href="#nombres">Nombres de los charts</a>):
+      <code>regional-ar-weekly-2026-10-08.csv</code> = AR, semana del 08/10/2026.</td></tr>
   <tr><td><b>YouTube</b><br><span class="mono">Rank, Track Name, Artist Name, Views, …, YouTube URL</span></td>
     <td>Lo mismo con el chart de YouTube (las vistas se guardan como streams).</td>
     <td>Del nombre: <code>youtube-charts-top-songs-uy-weekly-20261001.csv</code> = UY, 01/10/2026. Si el nombre no
@@ -188,6 +188,33 @@ leen bien, aunque vengan en otra codificación.</p>
     <td>Del nombre del archivo (por ejemplo <code>…_PAIS_PARAGUAY…</code>). Si no lo tiene, elegí el país en el selector
       de arriba antes de subirlo.</td></tr>
 </table>
+<h3 id="nombres">Nombres de los charts</h3>
+<p>De los charts, el país, la semana y la plataforma se toman del <b>nombre del archivo</b>. Se reconocen todas
+estas formas, tal como se bajaron en cada época:</p>
+<table>
+  <tr><th>Nombre del archivo</th><th>Plataforma</th><th>País</th><th>Semana</th></tr>
+  <tr><td><code>regional-ar-weekly-2021-01-07.csv</code></td><td>Spotify</td><td>AR</td><td>07/01/2021</td></tr>
+  <tr><td><code>regional-ar-weekly-2024-07-04.csv</code></td><td>Spotify</td><td>AR</td><td>04/07/2024</td></tr>
+  <tr><td><code>regional-py-weekly-2023-12-14 -ult.csv</code></td><td>Spotify</td><td>PY</td><td>14/12/2023</td></tr>
+  <tr><td><code>youtube-py-weekly-2023-03-09.csv</code></td><td>YouTube</td><td>PY</td><td>09/03/2023</td></tr>
+  <tr><td><code>youtube-TopSongs-ar-weekly-2021-01-07.csv</code></td><td>YouTube</td><td>AR</td><td>07/01/2021</td></tr>
+  <tr><td><code>youtube-charts-top-songs-py-weekly-20230309.csv</code></td><td>YouTube</td><td>PY</td><td>09/03/2023</td></tr>
+</table>
+<ul>
+  <li><b>Plataforma:</b> es YouTube si el nombre dice "youtube" (o los links son de YouTube); si no, Spotify.</li>
+  <li><b>País:</b> el código de dos letras entre guiones (<code>-ar-</code>, <code>-py-</code>…) o el nombre del país.</li>
+  <li><b>Semana:</b> la fecha como <code>2021-01-07</code> o <code>20210107</code>. Si el nombre no tiene fecha, se usa
+    la de hoy. Por eso conviene no renombrar los archivos, o mantener esas partes.</li>
+  <li>Lo que se agregue al final del nombre (como <code>-ult</code>) no molesta.</li>
+</ul>
+<p>Columnas:</p>
+<ul>
+  <li><b>Formatos de columnas:</b> se leen el formato actual de Spotify, el viejo (con una línea de aviso arriba y
+    las columnas <i>Position, Track Name, Artist, Streams, URL</i>) y el oficial de YouTube (<i>Artist Names, Periods on
+    Chart, Views, Growth</i>).</li>
+  <li><b>Números:</b> las vistas o streams con separador de miles (<code>1,234,567</code> o <code>1.234.567</code>, por
+    ejemplo si el archivo pasó por Excel) se leen bien. Una posición anterior como "--" o "NEW" queda vacía.</li>
+</ul>
 <div class="caja">
   <p><b>Volver a subir un archivo no duplica nada.</b> Si subís de nuevo el mismo chart, se actualizan esa semana y
   ese país. Si subís de nuevo un Reporte BO o Tempo, se actualizan los datos de esa obra en ese país.</p>
@@ -238,8 +265,6 @@ toman como separadores y partirían el nombre en dos columnas.</p></div>
   <li><b>País:</b> muestra solo las canciones que estuvieron en los charts de ese país.</li>
   <li><b>Desde / Hasta:</b> las canciones que estuvieron en los charts en esas semanas. Combinado con el país, por
     ejemplo: "lo que entró en AR en octubre". <b>Limpiar</b> saca el país y las fechas.</li>
-  <li><b>Seguimiento:</b> las que nunca estuvieron en un reporte BO o ya estuvieron, y las que nunca se descargaron en
-    el CSV o ya se descargaron.</li>
   <li><b>Ver eliminados</b> (solo admin): muestra también las obras dadas de baja, en gris.</li>
 </ul>
 <h3>Columna Seguimiento</h3>
@@ -248,7 +273,8 @@ toman como separadores y partirían el nombre en dos columnas.</p></div>
   <li><b>BO:</b> el número de carga y la fecha del último reporte BO en que salió;</li>
   <li><b>CSV:</b> la fecha de la última descarga del CSV en que salió.</li>
 </ul>
-<p>"nunca" quiere decir que todavía no salió en ninguno.</p>
+<p>"nunca" quiere decir que todavía no salió en ninguno. Lo que se descarga ("solo las nuevas" o "todas") se elige
+al apretar cada botón de descarga.</p>
 <h3>Completar el Tempo ID</h3>
 <p>Escribí el número en la celda y salí de ella (clic afuera o Tab): se guarda solo. Las celdas vacías están marcadas
 en rojo. Un Tempo ID no puede estar en dos obras: si ya lo tiene otra, el sistema no lo guarda y avisa. Al cargarlo,
@@ -258,8 +284,9 @@ el Tempo ID pasa también a todas las filas de esa obra en la tabla por territor
   <li><b>Descargar CSV:</b> "Track - Artista" y Tempo ID, para completar los Tempo ID en Excel o buscarlos en Tempo.</li>
   <li><b>Descargar reporte BO:</b> el archivo para subir a BO.</li>
 </ul>
-<p>Los dos preguntan si querés <b>solo las nuevas</b> o <b>todas</b> (ver la sección siguiente) y respetan los
-filtros de país y fechas, pero no la búsqueda ni el filtro de seguimiento.</p>
+<p>Al apretar cualquiera de los dos se abre un cartel para elegir <b>solo las nuevas</b> (las que todavía no se
+trackearon) o <b>todas</b> (descarga general). Ver la sección siguiente. Respetan los filtros de país y fechas, pero
+no la búsqueda.</p>
 </section>
 
 <section id="descargas">
