@@ -316,6 +316,18 @@ try:
         time.sleep(0.2)
     check("espejo: después de una copia fallida, el servicio sigue copiando las cargas nuevas",
           (ESPEJO / "Spotify Charts" / "ar" / nombre2).exists())
+    eventos_espejo = base_nueva("select string_agg(nivel || ' ' || mensaje, chr(10) order by id) from panel.eventos where servicio = 'espejo'")
+    check("Panel de control: el espejo registra cada copia y cada falla",
+          f"ok Copiado {nombre2} a Spotify Charts/ar" in eventos_espejo and "error No se pudo copiar otra.csv" in eventos_espejo,
+          eventos_espejo[-800:])
+    for _ in range(60):
+        latido = base_nueva("select extract(epoch from now() - ultimo_aviso)::int || '|' || (detalle ->> 'onedrive_disponible') "
+                            "from panel.servicios where servicio = 'espejo'")
+        if latido.endswith("|true"):
+            break
+        time.sleep(1)
+    check("Panel de control: el espejo informa que está funcionando y que OneDrive está disponible",
+          latido.endswith("|true") and int(latido.split("|")[0]) < 120, latido)
     # Deja la base como estaba para las pruebas que siguen.
     base_nueva(f"delete from csv_uploads where file_path = '{ruta_chart}'; delete from storage.objects where name = '{ruta_chart}'")
     dc("exec", "-T", "api", "rm", "-f", f"/data/storage/csv-uploads/{ruta_chart}")
@@ -369,6 +381,31 @@ try:
           and not (respaldos / f"{viejos[0]}_archivos.tgz").exists() and (respaldos / "ranking_20250101_030000.dump").exists(),
           (quedan_auto, dc("logs", "respaldo").stdout[-600:]))
     (respaldos / "ranking_20250101_030000.dump").unlink()
+    # "Respaldar ahora" del Panel de control: el servicio lo atiende en segundos, con nombre de respaldo manual y copia
+    # del .dump y del .tgz en OneDrive.
+    manuales_antes = set(respaldos.glob("ranking_2*.dump"))
+    pedido = base_nueva("with p as (insert into panel.solicitudes (tipo, pedido_por) values ('respaldo', 'prueba') returning id) "
+                        "select id from p")
+    for _ in range(120):
+        estado_pedido = base_nueva(f"select estado || '|' || coalesce(mensaje, '') from panel.solicitudes where id = {pedido}")
+        if estado_pedido.startswith(("listo", "error")):
+            break
+        time.sleep(1)
+    nuevos = sorted(set(respaldos.glob("ranking_2*.dump")) - manuales_antes)
+    copia_od = ESPEJO / "respaldo_documentacion_sistema" / "respaldos"
+    check("Panel de control: 'Respaldar ahora' hace un respaldo completo y lo copia en OneDrive",
+          estado_pedido.startswith("listo|") and "copia en OneDrive" in estado_pedido and len(nuevos) == 1
+          and (copia_od / nuevos[0].name).read_bytes() == nuevos[0].read_bytes()
+          and (copia_od / (nuevos[0].name[:-5] + "_archivos.tgz")).exists() and nuevos[0].stat().st_uid == 1000,
+          (estado_pedido, nuevos, dc("logs", "respaldo").stdout[-800:]))
+    eventos_resp = base_nueva("select string_agg(mensaje, chr(10) order by id) from panel.eventos where servicio = 'respaldo'")
+    check("Panel de control: los respaldos y sus copias en OneDrive quedan registrados",
+          nuevos and f"Respaldo {nuevos[0].name[:-5]}" in eventos_resp and "Copia en OneDrive: ranking_auto_" in eventos_resp, eventos_resp[-800:])
+    detalle_resp = base_nueva("select detalle from panel.servicios where servicio = 'respaldo'")
+    check("Panel de control: el servicio de respaldos informa su estado", '"cada_horas": 24' in detalle_resp
+          and '"conservar": 14' in detalle_resp and '"onedrive": true' in detalle_resp, detalle_resp)
+    for f in nuevos:   # para que las cuentas de respaldos manuales que siguen no cambien
+        f.unlink(); (respaldos / (f.name[:-5] + "_archivos.tgz")).unlink(missing_ok=True)
 
     # ================================================================ respaldo y restauración
     antes = {t: base_nueva(f"select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from {t} x")

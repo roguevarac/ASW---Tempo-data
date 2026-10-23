@@ -104,8 +104,10 @@ LANGUAGE sql IMMUTABLE AS $$
     SELECT regexp_replace(upper(coalesce(p_codigo, '')), '[^A-Z0-9]', '', 'g')
 $$;
 
--- Uso administrativo (consola): devuelve el código, con formato XXXX-XXXX. Reemplaza al anterior del usuario.
-CREATE OR REPLACE FUNCTION auth.generar_codigo_clave(p_email text) RETURNS text
+-- Uso administrativo (consola o Panel de control): devuelve el código, con formato XXXX-XXXX, válido p_minutos.
+-- Reemplaza al anterior del usuario. Para un usuario nuevo sirve de código de activación (elige su contraseña).
+DROP FUNCTION IF EXISTS auth.generar_codigo_clave(text);
+CREATE OR REPLACE FUNCTION auth.generar_codigo_clave(p_email text, p_minutos integer DEFAULT 30) RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
     v_id uuid;
@@ -121,7 +123,7 @@ BEGIN
         v_codigo := v_codigo || substr(v_letras, 1 + get_byte(v_bytes, i) % 32, 1);
     END LOOP;
     INSERT INTO auth.codigos_clave (user_id, codigo_hash, vence)
-    VALUES (v_id, encode(digest(v_codigo, 'sha256'), 'hex'), now() + interval '30 minutes')
+    VALUES (v_id, encode(digest(v_codigo, 'sha256'), 'hex'), now() + make_interval(mins => greatest(p_minutos, 1)))
     ON CONFLICT (user_id) DO UPDATE SET codigo_hash = excluded.codigo_hash, vence = excluded.vence, intentos = 0;
     RETURN substr(v_codigo, 1, 4) || '-' || substr(v_codigo, 5, 4);
 END $$;
@@ -149,7 +151,7 @@ BEGIN
 END $$;
 
 REVOKE ALL ON FUNCTION auth.abrir_sesion(uuid), auth.sesion_valida(uuid, uuid, interval), auth.cerrar_sesion(uuid),
-    auth.cambiar_clave(text, text, text), auth.generar_codigo_clave(text), auth.restablecer_clave(text, text, text)
+    auth.cambiar_clave(text, text, text), auth.generar_codigo_clave(text, integer), auth.restablecer_clave(text, text, text)
     FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION auth.abrir_sesion(uuid), auth.cerrar_sesion(uuid), auth.cambiar_clave(text, text, text),
     auth.restablecer_clave(text, text, text) TO authenticator;

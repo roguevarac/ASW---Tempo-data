@@ -10,6 +10,7 @@ de esas reglas.
 
 Variables de entorno: ver ../.env.example
 """
+import collections
 import csv
 import datetime as dt
 import decimal
@@ -22,6 +23,7 @@ import mimetypes
 import os
 import pathlib
 import re
+import shutil
 import threading
 import time
 import uuid
@@ -38,6 +40,26 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 
 log = logging.getLogger("ranking")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+INICIO_API = dt.datetime.now(dt.timezone.utc)
+
+
+class _RegistroEnMemoria(logging.Handler):
+    """Últimas líneas del registro de la API, para el Panel de control (sin acceso a Docker)."""
+    def __init__(self):
+        super().__init__(level=logging.INFO)
+        self.lineas = collections.deque(maxlen=500)
+
+    def emit(self, record):
+        try:
+            self.lineas.append({"fecha": dt.datetime.fromtimestamp(record.created, dt.timezone.utc).isoformat(),
+                                "nivel": record.levelname, "mensaje": record.getMessage()[:2000]})
+        except Exception:   # el registro nunca interrumpe un pedido
+            pass
+
+
+REGISTRO = _RegistroEnMemoria()
+log.addHandler(REGISTRO)
+logging.getLogger("uvicorn.error").addHandler(REGISTRO)
 
 DATABASE_URL = os.environ["DATABASE_URL"]                 # rol authenticator
 JWT_SECRET = os.environ["JWT_SECRET"]
@@ -73,6 +95,21 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 def _inicio():
     pool.open(wait=True)
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    log.info("API iniciada")
+
+
+@app.middleware("http")
+async def _registrar_fallas(request: Request, siguiente):
+    """Deja en el registro los pedidos que fallan (para el Panel de control), sin datos del cuerpo."""
+    try:
+        respuesta = await siguiente(request)
+    except Exception:
+        log.exception("Error inesperado en %s %s", request.method, request.url.path)
+        raise
+    if respuesta.status_code >= 400 and request.url.path != "/panel/acceso":
+        (log.error if respuesta.status_code >= 500 else log.warning)(
+            "%s %s -> %s", request.method, request.url.path, respuesta.status_code)
+    return respuesta
 
 
 @app.on_event("shutdown")
@@ -96,6 +133,7 @@ def _error_db(_req, e: psycopg.Error):
     diag = getattr(e, "diag", None)
     msg = (diag.message_primary if diag and diag.message_primary else str(e)).strip()
     estado = 403 if e.sqlstate == "42501" else 409 if e.sqlstate == "23505" else 400
+    log.warning("Base de datos (%s): %s", e.sqlstate, msg)
     return JSONResponse({"message": msg, "code": e.sqlstate}, status_code=estado)
 
 
@@ -507,6 +545,148 @@ def bajar(bucket: str, nombre: str, exp: int, token: str):
     if not destino.exists():
         raise ErrorApi(404, "Object not found")
     return FileResponse(destino, filename=destino.name)
+
+
+# ---------------------------------------------------------------- Panel de control
+# Solo para las personas de panel.acceso (db/mejoras/05_panel.sql). La API lo verifica en cada pedido y las funciones
+# de la base lo vuelven a verificar.
+def _panel(request):
+    claims = usuario_del_pedido(request)
+    with transaccion(claims) as cur:
+        cur.execute("SELECT panel.tiene_acceso() AS ok")
+        if not cur.fetchone()["ok"]:
+            raise ErrorApi(403, "Sin acceso al Panel de control.")
+    return claims
+
+
+def _panel_consulta(claims, consulta, params=(), una=False):
+    with transaccion(claims) as cur:
+        cur.execute(consulta, params)
+        return cur.fetchone() if una else cur.fetchall()
+
+
+@app.get("/panel/acceso")
+def panel_acceso(request: Request):
+    claims = usuario_del_pedido(request)
+    with transaccion(claims) as cur:
+        cur.execute("SELECT to_regprocedure('panel.tiene_acceso()') IS NOT NULL AS hay")
+        if not cur.fetchone()["hay"]:
+            return respuesta_json({"acceso": False})
+        cur.execute("SELECT panel.tiene_acceso() AS ok")
+        return respuesta_json({"acceso": cur.fetchone()["ok"]})
+
+
+def _recursos():
+    r = {"cpus": os.cpu_count()}
+    try:
+        r["carga"] = os.getloadavg()
+    except OSError:
+        pass
+    try:
+        d = shutil.disk_usage(STORAGE_DIR)
+        r["disco"] = {"total": d.total, "usado": d.used, "libre": d.free}
+    except OSError:
+        pass
+    try:
+        info = dict(l.split(":", 1) for l in pathlib.Path("/proc/meminfo").read_text().splitlines() if ":" in l)
+        kb = lambda k: int(info[k].strip().split()[0]) * 1024
+        r["memoria"] = {"total": kb("MemTotal"), "disponible": kb("MemAvailable")}
+    except (OSError, KeyError, ValueError):
+        pass
+    return r
+
+
+@app.get("/panel/estado")
+def panel_estado(request: Request):
+    c = _panel(request)
+    estado = _panel_consulta(c, "SELECT panel.estado() AS e", una=True)["e"]
+    estado["recursos"] = _recursos()
+    estado["api"] = {"iniciada": INICIO_API.isoformat(), "pool": pool.get_stats().get("pool_size"),
+                     "fallas_recientes": sum(1 for l in REGISTRO.lineas if l["nivel"] in ("ERROR", "CRITICAL"))}
+    return respuesta_json(estado)
+
+
+@app.get("/panel/eventos")
+def panel_eventos(request: Request, servicio: str = None, nivel: str = None, limite: int = 200):
+    c = _panel(request)
+    return respuesta_json(_panel_consulta(c, "SELECT * FROM panel.eventos(%s, %s, %s)", (servicio, nivel, limite)))
+
+
+@app.get("/panel/registro")
+def panel_registro(request: Request):
+    _panel(request)
+    return respuesta_json(list(reversed(REGISTRO.lineas)))
+
+
+@app.get("/panel/usuarios")
+def panel_usuarios(request: Request):
+    c = _panel(request)
+    return respuesta_json(_panel_consulta(c, "SELECT * FROM panel.usuarios()"))
+
+
+ACCIONES_USUARIO = {
+    "crear": ("SELECT panel.crear_usuario(%s, %s, %s) AS r", ("email", "rol", "oficina")),
+    "rol": ("SELECT panel.cambiar_rol(%s, %s, %s) AS r", ("email", "rol", "oficina")),
+    "bloquear": ("SELECT panel.bloquear(%s, true) AS r", ("email",)),
+    "desbloquear": ("SELECT panel.bloquear(%s, false) AS r", ("email",)),
+    "codigo": ("SELECT panel.codigo_clave(%s) AS r", ("email",)),
+    "cerrar_sesiones": ("SELECT panel.cerrar_sesiones(%s) AS r", ("email",)),
+}
+
+
+@app.post("/panel/usuarios")
+async def panel_usuario_accion(request: Request):
+    c = _panel(request)
+    b = await request.json()
+    accion = ACCIONES_USUARIO.get(b.get("accion"))
+    if not accion:
+        raise ErrorApi(400, "Acción desconocida")
+    consulta, campos = accion
+    fila = _panel_consulta(c, consulta, [b.get(k) for k in campos], una=True)
+    return respuesta_json({"resultado": fila["r"]})
+
+
+@app.get("/panel/actividad")
+def panel_actividad(request: Request, usuario: str = None, tipo: str = None, desde: str = None, hasta: str = None,
+                    limite: int = 300):
+    c = _panel(request)
+    return respuesta_json(_panel_consulta(c, "SELECT * FROM panel.actividad(%s, %s, %s::date, %s::date, %s)",
+                                          (usuario or None, tipo or None, desde or None, hasta or None, limite)))
+
+
+@app.get("/panel/integridad")
+def panel_integridad(request: Request):
+    c = _panel(request)
+    charts = _panel_consulta(c, "SELECT * FROM panel.integridad_charts()")
+    problemas = _panel_consulta(c, "SELECT * FROM panel.cargas_con_problemas(200)")
+    registrados = _panel_consulta(c, "SELECT * FROM panel.archivos_registrados()")
+    # Archivos registrados en la base contra los archivos reales del almacenamiento.
+    base = STORAGE_DIR / "csv-uploads"
+    faltantes, distinto = [], []
+    for a in registrados:
+        f = base / a["nombre"]
+        try:
+            tam = f.stat().st_size
+        except OSError:
+            faltantes.append({"archivo": a["filename"] or a["nombre"], "ruta": a["nombre"]})
+            continue
+        if a["tamano"] is not None and tam != a["tamano"]:
+            distinto.append({"archivo": a["filename"] or a["nombre"], "ruta": a["nombre"], "registrado": a["tamano"], "real": tam})
+    nombres = {a["nombre"] for a in registrados}
+    sueltos = sum(1 for f in base.rglob("*") if f.is_file() and not f.name.endswith(".tmp")
+                  and f.relative_to(base).as_posix() not in nombres) if base.exists() else 0
+    return respuesta_json({"charts": charts, "problemas": problemas,
+                           "archivos": {"registrados": len(registrados), "faltantes": faltantes[:200],
+                                        "cantidad_faltantes": len(faltantes), "distinto_tamano": distinto[:200],
+                                        "sin_registrar": sueltos}})
+
+
+@app.post("/panel/respaldo")
+def panel_respaldo(request: Request):
+    c = _panel(request)
+    with transaccion(c) as cur:
+        cur.execute("SELECT panel.pedir_respaldo() AS id")
+        return respuesta_json({"id": cur.fetchone()["id"]})
 
 
 # ---------------------------------------------------------------- front

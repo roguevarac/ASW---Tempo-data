@@ -209,6 +209,11 @@ publicar_documentacion() {
 }
 
 consulta() { dc exec -T db psql -U postgres -d ranking -At -c "$1"; }
+# Evento para el Panel de control (panel.eventos). Nunca falla: el panel puede no estar instalado todavía.
+registrar_evento() {
+    local texto; texto="$(printf '%s' "$2" | sed "s/'/''/g")"
+    consulta "SELECT panel.registrar('ranking.sh', '$1', '$texto')" > /dev/null 2>&1 || true
+}
 usuarios_py() { dc run --rm herramientas python /app/admin/usuarios.py "$@"; }
 herramienta() { dc run --rm --no-deps -T herramientas "$@"; }
 # Como root: solo para escribir en el espejo de OneDrive (en WSL, /mnt/c solo deja escribir al dueño o a root).
@@ -401,7 +406,7 @@ cmd_usuarios() {
         echo
         echo "  1 = Crear usuario        2 = Cambiar contraseña    3 = Cambiar rol u oficina"
         echo "  4 = Bloquear usuario     5 = Desbloquear usuario   6 = Código para restablecer la contraseña"
-        echo "  0 = Salir"
+        echo "  7 = Dar o quitar el acceso al Panel de control                0 = Salir"
         read -r -p "Opción: " op
         [ -z "$op" ] || [ "$op" = 0 ] && break
         read -r -p "Email: " email; [ -z "$email" ] && continue
@@ -416,6 +421,8 @@ cmd_usuarios() {
             4) usuarios_py bloquear "$email" ;;
             5) usuarios_py desbloquear "$email" ;;
             6) usuarios_py codigo "$email" ;;
+            7) read -r -p "¿Acceso al Panel de control? (si / no): " rol
+               usuarios_py panel "$email" "$rol" ;;
             *) aviso "Opción inválida." ;;
         esac
     done
@@ -443,14 +450,17 @@ cmd_respaldo() {
     dc exec -T db pg_dump -U postgres -Fc ranking > "$RESPALDOS/$f.dump" || { rm -f "$RESPALDOS/$f.dump"; fallar "No se pudo respaldar la base."; }
     herramienta tar -C /data/storage -czf - . > "$RESPALDOS/${f}_archivos.tgz" || { rm -f "$RESPALDOS/$f"*; fallar "No se pudieron respaldar los archivos."; }
     ok "Listo: $RESPALDOS/$f.dump y ${f}_archivos.tgz"
+    registrar_evento ok "Respaldo $f (manual, ranking.sh)"
     # Copia en el espejo de OneDrive (fuera de Ubuntu: si algún día se reinstala, el respaldo sigue ahí).
     local e destino; e="$(valor ESPEJO_DIR)"
     if [ -n "$e" ]; then
         destino="$e/respaldo_documentacion_sistema/respaldos"
         if mkdir -p "$destino" && cp "$RESPALDOS/$f.dump" "$RESPALDOS/${f}_archivos.tgz" "$destino/"; then
             ok "Copia en OneDrive: $destino"
+            registrar_evento ok "Copia en OneDrive: $f.dump ${f}_archivos.tgz (respaldos)"
         else
             aviso "No pude copiarlo a OneDrive ($destino); quedó en $RESPALDOS."
+            registrar_evento error "No se pudo copiar $f a OneDrive (ranking.sh respaldo)"
         fi
         publicar_documentacion || aviso "No pude actualizar la documentación en OneDrive."
     else

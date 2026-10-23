@@ -11,6 +11,7 @@ Comandos:
                                            de ingreso ("¿Olvidaste la contraseña?"); sirve una vez, durante 30 minutos
   rol <email> <rol> [oficina]              cambia rol/oficina
   bloquear <email> | desbloquear <email>   impide o permite el ingreso sin borrar al usuario
+  panel <email> si|no                      da o quita el acceso al Panel de control (solo desde la consola)
 Roles: admin, usuario_estandar, auditor.
 """
 import getpass
@@ -30,14 +31,16 @@ def pedir_clave():
 
 
 def main(args):
-    if not args or args[0] not in ("listar", "crear", "clave", "codigo", "rol", "bloquear", "desbloquear"):
+    if not args or args[0] not in ("listar", "crear", "clave", "codigo", "rol", "bloquear", "desbloquear", "panel"):
         sys.exit(__doc__)
     cmd, resto = args[0], args[1:]
     with psycopg.connect(os.environ.get("PGURL") or sys.exit("Falta PGURL")) as con, con.cursor() as cur:
         if cmd == "listar":
             cur.execute("""SELECT u.email, coalesce(a.app_role::text, '(sin rol)'), coalesce(a.oficina, ''),
                                   coalesce(to_char(u.last_sign_in_at, 'YYYY-MM-DD HH24:MI'), 'nunca'),
-                                  CASE WHEN u.banned_until > now() THEN 'BLOQUEADO' ELSE '' END
+                                  CASE WHEN u.banned_until > now() THEN 'BLOQUEADO' ELSE '' END,
+                                  CASE WHEN EXISTS (SELECT 1 FROM panel.acceso p WHERE p.email = lower(u.email))
+                                       THEN 'PANEL DE CONTROL' ELSE '' END
                            FROM auth.users u LEFT JOIN public.app_users a ON a.user_id = u.id ORDER BY 1""")
             for fila in cur.fetchall():
                 print("  ".join(f"{c:<28}" for c in fila).rstrip())
@@ -60,6 +63,17 @@ def main(args):
                            ON CONFLICT (user_id) DO UPDATE SET app_role = excluded.app_role,
                                oficina = coalesce(excluded.oficina, public.app_users.oficina)""",
                         (fila[0], resto[1], oficina))
+        elif cmd == "panel":
+            if len(resto) < 2 or resto[1] not in ("si", "no"):
+                sys.exit("Uso: panel <email> si|no")
+            cur.execute("SELECT 1 FROM auth.users WHERE lower(email) = %s", (email,))
+            cur.fetchone() or sys.exit("No existe ese usuario.")
+            if resto[1] == "si":
+                cur.execute("INSERT INTO panel.acceso (email) VALUES (%s) ON CONFLICT DO NOTHING", (email,))
+            else:
+                cur.execute("DELETE FROM panel.acceso WHERE email = %s", (email,))
+            cur.execute("SELECT panel.registrar('consola', 'ok', %s)",
+                        (f"Acceso al Panel de control {'dado a' if resto[1] == 'si' else 'quitado a'} {email}",))
         elif cmd == "codigo":
             cur.execute("SELECT auth.generar_codigo_clave(%s)", (email,))
             print(f"Código para {email}: {cur.fetchone()[0]}")

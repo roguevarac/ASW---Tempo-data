@@ -161,6 +161,15 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
       (ranking.sh pasa `RESPALDOS_DIR`), conserva 14 y copia el `.dump` a OneDrive. `RESPALDO_HORAS=0` lo apaga. El
       usuario lo pidió (uso profesional): no es una carga automática de datos.
     - Logs de Docker con tope (`x-registros`).
+  - **Panel de control (23/10/2026, `db/mejoras/05_panel.sql`, `/panel/*`, pestaña del front):** solo para
+    `panel.acceso` (inicial: `rocio.guevara@sonymusicpub.com`; se cambia por consola: `usuarios.py panel <email> si|no`,
+    opción 7 del menú). Secciones: estado, respaldos y OneDrive, usuarios, actividad, integridad, registro del servidor.
+    - Nunca dar a la API acceso al socket de Docker: los servicios informan con `panel.latido` y `panel.registrar`
+      (espejo.py, respaldo_automatico.sh, mejoras.sh/instalar.py, `registrar_evento` de ranking.sh).
+    - "Respaldar ahora" = fila en `panel.solicitudes` que atiende el servicio `respaldo` (bucle cada 10 s).
+    - El esquema `panel` lo crea el superusuario dentro de 05 (`RESET ROLE` / `SET ROLE app_owner`).
+    - Restaurar y dar acceso al panel quedan en la consola a propósito.
+    - `test_panel.py` (después de `test_uso_diario.py`) y `test_docker_linux.py` lo controlan.
   - **Manual de uso:** `front/manual.html` (enlace "Manual de uso" arriba a la derecha).
     **Regla fija (pedido del usuario): toda mejora o agregado que cambie lo que ve o hace el usuario se entrega con el
     manual actualizado en el mismo commit, sin que lo pida.** Solo si la información le sirve a quien usa el sistema;

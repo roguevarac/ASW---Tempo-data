@@ -141,6 +141,54 @@ def sincronizar(pgurl, storage_dir):
     return copiadas, aplica
 
 
+def carpeta_disponible(base):
+    """Si se puede escribir en la carpeta de OneDrive (desconectada, sin permiso o borrada: False)."""
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+        prueba = base / ".prueba-escritura"
+        prueba.write_text("ok")
+        prueba.unlink()
+        return True
+    except OSError:
+        return False
+
+
+class Panel:
+    """Avisos para el Panel de control (db/mejoras/05_panel.sql). Si la base todavía no tiene el panel, no hace nada."""
+    def __init__(self, con):
+        self.con, self.ultimo_latido, self.disponible, self.copiadas = con, 0, None, 0
+
+    def _sql(self, q, params):
+        try:
+            self.con.execute(q, params)
+        except Exception as e:   # el panel nunca frena el espejo
+            log.debug("Panel: %s", e)
+
+    def evento(self, nivel, mensaje):
+        self._sql("SELECT panel.registrar('espejo', %s, %s)", (nivel, mensaje))
+
+    def latido(self, base, ultimo_id, cada=30):
+        """Cada `cada` segundos: aviso de vida y control de la carpeta. Devuelve True si OneDrive volvió a estar
+        disponible (hay que copiar lo que quedó pendiente)."""
+        import json, time
+        if time.time() - self.ultimo_latido < cada:
+            return False
+        self.ultimo_latido = time.time()
+        disponible = carpeta_disponible(base)
+        volvio = disponible and self.disponible is False
+        if disponible != self.disponible:
+            if disponible:
+                self.evento("ok", "Carpeta de OneDrive disponible")
+            else:
+                self.evento("error", "No se puede escribir en la carpeta de OneDrive (desconectada o sin permiso): "
+                                     "las copias quedan pendientes y se hacen cuando vuelva")
+            self.disponible = disponible
+        self._sql("SELECT panel.latido('espejo', %s::jsonb)", (json.dumps(
+            {"carpeta": str(base), "onedrive_disponible": disponible, "ultima_carga_revisada": ultimo_id,
+             "copiadas_desde_inicio": self.copiadas}),))
+        return volvio
+
+
 def servicio(pgurl, storage_dir, intervalo=3):
     """Copia lo que falte y después, cada `intervalo` segundos, las cargas nuevas (por id de csv_uploads)."""
     import time
@@ -149,24 +197,42 @@ def servicio(pgurl, storage_dir, intervalo=3):
     if raiz() is None:
         log.info("Espejo OneDrive apagado: no hay carpeta configurada.")
         while True:
-            time.sleep(3600)
+            try:
+                with psycopg.connect(pgurl, autocommit=True) as con:
+                    Panel(con)._sql("SELECT panel.latido('espejo', %s::jsonb)", ('{"apagado": true}',))
+            except Exception:
+                pass
+            time.sleep(300)
     ultimo = None
     while True:
         try:
             with psycopg.connect(pgurl, row_factory=dict_row, autocommit=True) as con:
+                panel = Panel(con)
                 while True:
                     maximo = con.execute("SELECT coalesce(max(id), 0) AS m FROM public.csv_uploads").fetchone()["m"]
                     if ultimo is None or maximo < ultimo:
                         # Al arrancar, o si la base volvió atrás (restaurar): repaso completo, sin pisar nada.
                         copiadas, aplica = sincronizar(pgurl, storage_dir)
                         log.info("Espejo OneDrive: %s de %s archivos de carga presentes.", copiadas, aplica)
+                        panel.evento("ok" if copiadas == aplica else "aviso",
+                                     f"Revisión completa: {copiadas} de {aplica} archivos de carga presentes en OneDrive")
                         ultimo = maximo
                     nuevas = con.execute("SELECT id, filename, file_path, format, updated_rows FROM public.csv_uploads "
                                          "WHERE id > %s ORDER BY id", (ultimo,)).fetchall()
                     for c in nuevas:
                         if copiar(c, storage_dir):
                             log.info("Espejo OneDrive: copiado %s", c["filename"])
+                            panel.copiadas += 1
+                            d = destino(c, raiz())
+                            panel.evento("ok", f"Copiado {c['filename']} a {d.parent.relative_to(raiz()).as_posix()}")
+                        elif destino(c, raiz()) is not None:
+                            panel.evento("error", f"No se pudo copiar {c['filename']} a OneDrive: se copia cuando la "
+                                                  "carpeta vuelva a estar disponible")
+                            panel.disponible, panel.ultimo_latido = False, 0   # el próximo control reintenta
                         ultimo = c["id"]
+                    if panel.latido(raiz(), ultimo):
+                        copiadas, aplica = sincronizar(pgurl, storage_dir)   # lo que quedó pendiente
+                        panel.evento("ok", f"Copias pendientes hechas: {copiadas} de {aplica} archivos de carga presentes")
                     time.sleep(intervalo)
         except Exception as e:  # base reiniciándose, etc.: se reintenta
             log.warning("Espejo OneDrive: %s; reintento en 10 s", e)

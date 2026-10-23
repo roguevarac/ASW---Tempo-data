@@ -139,6 +139,37 @@ tr.clic:hover td{background:var(--panel-raised);}
 .modal .close:hover{border-color:var(--brass-dim);color:var(--brass);}
 .modal table{font-size:12px;}
 .modal.small{width:min(620px,96vw);}
+/* Panel de control */
+.panel-actualizar{margin-left:auto;padding:6px 11px;}
+.panel-hora{font-size:11.5px;color:var(--text-muted);align-self:center;}
+.tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:18px;}
+.tarjeta{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:14px 16px;}
+.tarjeta.ancha{grid-column:1/-1;}
+.tarjeta h3,.titulo-panel{font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin:0 0 10px;font-weight:500;}
+.titulo-panel{margin:22px 0 10px;}
+.servicio{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft);}
+.servicio:last-child{border-bottom:none;}
+.punto{display:inline-block;width:9px;height:9px;border-radius:50%;margin:4px 6px 0 0;flex:none;vertical-align:baseline;}
+.punto.ok{background:var(--green);} .punto.error{background:var(--red);} .punto.aviso{background:#D9A441;} .punto.apagado{background:var(--line);}
+.estado-ok{color:var(--green);} .estado-error{color:var(--red);} .estado-aviso{color:#D9A441;} .estado-apagado{color:var(--text-muted);}
+.det{font-size:11.5px;color:var(--text-muted);margin-top:2px;}
+.dato{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:12.5px;}
+.dato span{color:var(--text-muted);} .dato b{font-weight:500;text-align:right;}
+.barra-uso{height:5px;background:var(--panel-raised);border-radius:3px;overflow:hidden;margin:0 0 6px;}
+.barra-uso div{height:100%;background:var(--green);} .barra-uso.media div{background:#D9A441;} .barra-uso.alta div{background:var(--red);}
+.acciones-panel{display:flex;gap:10px;align-items:center;margin:12px 0 6px;flex-wrap:wrap;}
+.filtros-panel{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+.filtros-panel .search{width:260px;} .corto{width:110px !important;}
+.tabla-panel td{vertical-align:top;}
+.acciones-usuario{display:flex;gap:6px;flex-wrap:wrap;}
+.acciones-usuario .btn{padding:4px 9px;font-size:11.5px;}
+.aviso-panel{background:var(--green-bg);color:var(--green);border-radius:3px;padding:8px 12px;font-size:12.5px;margin-bottom:12px;}
+.aviso-panel.error{background:var(--red-bg);color:var(--red);}
+.nota-panel{font-size:11.5px;color:var(--text-muted);}
+.consola{background:#0A0F17;border:1px solid var(--line);border-radius:4px;padding:12px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;max-height:60vh;overflow:auto;}
+.consola .linea{padding:1px 0;white-space:pre-wrap;word-break:break-word;color:var(--text-primary);}
+.consola .linea span{color:var(--text-muted);} .consola .linea.aviso b{color:#D9A441;} .consola .linea.error b,.consola .linea.error{color:var(--red);}
+.codigo-grande{font-family:'IBM Plex Mono',monospace;font-size:28px;letter-spacing:0.12em;text-align:center;padding:18px;background:var(--panel-raised);border-radius:4px;margin:8px 0 12px;user-select:all;}
 .login-links{display:flex;justify-content:space-between;gap:10px;margin-top:14px;font-size:12px;}
 .login-links a,.login-volver{color:var(--text-muted);cursor:pointer;text-decoration:underline;}
 .login-links a:hover,.login-volver:hover{color:var(--brass);}
@@ -190,6 +221,8 @@ let state = {
   historial: null, histTab: 'youtube', histPais: '', controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
   envioDialog: null,
   loginModo: 'ingresar', loginAviso: '',
+  panel: { acceso: false, sub: 'estado', datos: {}, filtrosAct: {}, eventoServicio: '', error: '', mensaje: '',
+           codigo: null, ocupado: false, actualizado: null },
   masterTotal: 0, masterPage: 0, territoryTotal: 0, territoryPage: 0, territoryStale: true,
   territoryOpciones: { reclamos: [], estado_trabajo: [] }, seqMaster: 0, seqTerritory: 0, envioBusy: false,
 };
@@ -217,6 +250,7 @@ function detectCountry(sourceName){
 async function loadProfile(){
   const { data, error } = await sb.from('app_users').select('app_role,oficina').eq('user_id', state.session.user.id).single();
   state.profile = error ? { app_role:'usuario_estandar', oficina:null } : data;
+  await loadPanelAcceso();
 }
 async function fetchAll(fn, params){
   const PAGE = 50000;   // la API propia no tiene el límite de 1.000 filas de Supabase: menos vueltas, sin recalcular
@@ -936,6 +970,9 @@ async function doLogin(email, password){
 async function doLogout(){
   await sb.auth.signOut();
   state.session = null; state.profile = null; state.master=[]; state.territoryControl=[]; state.historial=null;
+  state.panel = { ...state.panel, acceso: false, datos: {}, codigo: null, mensaje: '' };
+  if(state.activeTab === 'panel') state.activeTab = 'master';
+  programarPanel();
   render();
 }
 
@@ -1030,7 +1067,8 @@ function renderTopbar(){
 
 function renderTabs(){
   const tabs = [['master','Tabla principal', true],['territory','Tabla por territorio', true],
-    ['upload','Carga CSV', canUpload()],['history','Historial de cargas', true]];
+    ['upload','Carga CSV', canUpload()],['history','Historial de cargas', true],
+    ...(state.panel.acceso ? [['panel','Panel de control', true]] : [])];
   return `<div class="tabs">${tabs.map(([k,l,en]) =>
     `<div class="tab ${state.activeTab===k?'active':''}" data-tab="${k}">${l}${!en?'<span class="lock">solo lectura</span>':''}</div>`).join('')}</div>`;
 }
@@ -1378,11 +1416,374 @@ function renderHistReportes(tipo){
     ${renderArchivos(archivos, tipo === 'tempo', tipo === 'bo')}`;
 }
 
+// ---------- Panel de control ----------
+// Solo para las personas con acceso (lo decide la base; la API lo verifica en cada pedido). Se abre en una pestaña
+// propia y no cambia nada de las demás.
+const PANEL_SUBS = [['estado', 'Estado del sistema'], ['respaldos', 'Respaldos y OneDrive'], ['usuarios', 'Usuarios'],
+  ['actividad', 'Actividad'], ['integridad', 'Integridad de datos'], ['registro', 'Registro del servidor']];
+const SERVICIOS = {
+  espejo: 'Espejo de OneDrive', respaldo: 'Respaldos', instalador: 'Actualización de la base',
+};
+let relojPanel = null;
+
+function esc(t){
+  return String(t ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function fmtBytes(n){
+  if(n === null || n === undefined) return '—';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; n = Number(n);
+  while(n >= 1024 && i < u.length - 1){ n /= 1024; i++; }
+  return `${n.toLocaleString('es-AR', { maximumFractionDigits: i ? 1 : 0 })} ${u[i]}`;
+}
+function haceCuanto(seg){
+  if(seg === null || seg === undefined) return '—';
+  if(seg < 60) return `hace ${seg} s`;
+  if(seg < 3600) return `hace ${Math.round(seg / 60)} min`;
+  if(seg < 86400) return `hace ${Math.round(seg / 3600)} h`;
+  return `hace ${Math.round(seg / 86400)} días`;
+}
+
+async function loadPanelAcceso(){
+  const r = await sb.panel.get('acceso');
+  state.panel.acceso = !!(r.data && r.data.acceso);
+}
+
+async function loadPanel(sub){
+  const p = state.panel;
+  sub = sub || p.sub;
+  const pedir = {
+    estado: () => sb.panel.get('estado'),
+    respaldos: async () => {
+      const [e, ev] = await Promise.all([sb.panel.get('estado'), sb.panel.get('eventos', { servicio: p.eventoServicio, limite: 200 })]);
+      return { data: e.data && { estado: e.data, eventos: ev.data || [] }, error: e.error || ev.error };
+    },
+    usuarios: () => sb.panel.get('usuarios'),
+    actividad: () => sb.panel.get('actividad', p.filtrosAct),
+    integridad: () => sb.panel.get('integridad'),
+    registro: () => sb.panel.get('registro'),
+  }[sub];
+  const r = await pedir();
+  if(r.error){ p.error = r.error.message; return; }
+  p.error = '';
+  p.datos[sub] = r.data;
+  p.actualizado = new Date();
+}
+
+// El estado se actualiza solo mientras la pestaña está abierta.
+function programarPanel(){
+  clearInterval(relojPanel);
+  if(state.activeTab === 'panel' && ['estado', 'respaldos'].includes(state.panel.sub)){
+    relojPanel = setInterval(async () => {
+      if(state.activeTab !== 'panel' || document.hidden || state.panel.ocupado) return;
+      const activo = document.activeElement && document.activeElement.id;
+      await loadPanel(); if(state.activeTab === 'panel' && !activo?.startsWith('panel')) render();
+    }, 15000);
+  }
+}
+
+function punto(estado){ return `<span class="punto ${estado}"></span>`; }
+
+function renderPanel(){
+  const p = state.panel;
+  const d = p.datos[p.sub];
+  const cuerpo = !d ? `<div class="empty">${p.error ? esc(p.error) : 'Cargando…'}</div>` : ({
+    estado: renderPanelEstado, respaldos: renderPanelRespaldos, usuarios: renderPanelUsuarios,
+    actividad: renderPanelActividad, integridad: renderPanelIntegridad, registro: renderPanelRegistro,
+  })[p.sub](d);
+  return `
+  <div class="subtabs">${PANEL_SUBS.map(([k, l]) =>
+    `<button class="subtab ${p.sub === k ? 'active' : ''}" data-panel-sub="${k}">${l}</button>`).join('')}
+    <button class="btn panel-actualizar" id="panelActualizar">Actualizar</button>
+    <span class="panel-hora">${p.actualizado ? 'Actualizado ' + p.actualizado.toLocaleTimeString('es-AR') : ''}</span>
+  </div>
+  ${p.error && d ? `<div class="aviso-panel error">${esc(p.error)}</div>` : ''}
+  ${p.mensaje ? `<div class="aviso-panel">${p.mensaje}</div>` : ''}
+  ${cuerpo}
+  ${renderPanelCodigo()}`;
+}
+
+function tarjeta(titulo, contenido, extra = ''){
+  return `<div class="tarjeta ${extra}"><h3>${titulo}</h3>${contenido}</div>`;
+}
+function fila(k, v){ return `<div class="dato"><span>${k}</span><b>${v}</b></div>`; }
+function barra(usado, total){
+  if(!total) return '';
+  const pc = Math.round(100 * usado / total);
+  return `<div class="barra-uso ${pc >= 90 ? 'alta' : pc >= 75 ? 'media' : ''}"><div style="width:${pc}%"></div></div>`;
+}
+
+function estadoServicio(s, limite){
+  if(!s) return ['apagado', 'Sin datos'];
+  if(s.detalle && s.detalle.apagado) return ['apagado', 'Sin configurar'];
+  return s.segundos <= limite ? ['ok', 'Funcionando'] : ['error', 'Sin respuesta'];
+}
+
+function renderPanelEstado(e){
+  const sv = e.servicios || {}, r = e.recursos || {}, dt = e.datos || {};
+  const servicios = [
+    ['Base de datos', 'ok', 'Funcionando', `PostgreSQL ${esc((e.base.version || '').split(' ')[0])} · iniciada ${fmtFecha(e.base.iniciada)}`],
+    ['API y aplicación', 'ok', 'Funcionando', `iniciada ${fmtFecha(e.api.iniciada)}${e.api.fallas_recientes ? ` · ${e.api.fallas_recientes} errores en el registro` : ''}`],
+    ...['espejo', 'respaldo'].map(k => {
+      const [cl, tx] = estadoServicio(sv[k], 120);
+      const det = sv[k] ? (k === 'espejo'
+        ? (sv[k].detalle.apagado ? 'Sin carpeta de OneDrive configurada'
+           : `${sv[k].detalle.onedrive_disponible ? 'Carpeta disponible' : 'Carpeta de OneDrive no disponible'} · último aviso ${haceCuanto(sv[k].segundos)}`)
+        : (sv[k].detalle.apagado ? 'Sin carpeta de respaldos' : `Último aviso ${haceCuanto(sv[k].segundos)}`)) : 'El servicio todavía no informó su estado';
+      const clase = k === 'espejo' && sv[k] && sv[k].detalle.onedrive_disponible === false && cl === 'ok' ? 'aviso' : cl;
+      return [SERVICIOS[k], clase, clase === 'aviso' ? 'Con avisos' : tx, det];
+    }),
+    ['Actualización de la base', sv.instalador ? 'ok' : 'apagado', sv.instalador ? 'Aplicada' : 'Sin datos',
+      sv.instalador ? `${fmtFecha(sv.instalador.ultimo_aviso)} · ${sv.instalador.detalle.mejoras || 0} mejoras propias` : ''],
+  ];
+  const mem = r.memoria, disco = r.disco;
+  return `
+  <div class="tarjetas">
+    ${tarjeta('Servicios', servicios.map(([n, cl, tx, det]) =>
+      `<div class="servicio" data-servicio="${esc(n)}">${punto(cl)}<div><b>${n}</b> <span class="estado-${cl}">${tx}</span>
+        <div class="det">${det}</div></div></div>`).join(''), 'ancha')}
+    ${tarjeta('Recursos de la computadora', `
+      ${disco ? fila('Disco', `${fmtBytes(disco.usado)} de ${fmtBytes(disco.total)} · libre ${fmtBytes(disco.libre)}`) + barra(disco.usado, disco.total) : ''}
+      ${mem ? fila('Memoria', `${fmtBytes(mem.total - mem.disponible)} de ${fmtBytes(mem.total)}`) + barra(mem.total - mem.disponible, mem.total) : ''}
+      ${r.carga ? fila('Uso del procesador', `${Math.min(100, Math.round(100 * r.carga[0] / (r.cpus || 1)))} % (${r.cpus} núcleos)`) : ''}
+      ${fila('Base de datos', fmtBytes(e.base.tamano))}
+      ${fila('Archivos cargados', `${fmtNum(dt.archivos)} · ${fmtBytes(dt.tamano_archivos)}`)}`)}
+    ${tarjeta('Contenido', `
+      ${fila('Obras', fmtNum(dt.obras))}
+      ${fila('Obras sin Tempo ID', fmtNum(dt.obras_sin_tempo))}
+      ${fila('Filas de charts', fmtNum(dt.filas_charts))}
+      ${fila('Registros de Reporte BackOffice', fmtNum(dt.reportes_bo))}
+      ${fila('Registros de Reporte Tempo Control', fmtNum(dt.reportes_tempo))}`)}
+    ${tarjeta('Respaldos', renderResumenRespaldos(e))}
+  </div>
+  <p class="nota-panel">Acceso al Panel de control: ${(e.acceso || []).map(esc).join(', ')}. Se administra desde la
+  consola (opción 7 de <code>bash ranking.sh usuarios</code>).</p>`;
+}
+
+function renderResumenRespaldos(e){
+  const rs = e.respaldos || {}, det = (e.servicios.respaldo || {}).detalle || {};
+  const ev = (x) => x ? `${fmtFecha(x.fecha)}<div class="det">${esc(x.mensaje)}</div>` : 'Sin registro';
+  return `${fila('Último respaldo', ev(rs.ultimo_respaldo))}
+    ${fila('Última copia en OneDrive', ev(rs.ultima_copia_onedrive))}
+    ${det.cada_horas !== undefined ? fila('Respaldo automático', det.cada_horas ? `cada ${det.cada_horas} h · se conservan ${det.conservar}` : 'Apagado') : ''}
+    ${det.respaldos !== undefined ? fila('Respaldos en la computadora', `${det.respaldos} · ${fmtBytes(det.carpeta_bytes)}`) : ''}
+    ${rs.ultimo_error ? fila('Último error', `<span class="estado-error">${fmtFecha(rs.ultimo_error.fecha)}</span><div class="det">${esc(rs.ultimo_error.mensaje)}</div>`) : ''}`;
+}
+
+function renderEventos(eventos){
+  return `<table class="tabla-panel"><thead><tr><th>Fecha</th><th>Origen</th><th>Resultado</th><th>Detalle</th><th>Usuario</th></tr></thead>
+    <tbody>${eventos.length ? eventos.map(x => `<tr><td class="mono">${fmtFecha(x.fecha)}</td><td>${esc(SERVICIOS[x.servicio] || ({panel:'Panel de control', consola:'Consola', 'ranking.sh':'ranking.sh'})[x.servicio] || x.servicio)}</td>
+      <td>${punto(x.nivel === 'ok' ? 'ok' : x.nivel === 'aviso' ? 'aviso' : 'error')}${x.nivel === 'ok' ? 'Correcto' : x.nivel === 'aviso' ? 'Aviso' : 'Error'}</td>
+      <td>${esc(x.mensaje)}</td><td>${esc(x.usuario || '')}</td></tr>`).join('')
+      : `<tr><td colspan="5"><div class="empty">Sin eventos</div></td></tr>`}</tbody></table>`;
+}
+
+function renderPanelRespaldos(d){
+  const e = d.estado, rs = e.respaldos || {}, esp = e.espejo || {}, sol = (rs.solicitudes || [])[0];
+  const enCurso = sol && ['pendiente', 'en curso'].includes(sol.estado);
+  const espejo = (e.servicios || {}).espejo;
+  return `
+  <div class="tarjetas">
+    ${tarjeta('Respaldos', `${renderResumenRespaldos(e)}
+      <div class="acciones-panel">
+        <button class="btn primary" id="panelRespaldar" ${enCurso ? 'disabled' : ''}>${enCurso ? 'Respaldo en curso…' : 'Respaldar ahora'}</button>
+        ${sol ? `<span class="det">Último pedido: ${fmtFecha(sol.pedido)} · ${esc(sol.estado)}${sol.mensaje ? ' · ' + esc(sol.mensaje) : ''}</span>` : ''}
+      </div>
+      <p class="det">Respaldo completo de la base y de los archivos, copiado también en OneDrive
+      (<code>respaldo_documentacion_sistema\\respaldos</code>). Se restaura desde la consola:
+      <code>bash ranking.sh restaurar &lt;nombre&gt;</code>.</p>`)}
+    ${tarjeta('Espejo de OneDrive', `
+      ${fila('Carpeta', espejo && espejo.detalle.carpeta ? (espejo.detalle.onedrive_disponible ? 'Disponible' : '<span class="estado-error">No disponible</span>') : 'Sin configurar')}
+      ${fila('Última copia', esp.ultima_copia ? `${fmtFecha(esp.ultima_copia.fecha)}<div class="det">${esc(esp.ultima_copia.mensaje)}</div>` : 'Sin registro')}
+      ${esp.ultimo_aviso ? fila('Último aviso', `<span class="estado-error">${fmtFecha(esp.ultimo_aviso.fecha)}</span><div class="det">${esc(esp.ultimo_aviso.mensaje)}</div>`) : ''}`)}
+  </div>
+  <h3 class="titulo-panel">Registro de copias y respaldos</h3>
+  <div class="filtros-panel">
+    <select id="panelEventoServicio">
+      <option value="">Todos los orígenes</option>
+      ${[['respaldo', 'Respaldos'], ['espejo', 'Espejo de OneDrive'], ['ranking.sh', 'ranking.sh'], ['panel', 'Panel de control'], ['consola', 'Consola']]
+        .map(([k, l]) => `<option value="${k}" ${state.panel.eventoServicio === k ? 'selected' : ''}>${l}</option>`).join('')}
+    </select>
+  </div>
+  ${renderEventos(d.eventos)}`;
+}
+
+function renderPanelUsuarios(lista){
+  const yo = state.session.user.email.toLowerCase();
+  const roles = ['admin', 'usuario_estandar', 'auditor'];
+  return `
+  <div class="tarjeta">
+    <h3>Nuevo usuario</h3>
+    <div class="filtros-panel">
+      <input class="search" id="panelNuevoEmail" placeholder="email@sonymusicpub.com">
+      <select id="panelNuevoRol">${roles.map(r => `<option value="${r}" ${r === 'usuario_estandar' ? 'selected' : ''}>${r}</option>`).join('')}</select>
+      <input class="search corto" id="panelNuevaOficina" placeholder="Oficina (ej. AR)">
+      <button class="btn primary" id="panelCrear">Crear usuario</button>
+    </div>
+    <p class="det">El usuario recibe un código de activación (válido 72 horas) para elegir su contraseña en
+    "¿Olvidaste la contraseña?". Nadie más conoce la contraseña.</p>
+  </div>
+  <table class="tabla-panel"><thead><tr><th>Usuario</th><th>Rol</th><th>Oficina</th><th>Último ingreso</th><th>Sesiones</th><th>Estado</th><th></th></tr></thead>
+  <tbody>${lista.map(u => `
+    <tr data-usuario="${esc(u.email)}">
+      <td>${esc(u.email)}${u.panel ? ' <span class="badge unc">Panel</span>' : ''}${u.email.toLowerCase() === yo ? ' <span class="det">(vos)</span>' : ''}</td>
+      <td><select data-usuario-rol="${esc(u.email)}">${roles.map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+      <td><input class="edit-field corto" data-usuario-oficina="${esc(u.email)}" value="${esc(u.oficina || '')}" placeholder="—"></td>
+      <td class="mono">${u.ultimo_ingreso ? fmtFecha(u.ultimo_ingreso) : 'nunca'}</td>
+      <td>${u.sesiones_abiertas ? `${u.sesiones_abiertas} ${u.sesiones_abiertas == 1 ? 'abierta' : 'abiertas'}` : '—'}</td>
+      <td>${u.bloqueado ? '<span class="badge dup">Bloqueado</span>' : u.sin_clave ? '<span class="badge pct">Sin activar</span>' : '<span class="badge ok">Activo</span>'}
+        ${u.codigo_vence ? `<div class="det">Código vigente hasta ${fmtFecha(u.codigo_vence)}</div>` : ''}</td>
+      <td class="acciones-usuario">
+        <button class="btn" data-usuario-accion="codigo" data-email="${esc(u.email)}">Código de contraseña</button>
+        ${u.sesiones_abiertas ? `<button class="btn" data-usuario-accion="cerrar_sesiones" data-email="${esc(u.email)}">Cerrar sesiones</button>` : ''}
+        ${u.email.toLowerCase() === yo ? '' : u.bloqueado
+          ? `<button class="btn" data-usuario-accion="desbloquear" data-email="${esc(u.email)}">Desbloquear</button>`
+          : `<button class="btn" data-usuario-accion="bloquear" data-email="${esc(u.email)}">Bloquear</button>`}
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+function renderPanelActividad(lista){
+  const f = state.panel.filtrosAct;
+  const usuarios = (state.panel.datos.usuarios || []).map(u => u.email);
+  return `
+  <div class="filtros-panel">
+    <select id="panelActUsuario"><option value="">Todos los usuarios</option>
+      ${[...new Set([...usuarios, ...lista.map(x => x.usuario)])].filter(Boolean).sort().map(u => `<option value="${esc(u)}" ${f.usuario === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select>
+    <select id="panelActTipo"><option value="">Todo</option>
+      ${['Ingreso', 'Carga', 'Descarga', 'Cambio'].map(t => `<option value="${t}" ${f.tipo === t ? 'selected' : ''}>${t}s</option>`).join('')}</select>
+    <label class="check">Desde <input type="date" class="edit-field" style="width:auto" id="panelActDesde" value="${f.desde || ''}"></label>
+    <label class="check">Hasta <input type="date" class="edit-field" style="width:auto" id="panelActHasta" value="${f.hasta || ''}"></label>
+  </div>
+  <table class="tabla-panel"><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead>
+  <tbody>${lista.length ? lista.map(x => `<tr><td class="mono">${fmtFecha(x.fecha)}</td><td>${esc(x.usuario)}</td>
+    <td><span class="badge ${({Carga:'ok', Descarga:'unc', Cambio:'pct', Ingreso:''})[x.tipo] || ''}">${x.tipo}</span></td><td>${esc(x.detalle)}</td></tr>`).join('')
+    : `<tr><td colspan="4"><div class="empty">Sin actividad para esos filtros</div></td></tr>`}</tbody></table>
+  <p class="det">Se muestran hasta 300 acciones, de la más reciente a la más antigua; sin fechas, las de los últimos 90
+  días. Los cambios hechos por una carga se informan en la carga; los cambios manuales se agrupan por minuto.</p>`;
+}
+
+function renderPanelIntegridad(d){
+  const a = d.archivos;
+  const faltan = d.charts.reduce((n, c) => n + c.faltantes.length, 0);
+  return `
+  <div class="tarjetas">
+    ${tarjeta('Archivos', `
+      ${fila('Registrados', fmtNum(a.registrados))}
+      ${fila('Faltan en el almacenamiento', a.cantidad_faltantes ? `<span class="estado-error">${fmtNum(a.cantidad_faltantes)}</span>` : '0')}
+      ${fila('Con tamaño distinto al registrado', a.distinto_tamano.length ? `<span class="estado-error">${a.distinto_tamano.length}</span>` : '0')}
+      ${fila('Sin registro (cargas interrumpidas)', fmtNum(a.sin_registrar))}`)}
+    ${tarjeta('Charts', `
+      ${fila('Territorios y plataformas', d.charts.length)}
+      ${fila('Semanas faltantes', faltan ? `<span class="estado-error">${faltan}</span>` : '0')}
+      ${fila('Cargas con avisos o sin filas', d.problemas.length)}`)}
+  </div>
+  <h3 class="titulo-panel">Charts por territorio y plataforma</h3>
+  <table class="tabla-panel"><thead><tr><th>Territorio</th><th>Plataforma</th><th>Semanas</th><th>Desde</th><th>Hasta</th><th>Filas</th><th>Semanas faltantes</th></tr></thead>
+  <tbody>${d.charts.length ? d.charts.map(c => `<tr data-integridad="${c.pais}-${c.plataforma}"><td>${c.pais}</td><td>${c.plataforma === 'youtube' ? 'YouTube' : 'Spotify'}</td>
+    <td>${fmtNum(c.semanas)}</td><td class="mono">${c.primera}</td><td class="mono">${c.ultima}</td><td>${fmtNum(c.filas)}</td>
+    <td>${c.faltantes.length ? `<span class="estado-error">${c.faltantes.length}</span> <span class="det mono">${c.faltantes.slice(0, 12).join(', ')}${c.faltantes.length > 12 ? '…' : ''}</span>` : '<span class="estado-ok">Completo</span>'}</td></tr>`).join('')
+    : `<tr><td colspan="7"><div class="empty">Sin charts cargados</div></td></tr>`}</tbody></table>
+  <h3 class="titulo-panel">Cargas con avisos o sin filas cargadas</h3>
+  <table class="tabla-panel"><thead><tr><th>Fecha</th><th>Usuario</th><th>Archivo</th><th>Filas</th><th>Avisos</th></tr></thead>
+  <tbody>${d.problemas.length ? d.problemas.map(c => `<tr><td class="mono">${fmtFecha(c.fecha)}</td><td>${esc(c.usuario || '')}</td>
+    <td>${esc(c.archivo)}</td><td>${fmtNum(c.cargadas)} de ${fmtNum(c.total)}</td>
+    <td>${c.avisos ? `${c.avisos}<div class="det">${(c.errores || []).slice(0, 3).map(esc).join('<br>')}</div>` : 'Ninguna fila cargada'}</td></tr>`).join('')
+    : `<tr><td colspan="5"><div class="empty">Sin cargas con problemas</div></td></tr>`}</tbody></table>
+  ${a.faltantes.length || a.distinto_tamano.length ? `<h3 class="titulo-panel">Archivos con problemas</h3>
+  <table class="tabla-panel"><thead><tr><th>Archivo</th><th>Problema</th></tr></thead><tbody>
+    ${a.faltantes.map(x => `<tr><td>${esc(x.archivo)}</td><td>No está en el almacenamiento</td></tr>`).join('')}
+    ${a.distinto_tamano.map(x => `<tr><td>${esc(x.archivo)}</td><td>Tamaño ${fmtBytes(x.real)}; registrado ${fmtBytes(x.registrado)}</td></tr>`).join('')}
+  </tbody></table>` : ''}
+  <p class="det">Una semana falta si no hay chart a menos de tres días de la fecha esperada, entre la primera y la última
+  semana cargada de ese territorio y plataforma.</p>`;
+}
+
+function renderPanelRegistro(lineas){
+  return `<div class="consola" id="panelConsola">${lineas.length ? lineas.map(l =>
+    `<div class="linea ${l.nivel === 'ERROR' || l.nivel === 'CRITICAL' ? 'error' : l.nivel === 'WARNING' ? 'aviso' : ''}"><span>${fmtFecha(l.fecha)}</span> <b>${esc(l.nivel)}</b> ${esc(l.mensaje)}</div>`).join('')
+    : '<div class="linea">Sin registros desde el último inicio de la API.</div>'}</div>
+  <p class="det">Últimas 500 líneas del servidor desde su último inicio, de la más reciente a la más antigua: inicio,
+  pedidos rechazados y errores de la base o de la aplicación.</p>`;
+}
+
+function renderPanelCodigo(){
+  const c = state.panel.codigo;
+  if(!c) return '';
+  return `
+  <div class="modal-bg" id="codigoBg">
+    <div class="modal small">
+      <button class="close" id="closeCodigo">Cerrar</button>
+      <h2 class="display">${c.alta ? 'Usuario creado' : 'Código para restablecer la contraseña'}</h2>
+      <p class="sub">${esc(c.email)}</p>
+      <div class="codigo-grande" id="panelCodigo">${esc(c.codigo)}</div>
+      <p class="det">Entregáselo a la persona: en la pantalla de ingreso, "¿Olvidaste la contraseña?", ingresa su email,
+      este código y la contraseña que elija. Sirve una sola vez, durante ${c.alta ? '72 horas' : '30 minutos'}. El código no
+      vuelve a mostrarse.</p>
+    </div>
+  </div>`;
+}
+
+async function accionUsuario(accion, email, extra = {}){
+  const p = state.panel;
+  if(accion === 'bloquear' && !confirm(`¿Bloquear a ${email}? Se cierran sus sesiones y no podrá ingresar hasta que se lo desbloquee.`)) return;
+  p.ocupado = true;
+  const r = await sb.panel.post('usuarios', { accion, email, ...extra });
+  p.ocupado = false;
+  if(r.error){ alert(r.error.message); }
+  else if(accion === 'crear' || accion === 'codigo'){ p.codigo = { email, codigo: r.data.resultado, alta: accion === 'crear' }; }
+  else p.mensaje = ({ bloquear: `${esc(email)} quedó bloqueado.`, desbloquear: `${esc(email)} quedó desbloqueado.`,
+    cerrar_sesiones: `Se cerraron las sesiones de ${esc(email)}.`, rol: `Se actualizó el rol de ${esc(email)}.` })[accion] || '';
+  await loadPanel('usuarios'); render();
+}
+
+function attachPanelEvents(){
+  const p = state.panel;
+  document.querySelectorAll('[data-panel-sub]').forEach(b => b.onclick = async () => {
+    p.sub = b.dataset.panelSub; p.mensaje = ''; render();
+    if(p.sub === 'actividad' && !p.datos.usuarios) await loadPanel('usuarios');
+    await loadPanel(); render(); programarPanel();
+  });
+  const act = document.getElementById('panelActualizar');
+  if(act) act.onclick = async () => { await loadPanel(); render(); };
+  const resp = document.getElementById('panelRespaldar');
+  if(resp) resp.onclick = async () => {
+    resp.disabled = true;
+    const r = await sb.panel.post('respaldo');
+    p.mensaje = r.error ? '' : 'Respaldo solicitado. En unos segundos figura en el registro.';
+    if(r.error) alert(r.error.message);
+    await loadPanel(); render();
+  };
+  const evs = document.getElementById('panelEventoServicio');
+  if(evs) evs.onchange = async () => { p.eventoServicio = evs.value; await loadPanel(); render(); };
+  const crear = document.getElementById('panelCrear');
+  if(crear) crear.onclick = () => {
+    const email = document.getElementById('panelNuevoEmail').value.trim();
+    if(!email) return alert('Ingresá el email del usuario.');
+    accionUsuario('crear', email, { rol: document.getElementById('panelNuevoRol').value,
+                                    oficina: document.getElementById('panelNuevaOficina').value.trim() || null });
+  };
+  document.querySelectorAll('[data-usuario-accion]').forEach(b => b.onclick = () => accionUsuario(b.dataset.usuarioAccion, b.dataset.email));
+  const cambiarRol = (email) => accionUsuario('rol', email, {
+    rol: document.querySelector(`[data-usuario-rol="${CSS.escape(email)}"]`).value,
+    oficina: document.querySelector(`[data-usuario-oficina="${CSS.escape(email)}"]`).value.trim() || null });
+  document.querySelectorAll('[data-usuario-rol]').forEach(s => s.onchange = () => cambiarRol(s.dataset.usuarioRol));
+  document.querySelectorAll('[data-usuario-oficina]').forEach(i => i.onchange = () => cambiarRol(i.dataset.usuarioOficina));
+  const filtros = { panelActUsuario: 'usuario', panelActTipo: 'tipo', panelActDesde: 'desde', panelActHasta: 'hasta' };
+  Object.entries(filtros).forEach(([id, k]) => {
+    const el = document.getElementById(id);
+    if(el) el.onchange = async () => { p.filtrosAct[k] = el.value || null; await loadPanel(); render(); };
+  });
+  const cerrar = () => { p.codigo = null; render(); };
+  const cc = document.getElementById('closeCodigo'); if(cc) cc.onclick = cerrar;
+  const cb = document.getElementById('codigoBg'); if(cb) cb.onclick = (e) => { if(e.target === cb) cerrar(); };
+}
+
 function renderBody(){
   if(state.activeTab==='master') return renderMaster();
   if(state.activeTab==='territory') return renderTerritory();
   if(state.activeTab==='upload') return renderUpload();
   if(state.activeTab==='history') return renderHistory();
+  if(state.activeTab==='panel') return renderPanel();
 }
 
 function render(){
@@ -1394,6 +1795,7 @@ function render(){
     <footer><span>Auditor de Rankings Digitales</span><span>${rows_count()}</span></footer>
   </div>${renderHistoryModal()}${renderEnvioDialog()}`;
   attachAppEvents();
+  if(state.activeTab === 'panel') attachPanelEvents();
 }
 function rows_count(){
   if(state.activeTab==='master') return `${fmtNum(state.masterTotal)} canciones`;
@@ -1422,6 +1824,8 @@ function attachAppEvents(){
     state.activeTab = t.dataset.tab; state.search='';
     if(!state.uploading) state.uploadQueue = [];
     if(state.activeTab === 'history' && !state.historial) loadHistorial();
+    programarPanel();
+    if(state.activeTab === 'panel'){ state.panel.mensaje = ''; loadPanel().then(() => { if(state.activeTab === 'panel') render(); }); }
     render();
     // La búsqueda es de cada pestaña: al cambiar, se vuelve a pedir la página sin búsqueda.
     if(state.activeTab === 'master' && habiaBusqueda){ state.masterPage = 0; await loadMaster(); render(); }

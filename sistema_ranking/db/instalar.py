@@ -27,6 +27,8 @@ def mejoras(con):
     for f in sorted((AQUI / "mejoras").glob("*.sql")):
         con.execute(f.read_text(encoding="utf-8"))
     con.execute("RESET ROLE")
+    con.execute("SELECT panel.latido('instalador', jsonb_build_object('mejoras', %s::int))",
+                (len(list((AQUI / "mejoras").glob("*.sql"))),))
 
 
 def main():

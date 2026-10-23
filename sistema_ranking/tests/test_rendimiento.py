@@ -80,6 +80,26 @@ check("últimas cargas por territorio y plataforma",
       == sql("select string_agg(pais_code || platform || m, ',' order by 1) from (select pais_code, platform, max(snapshot_date) m "
              "from territory_tracks where deleted_at is null group by 1, 2) s"))
 
+# ---- Panel de control con volumen real: 300.000 filas de auditoría de cargas y cambios manuales
+sql("""INSERT INTO panel.acceso (email) VALUES ('admin@prueba.local') ON CONFLICT DO NOTHING;
+INSERT INTO csv_uploads (filename, uploaded_by, uploaded_at, total_rows, updated_rows, format)
+SELECT 'f' || g || '.csv', (SELECT id::text FROM auth.users WHERE email = 'admin@prueba.local'),
+       now() - interval '80 days' + g * interval '7 minutes', 200, 200, 'spotify' FROM generate_series(1, 1500) g;
+INSERT INTO audit_logs (table_name, row_id, operation, changed_by, changed_at, new_data)
+SELECT 'tracks_master', gen_random_uuid(), 'INSERT', (SELECT id::text FROM auth.users WHERE email = 'admin@prueba.local'),
+       now() - interval '80 days' + (g / 200) * interval '7 minutes', '{}' FROM generate_series(1, 300000) g;
+ANALYZE audit_logs;""")
+cab = {"Authorization": "Bearer " + __import__("httpx").post(BASE + "/auth/login", json={"email": "admin@prueba.local",
+                                                                                         "password": "clave-admin-123"}).json()["access_token"]}
+for ruta in ("estado", "actividad", "integridad", "usuarios"):
+    t = time.time()
+    r = __import__("httpx").get(f"{BASE}/panel/{ruta}", headers=cab, timeout=120)
+    seg = time.time() - t
+    check(f"Panel de control, {ruta}: {seg:.2f} s (máximo {LIMITE_S:.0f} s)", r.status_code == 200 and seg <= LIMITE_S, r.text[:200])
+check("Panel de control: la actividad no lista los cambios de las cargas fila por fila",
+      not any(a["tipo"] == "Cambio" for a in __import__("httpx").get(f"{BASE}/panel/actividad", headers=cab).json()))
+sql("TRUNCATE audit_logs; DELETE FROM panel.acceso WHERE email = 'admin@prueba.local'")
+
 # ---- tiempos en el navegador
 total_obras = int(sql("select count(*) from tracks_master"))
 with sync_playwright() as p:

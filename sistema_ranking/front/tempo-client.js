@@ -9,6 +9,7 @@
  *   from(tabla).update(cambios).eq(c,v) · from(tabla).insert(fila | filas)
  *   rpc(funcion, params).select(cols).range(a,b).single().csv()
  *   storage.from(bucket).upload(ruta, archivo) · storage.from(bucket).createSignedUrl(ruta, segundos)
+ *   panel.get(ruta, params) · panel.post(ruta, cuerpo)   (Panel de control)
  *
  * Todas las llamadas devuelven { data, error } como supabase-js.
  *
@@ -188,9 +189,19 @@
       },
     };
 
+    // Panel de control (solo para quien tiene acceso; la API lo verifica en cada pedido).
+    const panel = {
+      get(ruta, params) {
+        const q = new URLSearchParams(Object.entries(params || {}).filter(([, v]) => v !== null && v !== undefined && v !== ''));
+        return pedir('GET', '/panel/' + ruta + (q.toString() ? '?' + q : ''));
+      },
+      post(ruta, body) { return pedir('POST', '/panel/' + ruta, { body: body || {} }); },
+    };
+
     return {
       auth,
       storage,
+      panel,
       from: (tabla) => new Consulta('tabla', tabla),
       rpc: (fn, params) => new Consulta('rpc', fn, params),
     };

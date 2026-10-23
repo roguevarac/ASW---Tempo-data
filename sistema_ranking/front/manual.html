@@ -81,6 +81,7 @@ th{color:var(--text-muted);font-weight:500;font-size:12px;text-transform:upperca
     <li><a href="#territorio">Tabla por territorio</a></li>
     <li><a href="#historial">Historial de cargas</a></li>
     <li><a href="#onedrive">Respaldo en OneDrive</a></li>
+    <li><a href="#panel">Panel de control</a></li>
     <li><a href="#problemas">Mensajes frecuentes</a></li>
   </ol>
   <a class="volver" href="./">← Volver a la aplicación</a>
@@ -387,6 +388,43 @@ auditoría:</p>
 <div class="caja"><p>La información del sistema reside en su base de datos. La carpeta de OneDrive es una copia: el sistema
 no la lee, por lo que borrar o modificar un archivo allí no altera la información de la aplicación. Para incorporar
 datos, utilizá siempre <b>Carga CSV</b>.</p></div>
+</section>
+
+<section id="panel">
+<h2>Panel de control</h2>
+<p>Pestaña disponible solo para las personas autorizadas; para el resto de los usuarios no figura. Permite controlar
+el funcionamiento del sistema y la actividad de los usuarios sin utilizar la consola.</p>
+<table>
+  <tr><th>Sección</th><th>Contenido</th></tr>
+  <tr><td><b>Estado del sistema</b></td><td>Funcionamiento de cada servicio (base de datos, aplicación, espejo de
+    OneDrive y respaldos), recursos de la computadora (disco, memoria y procesador), volumen de información cargada y
+    resumen de respaldos. Se actualiza cada 15 segundos.</td></tr>
+  <tr><td><b>Respaldos y OneDrive</b></td><td>Último respaldo, última copia en OneDrive y registro de cada copia y
+    respaldo, con su resultado. <b>Respaldar ahora</b> realiza un respaldo completo y lo copia en OneDrive; conviene
+    utilizarlo después de una carga importante.</td></tr>
+  <tr><td><b>Usuarios</b></td><td>Alta de usuarios, rol y oficina, bloqueo y desbloqueo, código para restablecer la
+    contraseña y cierre de las sesiones abiertas.</td></tr>
+  <tr><td><b>Actividad</b></td><td>Ingresos, cargas, descargas y cambios manuales de cada usuario, con filtros por
+    usuario, tipo de acción y fechas. Sin fechas, muestra los últimos 90 días.</td></tr>
+  <tr><td><b>Integridad de datos</b></td><td>Por territorio y plataforma: semanas cargadas y semanas faltantes. También
+    las cargas con avisos o sin filas cargadas, y los archivos que no están en el almacenamiento.</td></tr>
+  <tr><td><b>Registro del servidor</b></td><td>Últimas líneas del registro de la aplicación: inicio, pedidos rechazados
+    y errores.</td></tr>
+</table>
+<h3>Alta de un usuario</h3>
+<ol class="pasos">
+  <li>En <b>Usuarios</b>, ingresá el email, seleccioná el rol y, si corresponde, la oficina. Presioná
+    <b>Crear usuario</b>.</li>
+  <li>El sistema muestra un código de activación, válido 72 horas. Entregáselo a la persona: no vuelve a
+    mostrarse.</li>
+  <li>La persona ingresa en "¿Olvidaste la contraseña?" su email, el código y la contraseña que elija. Nadie más la
+    conoce.</li>
+</ol>
+<p>Para una contraseña olvidada, <b>Código de contraseña</b> genera un código válido 30 minutos, que se utiliza de la
+misma forma.</p>
+<div class="caja"><p>El acceso al Panel de control y la restauración de un respaldo se realizan desde la consola de la
+computadora donde está instalado el sistema (<code>bash ranking.sh usuarios</code> y
+<code>bash ranking.sh restaurar</code>).</p></div>
 </section>
 
 <section id="problemas">

@@ -342,6 +342,7 @@ docker compose exec -e PGURL=postgresql://postgres:<POSTGRES_PASSWORD>@db:5432/r
 #  crear <email> <admin|usuario_estandar|auditor> [oficina]   (pide la contraseña, mínimo 10 caracteres)
 #  clave <email> · rol <email> <rol> [oficina] · bloquear <email> · desbloquear <email>
 #  codigo <email>   código de un solo uso (30 minutos) para "¿Olvidaste la contraseña?" en la pantalla de ingreso
+#  panel <email> si|no   da o quita el acceso al Panel de control (solo desde la consola)
 ```
 
 Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
@@ -396,6 +397,28 @@ Supabase fue el entorno de prueba; estas limitaciones venían de ahí y se corri
 | Respaldos solo a mano. | Servicio `respaldo` (`db/respaldo_automatico.sh`): un respaldo completo por día en `~/proyectos/ranking-respaldos` (`ranking_auto_*`, se restaura igual), conserva los últimos 14 y copia el `.dump` a OneDrive (`respaldos/automaticos`). `RESPALDO_HORAS=0` en `ranking.env` lo apaga. |
 | Los registros de Docker crecían sin límite. | Tope de 3 archivos de 10 MB por servicio. |
 
+### Panel de control (`db/mejoras/05_panel.sql`)
+
+Pestaña solo para las personas de `panel.acceso` (al principio, `rocio.guevara@sonymusicpub.com`; se cambia con
+`ranking.sh usuarios`, opción 7). Reemplaza el uso de la consola para controlar el sistema:
+
+- **Seguridad:** la API verifica el acceso en cada pedido (`/panel/*`) y las funciones de la base (`panel.*`, SECURITY
+  DEFINER) lo vuelven a verificar. Las tablas del esquema `panel` no tienen permisos para los usuarios. La API no tiene
+  acceso a Docker: los servicios informan su estado escribiendo en la base.
+- **Estado del sistema:** cada servicio deja un aviso de vida (`panel.latido`): el espejo y los respaldos cada 30 s,
+  el instalador al aplicar las mejoras. Recursos (disco del almacenamiento, memoria, carga) leídos por la API.
+- **Respaldos y OneDrive:** `panel.eventos` registra cada copia del espejo, cada respaldo y sus copias en OneDrive
+  (también los de `ranking.sh respaldo`). "Respaldar ahora" deja un pedido en `panel.solicitudes`, que el servicio
+  `respaldo` atiende en segundos (respaldo completo con nombre de respaldo manual, copia del `.dump` y el `.tgz`).
+- **Usuarios:** alta sin contraseña con código de activación (72 h), rol, oficina, bloqueo (no el propio), código de
+  contraseña y cierre de sesiones. Cada acción queda en `panel.eventos` con quién la hizo.
+- **Actividad:** ingresos, cargas, descargas y cambios manuales (los de una carga no se listan fila por fila).
+- **Integridad:** semanas faltantes por territorio y plataforma, cargas con avisos o sin filas, archivos registrados que
+  faltan o cambiaron de tamaño en el almacenamiento.
+- **Registro del servidor:** últimas 500 líneas de la API (en memoria), con los pedidos rechazados y los errores.
+
+Queda en la consola, a propósito: dar acceso al panel y restaurar un respaldo (detiene la API).
+
 ## Comportamientos heredados que se mantienen
 
 - El borrado lógico solo lo puede hacer el rol `admin` (decisión de permisos: así queda).
@@ -416,8 +439,9 @@ Supabase fue el entorno de prueba; estas limitaciones venían de ahí y se corri
 | `test_espejo.py` | Espejo de OneDrive: carpeta de cada tipo de carga, nombres que Windows no acepta, que nunca interrumpe una carga, que solo escribe, y la sincronización de todas las cargas. |
 | `test_importar_charts.py` | Carga masiva de charts históricos: mismo resultado que Carga CSV en el navegador, país por carpeta, archivos sin semana, archivos que no son charts, retomar sin duplicar. |
 | `test_uso_diario.py` | Sesiones (renovar, inactividad, cerrar, bloqueo), cambio y restablecimiento de contraseña con código desde el ingreso, freno de intentos fallidos, carga todo o nada, chart sin semana, unificación por Tempo ID y permisos, descarga con todos los filtros, compresión; y lo mismo en el navegador. |
+| `test_panel.py` | Panel de control: 403 para cualquier otro usuario, alta con código de activación, rol, bloqueo, cierre de sesiones, actividad, semanas y archivos faltantes, "Respaldar ahora", registro; y lo mismo en el navegador. |
 | `test_rendimiento.py` | Con 20.000 canciones y 208.000 filas de charts: mismos totales que las funciones originales, orden de las páginas, búsqueda literal, filtros, y que abrir, buscar, paginar y filtrar en el navegador tarde menos de 3 s. |
-| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, espejo de OneDrive (carga nueva copiada, borrado sin efecto, OneDrive sin permiso), respaldo automático (al arrancar, a nombre del usuario, copia en OneDrive, conserva los últimos 14), mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
+| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, espejo de OneDrive (carga nueva copiada, borrado sin efecto, OneDrive sin permiso), respaldo automático (al arrancar, a nombre del usuario, copia en OneDrive, conserva los últimos 14), "Respaldar ahora" del panel y avisos de los servicios, mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
 | `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, administrar usuarios, apagar, volver a abrir y actualizar. |
 | `test_componentes_windows.py` | Los componentes reales de Windows (Python y PostgreSQL): verificación por sha256, archivos alterados, descarga caída y que al descomprimir esté todo lo necesario. |
 | `test_paquetes_windows.py` | Que los paquetes de Python incluidos alcancen para Windows sin internet (dependencias evaluadas como en Windows). |
