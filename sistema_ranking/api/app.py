@@ -148,7 +148,8 @@ def _valor_db(v):
 # ---------------------------------------------------------------- sesión
 # Cada ingreso abre una sesión en la base (auth.sesiones, db/mejoras/04_uso_diario.sql). El token dura SESSION_HOURS y
 # el front lo renueva mientras se usa la aplicación (/auth/renovar); la sesión vence tras SESSION_HOURS sin uso, al
-# cerrarla (/auth/salir), al cambiar la contraseña en otro equipo o al bloquear al usuario.
+# cerrarla (/auth/salir), al cambiar o restablecer la contraseña (/auth/clave, /auth/restablecer) o al bloquear al
+# usuario.
 INACTIVIDAD = f"{SESSION_HOURS} hours"
 
 
@@ -260,26 +261,34 @@ def salir(request: Request):
     return Response(status_code=204)
 
 
-@app.post("/auth/clave")
-async def cambiar_clave(request: Request):
-    c = usuario_del_pedido(request)
-    body = await request.json()
-    _frenar_fuerza_bruta(f"clave|{c['sub']}")
-    with transaccion(c):   # valida la sesión
-        pass
+def _clave_ingreso(request, nombre, funcion, args, mensaje):
+    """Cambio o restablecimiento de contraseña desde la pantalla de ingreso (sin sesión)."""
+    email = str(args[0] or "").strip().lower()
+    clave = f"{nombre}|{request.client.host if request.client else '-'}|{email}"
+    _frenar_fuerza_bruta(clave)
     with pool.connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT auth.cambiar_clave(%s::uuid, %s::uuid, %s, %s)",
-                    (c["sub"], c.get("sid"), str(body.get("actual") or ""), str(body.get("nueva") or "")))
-        if not cur.fetchone()[0]:
-            _intento_fallido(f"clave|{c['sub']}")
-            raise ErrorApi(400, "La contraseña actual no es correcta.")
+        cur.execute(sql.SQL("SELECT auth.{}(%s, %s, %s)").format(sql.Identifier(funcion)), [email, *args[1:]])
+        correcto = cur.fetchone()[0]
+    if not correcto:   # fuera del "with": el intento fallido del código queda registrado en la base
+        _intento_fallido(clave)
+        raise ErrorApi(400, mensaje)
     return Response(status_code=204)
 
 
-@app.get("/auth/user")
-def usuario(request: Request):
-    c = usuario_del_pedido(request)
-    return respuesta_json({"id": c["sub"], "email": c.get("email")})
+@app.post("/auth/clave")
+async def cambiar_clave(request: Request):
+    b = await request.json()
+    return _clave_ingreso(request, "clave", "cambiar_clave",
+                          [b.get("email"), str(b.get("actual") or ""), str(b.get("nueva") or "")],
+                          "El email o la contraseña actual no son correctos.")
+
+
+@app.post("/auth/restablecer")
+async def restablecer_clave(request: Request):
+    b = await request.json()
+    return _clave_ingreso(request, "restablecer", "restablecer_clave",
+                          [b.get("email"), str(b.get("codigo") or ""), str(b.get("nueva") or "")],
+                          "El código no es válido o venció. Solicitá uno nuevo a la persona que administra el sistema.")
 
 
 # ---------------------------------------------------------------- tablas

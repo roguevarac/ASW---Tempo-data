@@ -400,7 +400,8 @@ cmd_usuarios() {
         usuarios_py listar
         echo
         echo "  1 = Crear usuario        2 = Cambiar contraseña    3 = Cambiar rol u oficina"
-        echo "  4 = Bloquear usuario     5 = Desbloquear usuario   0 = Salir"
+        echo "  4 = Bloquear usuario     5 = Desbloquear usuario   6 = Código para restablecer la contraseña"
+        echo "  0 = Salir"
         read -r -p "Opción: " op
         [ -z "$op" ] || [ "$op" = 0 ] && break
         read -r -p "Email: " email; [ -z "$email" ] && continue
@@ -414,6 +415,7 @@ cmd_usuarios() {
                usuarios_py rol "$email" "$rol" ${oficina:+"$oficina"} ;;
             4) usuarios_py bloquear "$email" ;;
             5) usuarios_py desbloquear "$email" ;;
+            6) usuarios_py codigo "$email" ;;
             *) aviso "Opción inválida." ;;
         esac
     done
@@ -529,7 +531,7 @@ cmd_restaurar() {
                        public.territory_bo_report, public.territory_tempo_report, public.csv_uploads, public.audit_logs,
                        public.bo_export_counter, public.staging_tempo_historico, public.resultado_tempo_historico,
                        public.envio_obras, public.envios,
-                       auth.sesiones, auth.users, storage.objects, storage.buckets" > /dev/null || fallar "No se pudo vaciar la base."
+                       auth.sesiones, auth.codigos_clave, auth.users, storage.objects, storage.buckets" > /dev/null || fallar "No se pudo vaciar la base."
     dc exec -T db pg_restore -U postgres -d ranking --data-only --disable-triggers --single-transaction \
         -n public -n auth -n storage < "$RESPALDOS/$f.dump" || fallar "No se pudo restaurar la base (quedó vacía: volvé a intentar)."
     titulo "Restaurando los archivos"

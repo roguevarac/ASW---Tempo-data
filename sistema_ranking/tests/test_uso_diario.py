@@ -1,7 +1,7 @@
 """
 Mejoras de uso diario (db/mejoras/04_uso_diario.sql, api/app.py, tempo-client.js), por HTTP y en el navegador:
   - sesiones en la base: renovación mientras se usa, vencimiento por inactividad, cierre de sesión que anula el token,
-    bloqueo, cambio de contraseña (cierra las otras sesiones) y mensajes en castellano;
+    bloqueo, cambio y restablecimiento de contraseña desde el ingreso, y mensajes en castellano;
   - carga de un archivo en una sola transacción (todo o nada), charts sin semana rechazados;
   - Tempo ID repetido: unificación de las dos obras con sus charts, reportes, controles y envíos;
   - descarga de la tabla por territorio con todos los filtros; respuestas comprimidas.
@@ -10,6 +10,7 @@ Usa sus propios usuarios y obras (no depende de los datos de otras pruebas). Var
 """
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,7 @@ def sqlq(q):
 
 sqlq("""SELECT auth.set_password('diario@prueba.local', 'clave-diario-123');
         SELECT auth.set_password('diario.auditor@prueba.local', 'clave-auditor-456');
+        SELECT auth.set_password('diario.olvido@prueba.local', 'clave-olvido-789');
         INSERT INTO public.app_users (user_id, app_role, oficina)
         SELECT id, CASE WHEN email LIKE 'diario.auditor%' THEN 'auditor' ELSE 'usuario_estandar' END, 'AR'
         FROM auth.users WHERE email LIKE 'diario%' ON CONFLICT (user_id) DO NOTHING""")
@@ -79,18 +81,44 @@ sqlq("update auth.users set banned_until = now() + interval '1 day' where email 
 check("bloquear al usuario corta su sesión en el acto", leer(h) == 401)
 sqlq("update auth.users set banned_until = null where email = 'diario@prueba.local'")
 
+# Cambio de contraseña desde la pantalla de ingreso (sin sesión): pide la actual.
 _, h = ingresar()
 _, h_otra_pc = ingresar()
-r = httpx.post(f"{BASE}/auth/clave", headers=h, json={"actual": "equivocada", "nueva": "clave-diario-nueva"})
-check("cambiar contraseña: la actual equivocada se rechaza", r.status_code == 400 and "actual no es correcta" in r.json()["message"], r.text)
-r = httpx.post(f"{BASE}/auth/clave", headers=h, json={"actual": "clave-diario-123", "nueva": "corta"})
+clave = lambda **b: httpx.post(f"{BASE}/auth/clave", json=dict(email="diario@prueba.local", **b))
+r = clave(actual="equivocada", nueva="clave-diario-nueva")
+check("cambiar contraseña: la actual equivocada se rechaza", r.status_code == 400 and "actual no son correctos" in r.json()["message"], r.text)
+r = clave(actual="clave-diario-123", nueva="corta")
 check("cambiar contraseña: mínimo 10 caracteres", r.status_code == 400 and "10 caracteres" in r.json()["message"], r.text)
-r = httpx.post(f"{BASE}/auth/clave", headers=h, json={"actual": "clave-diario-123", "nueva": "clave-diario-nueva"})
-check("cambiar contraseña: se guarda", r.status_code == 204, r.text)
-check("cambiar contraseña: esta sesión sigue y la de otro equipo se cierra", leer(h) == 200 and leer(h_otra_pc) == 401)
+r = clave(actual="clave-diario-123", nueva="clave-diario-nueva")
+check("cambiar contraseña: se guarda sin haber ingresado", r.status_code == 204, r.text)
+check("cambiar contraseña: cierra las sesiones abiertas", leer(h) == 401 and leer(h_otra_pc) == 401)
 check("cambiar contraseña: se ingresa con la nueva y no con la anterior",
       ingresar(clave="clave-diario-nueva")[0].status_code == 200 and ingresar()[0].status_code == 400)
-sqlq("select auth.set_password('diario@prueba.local', 'clave-diario-123')")
+
+# Contraseña olvidada: código de un solo uso que genera quien administra el sistema.
+salida = subprocess.run([sys.executable, "admin/usuarios.py", "codigo", "diario@prueba.local"], capture_output=True, text=True,
+                        env=dict(os.environ, PGURL=PGURL), cwd=pathlib.Path(__file__).resolve().parents[1]).stdout
+codigo = (re.search(r"([A-Z2-9]{4}-[A-Z2-9]{4})", salida) or [None, ""])[1]
+check("usuarios.py codigo: genera un código XXXX-XXXX", bool(codigo) and "30 minutos" in salida, salida)
+check("el código se guarda solo como hash", codigo and sqlq("select count(*) from auth.codigos_clave where codigo_hash like '%" + codigo[:4] + "%'") == "0")
+_, h = ingresar(clave="clave-diario-nueva")
+resto = lambda c, n="clave-restablecida-1": httpx.post(f"{BASE}/auth/restablecer", json={"email": "diario@prueba.local", "codigo": c, "nueva": n})
+r = resto("AAAA-AAAA")
+check("restablecer: un código equivocado se rechaza con un mensaje claro", r.status_code == 400 and "no es válido o venció" in r.json()["message"], r.text)
+r = resto(codigo.lower().replace("-", " "))
+check("restablecer: con el código (sin importar mayúsculas ni separador) se guarda la nueva", r.status_code == 204, r.text)
+check("restablecer: se ingresa con la nueva, se cierran las sesiones y el código no sirve otra vez",
+      ingresar(clave="clave-restablecida-1")[0].status_code == 200 and leer(h) == 401
+      and resto(codigo, "otra-clave-12345").status_code == 400)
+codigo = subprocess.run([sys.executable, "admin/usuarios.py", "codigo", "diario@prueba.local"], capture_output=True, text=True,
+                        env=dict(os.environ, PGURL=PGURL), cwd=pathlib.Path(__file__).resolve().parents[1]).stdout
+codigo = re.search(r"([A-Z2-9]{4}-[A-Z2-9]{4})", codigo)[1]
+for _ in range(5):
+    resto("BBBB-BBBB")
+check("restablecer: después de 5 intentos fallidos el código deja de servir", resto(codigo).status_code in (400, 429))
+sqlq("update auth.codigos_clave set intentos = 0, vence = now() - interval '1 minute'")
+check("restablecer: un código vencido no sirve", resto(codigo).status_code in (400, 429))
+sqlq("select auth.set_password('diario@prueba.local', 'clave-diario-123'); delete from auth.codigos_clave")
 check("los ingresos correctos no cuentan como intentos fallidos", all(ingresar()[0].status_code == 200 for _ in range(10)))
 for _ in range(8):
     httpx.post(f"{BASE}/auth/login", json={"email": "diario.auditor@prueba.local", "password": "mala"})
@@ -167,7 +195,7 @@ with sync_playwright() as p:
     pag.on("pageerror", lambda e: errores_js.append(str(e)))
     pag.goto(BASE + "/")
     pag.fill("#loginEmail", "diario@prueba.local"); pag.fill("#loginPass", "clave-diario-123"); pag.click("#loginBtn")
-    pag.wait_for_selector("#claveBtn")
+    pag.wait_for_selector("#logoutBtn")
 
     # La sesión se renueva sola al usarse: se simula que pasó la mitad de su vigencia.
     pag.evaluate("() => { const s = JSON.parse(localStorage.getItem('rk_session')); s.renovar_desde = 1; "
@@ -187,20 +215,33 @@ with sync_playwright() as p:
           and sqlq("select error_count || '|' || updated_rows || '|' || (errors ->> 0 like '%no indica la semana%')::int "
                    "from csv_uploads where filename = 'regional-uy-weekly.csv'") == "1|0|1", fila)
 
-    pag.click("#claveBtn")
-    pag.fill("#claveActual", "clave-diario-123"); pag.fill("#claveNueva", "clave-navegador-1"); pag.fill("#claveRepetir", "otra-distinta-1")
-    pag.click("#claveGuardar"); pag.wait_for_timeout(500)
-    check("cambiar contraseña: avisa si las nuevas no coinciden", "no coinciden" in pag.inner_text("#claveForm"))
-    pag.fill("#claveActual", "clave-diario-123"); pag.fill("#claveNueva", "clave-navegador-1"); pag.fill("#claveRepetir", "clave-navegador-1")
-    pag.once("dialog", lambda d: d.accept())
-    pag.click("#claveGuardar"); pag.wait_for_timeout(1500)
-    check("cambiar contraseña desde la aplicación", pag.query_selector("#claveForm") is None
-          and ingresar(clave="clave-navegador-1")[0].status_code == 200)
-    sqlq("select auth.set_password('diario@prueba.local', 'clave-diario-123')")
-
     pag.click("#logoutBtn"); pag.wait_for_selector("#loginEmail")
     check("cerrar sesión desde la aplicación anula la sesión en el servidor",
           httpx.get(f"{BASE}/rest/app_users", headers={"Authorization": "Bearer " + nuevo["access_token"]}).status_code == 401)
+
+    # Contraseñas en la pantalla de ingreso.
+    check("dentro de la aplicación no hay botón de contraseña (está en el ingreso)", pag.locator("#claveBtn").count() == 0)
+    pag.click("#linkCambiar")
+    pag.fill("#loginEmail", "diario@prueba.local"); pag.fill("#claveActual", "clave-diario-123")
+    pag.fill("#claveNueva", "clave-navegador-1"); pag.fill("#claveRepetir", "otra-distinta-1")
+    pag.click("#claveGuardar")
+    check("cambiar contraseña: avisa si las nuevas no coinciden", "no coinciden" in pag.inner_text("#loginErr"))
+    pag.fill("#claveRepetir", "clave-navegador-1"); pag.click("#claveGuardar")
+    pag.wait_for_selector("#loginOk")
+    check("cambiar contraseña desde el ingreso: vuelve al ingreso con el email y la nueva funciona",
+          pag.input_value("#loginEmail") == "diario@prueba.local" and ingresar(clave="clave-navegador-1")[0].status_code == 200)
+    pag.click("#linkOlvide")
+    pag.fill("#loginEmail", "diario.olvido@prueba.local")   # usuario aparte: el freno de intentos de arriba no lo alcanza
+    check("¿Olvidaste la contraseña?: indica cómo obtener el código", "administra el sistema" in pag.inner_text(".login-card"))
+    pag.fill("#claveCodigo", "CCCC-CCCC"); pag.fill("#claveNueva", "clave-olvidada-1"); pag.fill("#claveRepetir", "clave-olvidada-1")
+    pag.click("#claveGuardar"); pag.wait_for_function("() => document.getElementById('loginErr').innerText.length > 0")
+    check("restablecer desde el ingreso: un código equivocado se informa", "no es válido" in pag.inner_text("#loginErr"))
+    codigo = sqlq("select auth.generar_codigo_clave('diario.olvido@prueba.local')")
+    pag.fill("#claveCodigo", codigo); pag.click("#claveGuardar"); pag.wait_for_selector("#loginOk")
+    pag.fill("#loginPass", "clave-olvidada-1"); pag.click("#loginBtn")
+    pag.wait_for_selector("#logoutBtn")
+    check("restablecer desde el ingreso con el código y entrar con la contraseña nueva", pag.is_visible("#logoutBtn"))
+    sqlq("select auth.set_password('diario@prueba.local', 'clave-diario-123')")
     check("sin errores de JavaScript", not errores_js, errores_js)
     nav.close()
 

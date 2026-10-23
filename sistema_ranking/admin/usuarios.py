@@ -7,6 +7,8 @@ Comandos:
   listar                                   usuarios, rol, oficina, último ingreso y si están bloqueados
   crear <email> <rol> [oficina]            pide la contraseña (mín. 10 caracteres) sin mostrarla
   clave <email>                            cambia la contraseña
+  codigo <email>                           código para que la persona restablezca su contraseña desde la pantalla
+                                           de ingreso ("¿Olvidaste la contraseña?"); sirve una vez, durante 30 minutos
   rol <email> <rol> [oficina]              cambia rol/oficina
   bloquear <email> | desbloquear <email>   impide o permite el ingreso sin borrar al usuario
 Roles: admin, usuario_estandar, auditor.
@@ -28,7 +30,7 @@ def pedir_clave():
 
 
 def main(args):
-    if not args or args[0] not in ("listar", "crear", "clave", "rol", "bloquear", "desbloquear"):
+    if not args or args[0] not in ("listar", "crear", "clave", "codigo", "rol", "bloquear", "desbloquear"):
         sys.exit(__doc__)
     cmd, resto = args[0], args[1:]
     with psycopg.connect(os.environ.get("PGURL") or sys.exit("Falta PGURL")) as con, con.cursor() as cur:
@@ -58,6 +60,10 @@ def main(args):
                            ON CONFLICT (user_id) DO UPDATE SET app_role = excluded.app_role,
                                oficina = coalesce(excluded.oficina, public.app_users.oficina)""",
                         (fila[0], resto[1], oficina))
+        elif cmd == "codigo":
+            cur.execute("SELECT auth.generar_codigo_clave(%s)", (email,))
+            print(f"Código para {email}: {cur.fetchone()[0]}")
+            print("Sirve una sola vez, durante 30 minutos: en la pantalla de ingreso, \"¿Olvidaste la contraseña?\".")
         elif cmd == "clave":
             cur.execute("SELECT 1 FROM auth.users WHERE lower(email) = %s", (email,))
             cur.fetchone() or sys.exit("No existe ese usuario.")

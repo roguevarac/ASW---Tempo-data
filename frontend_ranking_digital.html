@@ -139,16 +139,15 @@ tr.clic:hover td{background:var(--panel-raised);}
 .modal .close:hover{border-color:var(--brass-dim);color:var(--brass);}
 .modal table{font-size:12px;}
 .modal.small{width:min(620px,96vw);}
-.clave-form{display:flex;flex-direction:column;gap:12px;max-width:360px;}
-.clave-form label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--text-muted);}
-.clave-form input{background:var(--panel-raised);border:1px solid var(--line);color:var(--text-primary);padding:8px 10px;border-radius:3px;font-size:13px;}
-.clave-form .err{min-height:16px;}
+.login-links{display:flex;justify-content:space-between;gap:10px;margin-top:14px;font-size:12px;}
+.login-links a,.login-volver{color:var(--text-muted);cursor:pointer;text-decoration:underline;}
+.login-links a:hover,.login-volver:hover{color:var(--brass);}
+.login-card .ok{color:var(--green);font-size:12.5px;margin:-6px 0 12px;}
+.login-card .nota{font-size:12.5px;color:var(--text-muted);margin:0 0 12px;}
 .envio-op{display:block;width:100%;text-align:left;margin:0 0 10px;padding:12px 14px;}
 .envio-op b{display:block;font-size:13px;margin-bottom:3px;}
 .envio-op span{font-size:12px;color:var(--text-muted);}
 .envio-op:disabled{opacity:0.45;cursor:default;}
-.seg{font-size:11px;color:var(--text-muted);white-space:nowrap;}
-.seg .nunca{color:var(--brass);}
 .manual-link{font-size:11.5px;color:var(--text-muted);text-decoration:none;border:1px solid var(--line);padding:5px 10px;border-radius:3px;}
 .manual-link:hover{border-color:var(--brass-dim);color:var(--brass);}
 .modal tbody td{padding:6px 8px;}
@@ -185,7 +184,7 @@ let state = {
   uploadQueue: [], uploadIndex: -1, uploading: false,
   historial: null, histTab: 'youtube', histPais: '', controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
   envioDialog: null,
-  claveDialog: null,
+  loginModo: 'ingresar', loginAviso: '',
   masterTotal: 0, masterPage: 0, territoryTotal: 0, territoryPage: 0, territoryStale: true,
   territoryOpciones: { reclamos: [], estado_trabajo: [] }, seqMaster: 0, seqTerritory: 0, envioBusy: false,
 };
@@ -463,40 +462,6 @@ function renderEnvioDialog(){
   </div>`;
 }
 
-function renderClaveDialog(){
-  const d = state.claveDialog;
-  if(!d) return '';
-  return `
-  <div class="modal-bg" id="claveBg">
-    <div class="modal small">
-      <button class="close" id="closeClave">Cancelar</button>
-      <h2 class="display">Cambiar contraseña</h2>
-      <p class="sub">Mínimo 10 caracteres. Las sesiones abiertas en otros equipos se cierran.</p>
-      <form id="claveForm" class="clave-form">
-        <label>Contraseña actual<input type="password" id="claveActual" autocomplete="current-password" required></label>
-        <label>Contraseña nueva<input type="password" id="claveNueva" autocomplete="new-password" required></label>
-        <label>Repetir la contraseña nueva<input type="password" id="claveRepetir" autocomplete="new-password" required></label>
-        <div class="err">${d.error || ''}</div>
-        <button class="btn primary" type="submit" id="claveGuardar" ${d.busy ? 'disabled' : ''}>Guardar</button>
-      </form>
-    </div>
-  </div>`;
-}
-
-async function guardarClave(){
-  const actual = document.getElementById('claveActual').value;
-  const nueva = document.getElementById('claveNueva').value;
-  const repetir = document.getElementById('claveRepetir').value;
-  const error = (m) => { state.claveDialog = { error: m }; render(); };
-  if(nueva.length < 10) return error('La contraseña nueva debe tener al menos 10 caracteres.');
-  if(nueva !== repetir) return error('Las contraseñas nuevas no coinciden.');
-  state.claveDialog = { busy: true }; render();
-  const r = await sb.auth.cambiarClave(actual, nueva);
-  if(r.error) return error(r.error.message);
-  state.claveDialog = null; render();
-  alert('La contraseña quedó cambiada.');
-}
-
 async function startEnvio(modo){
   const tipo = state.envioDialog.tipo;
   state.envioBusy = true; render();
@@ -510,7 +475,7 @@ async function startEnvio(modo){
     state.envioDialog = null;
   } finally {
     state.envioBusy = false;
-    await loadMaster();   // actualiza la columna Seguimiento
+    await loadMaster();
     render();
   }
 }
@@ -956,7 +921,7 @@ function lastLoadCountry(){
 
 // ---------- Login ----------
 async function doLogin(email, password){
-  state.loginError = '';
+  Object.assign(state, { loginError: '', loginAviso: '', loginEmailValor: email });
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if(error){ state.loginError = error.message; render(); return; }
   state.session = data.session;
@@ -970,20 +935,65 @@ async function doLogout(){
 }
 
 // ---------- Render ----------
+// Pantalla de ingreso: ingresar, cambiar la contraseña (con la actual) o restablecerla con un código si se olvidó.
 function renderLogin(){
+  const m = state.loginModo;
+  const email = `<label>Email</label>
+      <input type="email" id="loginEmail" placeholder="usuario@oficina.com" value="${(state.loginEmailValor || '').replace(/"/g, '&quot;')}">`;
+  const nuevas = `<label>Contraseña nueva (mínimo 10 caracteres)</label>
+      <input type="password" id="claveNueva" autocomplete="new-password">
+      <label>Repetir la contraseña nueva</label>
+      <input type="password" id="claveRepetir" autocomplete="new-password">`;
+  const boton = (id, texto) => `<div class="err" id="loginErr">${state.loginError}</div>
+      <button class="btn primary" style="width:100%;justify-content:center" id="${id}">${texto}</button>`;
+  const volver = `<div class="login-links"><a class="login-volver" data-login-modo="ingresar">Volver al ingreso</a></div>`;
+  let cuerpo;
+  if(m === 'cambiar'){
+    cuerpo = `<p>Cambiar contraseña</p>${email}
+      <label>Contraseña actual</label>
+      <input type="password" id="claveActual" autocomplete="current-password">
+      ${nuevas}${boton('claveGuardar', 'Cambiar contraseña')}${volver}`;
+  } else if(m === 'olvide'){
+    cuerpo = `<p>Restablecer contraseña</p>
+      <p class="nota">Solicitá un código de restablecimiento a la persona que administra el sistema. El código sirve una
+      sola vez durante 30 minutos.</p>${email}
+      <label>Código de restablecimiento</label>
+      <input type="text" id="claveCodigo" autocomplete="one-time-code" placeholder="XXXX-XXXX">
+      ${nuevas}${boton('claveGuardar', 'Restablecer contraseña')}${volver}`;
+  } else {
+    cuerpo = `<p>Acceso sólo para usuarios verificados</p>${email}
+      <label>Contraseña</label>
+      <input type="password" id="loginPass" autocomplete="current-password">
+      ${state.loginAviso ? `<div class="ok" id="loginOk">${state.loginAviso}</div>` : ''}
+      ${boton('loginBtn', 'Ingresar')}
+      <div class="login-links"><a data-login-modo="cambiar" id="linkCambiar">Cambiar contraseña</a>
+        <a data-login-modo="olvide" id="linkOlvide">¿Olvidaste la contraseña?</a></div>`;
+  }
   return `
   <div class="login-wrap">
     <div class="login-card">
       <h1 class="display">Auditor de Rankings Digitales</h1>
-      <p>Acceso sólo para usuarios verificados</p>
-      <label>Email</label>
-      <input type="email" id="loginEmail" placeholder="usuario@oficina.com">
-      <label>Contraseña</label>
-      <input type="password" id="loginPass">
-      <div class="err">${state.loginError}</div>
-      <button class="btn primary" style="width:100%;justify-content:center" id="loginBtn">Ingresar</button>
+      ${cuerpo}
     </div>
   </div>`;
+}
+
+async function guardarClaveIngreso(){
+  const v = (id) => (document.getElementById(id) || {}).value || '';
+  const email = v('loginEmail').trim(), nueva = v('claveNueva');
+  const error = (msg) => { document.getElementById('loginErr').textContent = msg; };
+  if(!email) return error('Ingresá el email.');
+  if(nueva.length < 10) return error('La contraseña nueva debe tener al menos 10 caracteres.');
+  if(nueva !== v('claveRepetir')) return error('Las contraseñas nuevas no coinciden.');
+  const boton = document.getElementById('claveGuardar'); boton.disabled = true;
+  const r = state.loginModo === 'cambiar'
+    ? await sb.auth.cambiarClave(email, v('claveActual'), nueva)
+    : await sb.auth.restablecerClave(email, v('claveCodigo'), nueva);
+  boton.disabled = false;
+  if(r.error) return error(r.error.message);
+  Object.assign(state, { loginModo: 'ingresar', loginError: '', loginEmailValor: email,
+                         loginAviso: 'La contraseña quedó guardada. Ingresá con la contraseña nueva.' });
+  render();
 }
 
 function renderLastLoads(){
@@ -1007,7 +1017,6 @@ function renderTopbar(){
       <div class="who">${state.session.user.email} · <span class="mono">${state.profile.app_role}</span></div>
       <div style="display:flex;gap:8px;align-items:center;">
         <a class="manual-link" id="manualLink" href="manual.html" target="_blank" rel="noopener">Manual de uso</a>
-        <button id="claveBtn">Cambiar contraseña</button>
         <button id="logoutBtn">Cerrar sesión</button>
       </div>
     </div>
@@ -1019,13 +1028,6 @@ function renderTabs(){
     ['upload','Carga CSV', canUpload()],['history','Historial de cargas', true]];
   return `<div class="tabs">${tabs.map(([k,l,en]) =>
     `<div class="tab ${state.activeTab===k?'active':''}" data-tab="${k}">${l}${!en?'<span class="lock">solo lectura</span>':''}</div>`).join('')}</div>`;
-}
-
-function renderSeguimiento(r){
-  const e = r;
-  const bo = e.ult_bo_at ? `carga ${e.ult_bo_carga} · ${fmtFecha(e.ult_bo_at).slice(0,10)}` : '<span class="nunca">nunca</span>';
-  const csv = e.ult_csv_at ? fmtFecha(e.ult_csv_at).slice(0,10) : '<span class="nunca">nunca</span>';
-  return `<div class="seg">BO: ${bo}</div><div class="seg">CSV: ${csv}</div>`;
 }
 
 // "1–100 de 25.000" y los botones para moverse entre páginas.
@@ -1060,13 +1062,12 @@ function renderMaster(){
       <button class="btn primary" id="exportMaster"><i>&#8595;</i> Descargar CSV</button>
     </div>
   </div>
-  <table><thead><tr><th style="width:55%">Track - Artista</th><th>Tempo ID</th><th>Seguimiento</th></tr></thead>
+  <table><thead><tr><th style="width:70%">Track - Artista</th><th>Tempo ID</th></tr></thead>
   <tbody>${rows.length ? rows.map(r=>`
     <tr class="${r.deleted_at?'is-deleted':''}">
       <td>${r.track_artist_concat}</td>
       <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—">` : (r.tempo_id||'—')}</td>
-      <td>${renderSeguimiento(r)}</td>
-    </tr>`).join('') : `<tr><td colspan="3"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
+    </tr>`).join('') : `<tr><td colspan="2"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
   </tbody></table>
   ${renderPager('master', state.masterTotal, state.masterPage)}`;
 }
@@ -1386,7 +1387,7 @@ function render(){
     ${renderTopbar()}${renderTabs()}
     <div class="panel-body">${renderBody()}</div>
     <footer><span>Auditor de Rankings Digitales</span><span>${rows_count()}</span></footer>
-  </div>${renderHistoryModal()}${renderEnvioDialog()}${renderClaveDialog()}`;
+  </div>${renderHistoryModal()}${renderEnvioDialog()}`;
   attachAppEvents();
 }
 function rows_count(){
@@ -1396,18 +1397,21 @@ function rows_count(){
 }
 
 function attachLoginEvents(){
-  document.getElementById('loginBtn').onclick = () => {
+  const ingresar = document.getElementById('loginBtn');
+  if(ingresar) ingresar.onclick = () => {
     doLogin(document.getElementById('loginEmail').value, document.getElementById('loginPass').value);
   };
+  const guardar = document.getElementById('claveGuardar');
+  if(guardar) guardar.onclick = guardarClaveIngreso;
+  document.querySelectorAll('[data-login-modo]').forEach(a => a.onclick = () => {
+    Object.assign(state, { loginModo: a.dataset.loginModo, loginError: '', loginAviso: '',
+                           loginEmailValor: document.getElementById('loginEmail').value });
+    render();
+  });
 }
 
 function attachAppEvents(){
   document.getElementById('logoutBtn').onclick = doLogout;
-  document.getElementById('claveBtn').onclick = () => { state.claveDialog = {}; render(); document.getElementById('claveActual').focus(); };
-  const claveF = document.getElementById('claveForm');
-  if(claveF) claveF.onsubmit = (e) => { e.preventDefault(); guardarClave(); };
-  const closeC = document.getElementById('closeClave');
-  if(closeC) closeC.onclick = () => { state.claveDialog = null; render(); };
   document.querySelectorAll('[data-tab]').forEach(t => t.onclick = async () => {
     const habiaBusqueda = !!state.search;
     state.activeTab = t.dataset.tab; state.search='';

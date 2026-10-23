@@ -3,7 +3,7 @@
 --
 --  * Sesiones en la base: cerrar sesión las anula en el servidor; mientras se usa la aplicación la sesión se renueva
 --    sola y vence por inactividad (SESSION_HOURS sin usarla), no a las 8 horas del ingreso.
---  * Cambio de la contraseña propia desde la aplicación.
+--  * Cambio de contraseña desde la pantalla de ingreso, y restablecimiento con un código si se olvidó.
 --  * Carga de un archivo en una sola transacción: los datos y su registro en el historial quedan juntos o no queda
 --    nada (antes se mandaba de a 250 filas y un corte dejaba el archivo cargado a medias y sin registro).
 --  * Tempo ID repetido: la obra se unifica con la que ya tenía ese Tempo ID (lo que buscaba fn_set_tempo_id, que
@@ -59,29 +59,100 @@ LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
     UPDATE auth.sesiones SET cerrada = now() WHERE id = p_sesion AND cerrada IS NULL;
 $$;
 
--- Cambio de la contraseña propia: pide la actual. Cierra las demás sesiones del usuario (otras PC o pestañas).
-CREATE OR REPLACE FUNCTION auth.cambiar_clave(p_user uuid, p_sesion uuid, p_actual text, p_nueva text) RETURNS boolean
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+-- Contraseñas desde la pantalla de ingreso. Al cambiarla se cierran todas las sesiones del usuario.
+DROP FUNCTION IF EXISTS auth.cambiar_clave(uuid, uuid, text, text);   -- versión anterior (desde la aplicación)
+
+CREATE OR REPLACE FUNCTION auth.validar_clave_nueva(p_nueva text) RETURNS void
+LANGUAGE plpgsql IMMUTABLE AS $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = p_user
-                   AND u.encrypted_password = crypt(coalesce(p_actual, ''), u.encrypted_password)) THEN
-        RETURN false;
-    END IF;
     IF length(coalesce(p_nueva, '')) < 10 THEN
         RAISE EXCEPTION 'La contraseña nueva debe tener al menos 10 caracteres.';
+    END IF;
+END $$;
+
+-- Cambio con la contraseña actual. Devuelve false si el email o la contraseña actual no son correctos.
+CREATE OR REPLACE FUNCTION auth.cambiar_clave(p_email text, p_actual text, p_nueva text) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_id uuid;
+BEGIN
+    PERFORM auth.validar_clave_nueva(p_nueva);
+    SELECT u.id INTO v_id FROM auth.users u
+    WHERE lower(u.email) = lower(trim(p_email)) AND (u.banned_until IS NULL OR u.banned_until < now())
+      AND u.encrypted_password = crypt(coalesce(p_actual, ''), u.encrypted_password);
+    IF v_id IS NULL THEN
+        RETURN false;
     END IF;
     IF p_nueva = p_actual THEN
         RAISE EXCEPTION 'La contraseña nueva debe ser distinta de la actual.';
     END IF;
-    UPDATE auth.users SET encrypted_password = crypt(p_nueva, gen_salt('bf', 10)) WHERE id = p_user;
-    UPDATE auth.sesiones SET cerrada = now() WHERE user_id = p_user AND id <> p_sesion AND cerrada IS NULL;
+    UPDATE auth.users SET encrypted_password = crypt(p_nueva, gen_salt('bf', 10)) WHERE id = v_id;
+    UPDATE auth.sesiones SET cerrada = now() WHERE user_id = v_id AND cerrada IS NULL;
+    RETURN true;
+END $$;
+
+-- Contraseña olvidada: quien administra el sistema genera un código de un solo uso (ranking.sh usuarios), válido 30
+-- minutos y por 5 intentos. Se guarda solo su hash.
+CREATE TABLE IF NOT EXISTS auth.codigos_clave (
+    user_id     uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    codigo_hash text NOT NULL,
+    vence       timestamptz NOT NULL,
+    intentos    integer NOT NULL DEFAULT 0
+);
+
+CREATE OR REPLACE FUNCTION auth.normalizar_codigo(p_codigo text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT regexp_replace(upper(coalesce(p_codigo, '')), '[^A-Z0-9]', '', 'g')
+$$;
+
+-- Uso administrativo (consola): devuelve el código, con formato XXXX-XXXX. Reemplaza al anterior del usuario.
+CREATE OR REPLACE FUNCTION auth.generar_codigo_clave(p_email text) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+    v_id uuid;
+    v_letras text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   -- sin 0/O ni 1/I, que se confunden
+    v_bytes bytea := gen_random_bytes(8);
+    v_codigo text := '';
+BEGIN
+    SELECT id INTO v_id FROM auth.users WHERE lower(email) = lower(trim(p_email));
+    IF v_id IS NULL THEN
+        RAISE EXCEPTION 'No existe ese usuario.';
+    END IF;
+    FOR i IN 0..7 LOOP
+        v_codigo := v_codigo || substr(v_letras, 1 + get_byte(v_bytes, i) % 32, 1);
+    END LOOP;
+    INSERT INTO auth.codigos_clave (user_id, codigo_hash, vence)
+    VALUES (v_id, encode(digest(v_codigo, 'sha256'), 'hex'), now() + interval '30 minutes')
+    ON CONFLICT (user_id) DO UPDATE SET codigo_hash = excluded.codigo_hash, vence = excluded.vence, intentos = 0;
+    RETURN substr(v_codigo, 1, 4) || '-' || substr(v_codigo, 5, 4);
+END $$;
+
+-- Restablece la contraseña con el código. Devuelve false si el código no corresponde, venció o se agotaron los
+-- intentos. El código sirve una sola vez.
+CREATE OR REPLACE FUNCTION auth.restablecer_clave(p_email text, p_codigo text, p_nueva text) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE c auth.codigos_clave%ROWTYPE;
+BEGIN
+    PERFORM auth.validar_clave_nueva(p_nueva);
+    SELECT k.* INTO c FROM auth.codigos_clave k JOIN auth.users u ON u.id = k.user_id
+    WHERE lower(u.email) = lower(trim(p_email));
+    IF c.user_id IS NULL OR c.vence < now() OR c.intentos >= 5 THEN
+        RETURN false;
+    END IF;
+    IF c.codigo_hash <> encode(digest(auth.normalizar_codigo(p_codigo), 'sha256'), 'hex') THEN
+        UPDATE auth.codigos_clave SET intentos = intentos + 1 WHERE user_id = c.user_id;
+        RETURN false;
+    END IF;
+    UPDATE auth.users SET encrypted_password = crypt(p_nueva, gen_salt('bf', 10)) WHERE id = c.user_id;
+    DELETE FROM auth.codigos_clave WHERE user_id = c.user_id;
+    UPDATE auth.sesiones SET cerrada = now() WHERE user_id = c.user_id AND cerrada IS NULL;
     RETURN true;
 END $$;
 
 REVOKE ALL ON FUNCTION auth.abrir_sesion(uuid), auth.sesion_valida(uuid, uuid, interval), auth.cerrar_sesion(uuid),
-    auth.cambiar_clave(uuid, uuid, text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION auth.abrir_sesion(uuid), auth.cerrar_sesion(uuid), auth.cambiar_clave(uuid, uuid, text, text)
-    TO authenticator;
+    auth.cambiar_clave(text, text, text), auth.generar_codigo_clave(text), auth.restablecer_clave(text, text, text)
+    FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION auth.abrir_sesion(uuid), auth.cerrar_sesion(uuid), auth.cambiar_clave(text, text, text),
+    auth.restablecer_clave(text, text, text) TO authenticator;
 GRANT EXECUTE ON FUNCTION auth.sesion_valida(uuid, uuid, interval) TO authenticated, service_role;
 
 -- ---------------------------------------------------------------- carga de un archivo

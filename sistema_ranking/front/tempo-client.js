@@ -3,7 +3,8 @@
  * Expone window.supabase.createClient(...) con los MISMOS métodos que usa el front
  * (antes provistos por supabase-js), para que el HTML funcione sin cambiar su lógica:
  *
- *   auth.signInWithPassword({email,password}) · auth.getSession() · auth.signOut() · auth.cambiarClave(actual, nueva)
+ *   auth.signInWithPassword({email,password}) · auth.getSession() · auth.signOut()
+ *   auth.cambiarClave(email, actual, nueva) · auth.restablecerClave(email, codigo, nueva)   (pantalla de ingreso)
  *   from(tabla).select(cols).eq(c,v).is(c,v).order(c,{ascending}).limit(n).range(a,b).single().csv()
  *   from(tabla).update(cambios).eq(c,v) · from(tabla).insert(fila | filas)
  *   rpc(funcion, params).select(cols).range(a,b).single().csv()
@@ -159,8 +160,12 @@
         localStorage.removeItem(CLAVE_SESION);
         return { error: null };
       },
-      async cambiarClave(actual, nueva) {
-        const r = await pedir('POST', '/auth/clave', { body: { actual, nueva } });
+      async cambiarClave(email, actual, nueva) {
+        const r = await pedir('POST', '/auth/clave', { body: { email, actual, nueva } });
+        return { error: r.error };
+      },
+      async restablecerClave(email, codigo, nueva) {
+        const r = await pedir('POST', '/auth/restablecer', { body: { email, codigo, nueva } });
         return { error: r.error };
       },
     };

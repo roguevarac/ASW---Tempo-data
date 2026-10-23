@@ -128,8 +128,8 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     historial (respaldo previo, confirmación de una persona). Quedan los usuarios y `bo_export_counter`.
   - **Seguimiento de envíos** (`db/mejoras/01_seguimiento.sql`: tablas `envios` y `envio_obras`, `fn_preparar_envio`,
     `fn_envio_obras`, `fn_envios_por_obra`). El reporte BO y el CSV de la tabla principal se descargan como
-    "Solo las nuevas" (nunca salieron en ese tipo) o "Todas" (revisión trimestral). La tabla principal tiene la columna
-    y el filtro "Seguimiento".
+    "Solo las nuevas" (nunca salieron en ese tipo) o "Todas" (revisión trimestral). El usuario **no quiere ver la columna
+    "Seguimiento"** (23/10/2026): el registro de envíos sigue y se usa en el cartel de cada descarga.
   - **Mejoras propias de la base:** van en `db/mejoras/*.sql`, idempotentes. `db/mejoras.sh` las aplica:
     - al instalar;
     - en cada arranque del servicio `instalador` de compose;
@@ -145,8 +145,12 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     `correr_todo`, vacía la base) mide los tiempos con volumen real.
   - **Uso diario (22/10/2026, `db/mejoras/04_uso_diario.sql`):**
     - Sesiones en `auth.sesiones`: el token lleva `sid`; la API valida cada pedido con `auth.sesion_valida`
-      (inactividad = `SESSION_HOURS`). `/auth/renovar`, `/auth/salir`, `/auth/clave`. `tempo-client.js` renueva a mitad
-      de vigencia. Si una tabla nueva apunta a `auth.users`, agregarla a los TRUNCATE de `restaurar` y `importar.py`.
+      (inactividad = `SESSION_HOURS`). `/auth/renovar`, `/auth/salir`. Contraseña desde la
+      **pantalla de ingreso** (pedido del usuario, 23/10/2026; no dentro de la aplicación): `/auth/clave` (con la actual)
+      y `/auth/restablecer` (código de `auth.generar_codigo_clave`, `usuarios.py codigo`, menú 6 de `ranking.sh usuarios`
+      y `USUARIOS.bat`; tabla `auth.codigos_clave`). `tempo-client.js` renueva a mitad
+      de vigencia. Si una tabla nueva apunta a `auth.users`, agregarla a los TRUNCATE de `restaurar` y `importar.py`
+      (hoy `auth.sesiones` y `auth.codigos_clave`).
     - El freno de ingreso cuenta solo intentos fallidos.
     - Cargas: `fn_cargar_archivo` (filas + `csv_uploads` en una transacción; el archivo se guarda antes). El front ya no
       manda tandas de 250. Chart sin semana en el nombre: no se carga (como `importar_charts.py`).
@@ -171,7 +175,7 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - Mensajes breves que indiquen qué hacer o qué representa la información.
     - Términos: "territorio/país", "Reporte BackOffice", "Reporte Tempo Control", "seleccionar", "cargar".
   - **Descargas (reporte BO y CSV):** la elección "Solo las nuevas" / "Todas" va en el cartel que se abre al apretar cada
-    botón. El usuario no quiere desplegables de seguimiento en la barra; solo queda la columna "Seguimiento".
+    botón. El usuario no quiere desplegables de seguimiento en la barra ni la columna "Seguimiento".
   - **Nombres de charts que se deben leer** (país, semana y plataforma salen del nombre; `test_navegador.py` los prueba):
     - `regional-ar-weekly-2021-01-07.csv`
     - `regional-py-weekly-2023-12-14 -ult.csv`

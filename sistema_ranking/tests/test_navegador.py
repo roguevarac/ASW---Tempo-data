@@ -217,9 +217,9 @@ with sync_playwright() as p:
     pag.wait_for_timeout(1000)
     check("copia del reporte BO guardada y registrada",
           sqlq("select count(*) from csv_uploads where format='bo_generado' and file_path like 'bo_generado/%'") == "1")
-    check("la columna Seguimiento muestra la carga del reporte BO (y 'nunca' en las que no salieron)",
-          pag.locator(".seg", has_text=f"BO: carga {carga}").count() == con_tempo
-          and pag.locator(".seg", has_text="BO: nunca").count() == total_obras - con_tempo, pag.inner_text("tbody"))
+    check("el reporte BO queda registrado con sus obras (sin columna Seguimiento en la tabla)",
+          sqlq("select count(*) from envio_obras eo join envios e on e.id = eo.envio_id where e.carga = " + carga) == str(con_tempo)
+          and "Seguimiento" not in pag.inner_text("thead"), pag.inner_text("thead"))
     pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="todas"]')
     check("reporte BO: sin nuevas, 'solo las nuevas' queda apagada", pag.is_disabled('[data-envio-modo="nuevas"]'), pag.inner_text(".modal"))
     with pag.expect_download() as d:

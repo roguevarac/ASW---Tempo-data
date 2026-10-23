@@ -7,7 +7,8 @@ while ($true) {
     Usuarios listar
     Write-Host ""
     Write-Host "  1 = Crear usuario        2 = Cambiar contrasena    3 = Cambiar rol u oficina"
-    Write-Host "  4 = Bloquear usuario     5 = Desbloquear usuario   0 = Salir"
+    Write-Host "  4 = Bloquear usuario     5 = Desbloquear usuario   6 = Codigo para restablecer la contrasena"
+    Write-Host "  0 = Salir"
     $op = Read-Host "Opcion"
     if ($op -eq '0' -or -not $op) { break }
     $email = Read-Host "Email"
@@ -28,6 +29,7 @@ while ($true) {
         }
         '4' { Usuarios bloquear $email }
         '5' { Usuarios desbloquear $email }
+        '6' { Usuarios codigo $email }
         default { Aviso "Opcion invalida." }
     }
 }

@@ -341,6 +341,7 @@ docker compose exec -e PGURL=postgresql://postgres:<POSTGRES_PASSWORD>@db:5432/r
   python /app/admin/usuarios.py listar
 #  crear <email> <admin|usuario_estandar|auditor> [oficina]   (pide la contraseña, mínimo 10 caracteres)
 #  clave <email> · rol <email> <rol> [oficina] · bloquear <email> · desbloquear <email>
+#  codigo <email>   código de un solo uso (30 minutos) para "¿Olvidaste la contraseña?" en la pantalla de ingreso
 ```
 
 Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
@@ -360,7 +361,7 @@ Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
 - **Seguimiento de envíos** (`db/mejoras/01_seguimiento.sql`): el sistema registra qué obras salieron en cada
   reporte BO y en cada descarga del CSV de la tabla principal. Al descargar se elige **Solo las nuevas** (las que
   nunca salieron en ese tipo de descarga, para el seguimiento semanal) o **Todas** (la revisión completa, por
-  ejemplo trimestral). La elección se hace en el cartel que abre cada botón de descarga; la tabla principal muestra la columna **Seguimiento**, y cada descarga queda
+  ejemplo trimestral). La elección se hace en el cartel que abre cada botón de descarga; cada descarga queda
   registrada.
 - **Historial de cargas** (solo lectura): por YouTube y Spotify (con país), Reportes BackOffice y Reportes Tempo
   Control. Muestra qué hay cargado en la base y de qué archivo salió (`db/mejoras/02_historial.sql`).
@@ -385,7 +386,7 @@ Supabase fue el entorno de prueba; estas limitaciones venían de ahí y se corri
 |---|---|
 | La sesión vencía a las 8 horas del ingreso aunque se estuviera trabajando (la página se recargaba, incluso en medio de una carga). | Sesiones en la base (`auth.sesiones`): el front renueva el token mientras se usa (`/auth/renovar`); vence tras `SESSION_HOURS` sin uso. |
 | "Cerrar sesión" solo borraba el token del navegador: una copia seguía sirviendo hasta vencer. | `/auth/salir` anula la sesión en el servidor. Bloquear al usuario o cambiar la contraseña corta las demás sesiones en el acto. |
-| La contraseña solo se cambiaba desde la consola. | **Cambiar contraseña** en la aplicación (`/auth/clave`, pide la actual). |
+| La contraseña solo se cambiaba desde la consola. | En la pantalla de ingreso: **Cambiar contraseña** (`/auth/clave`, pide la actual) y **¿Olvidaste la contraseña?** (`/auth/restablecer`, con un código de un solo uso que genera quien administra: `ranking.sh usuarios`, opción 6; vale 30 minutos y 5 intentos, se guarda solo su hash). Al guardar se cierran todas las sesiones. |
 | Mensaje de ingreso en inglés; el freno de intentos contaba también los ingresos correctos (8 ingresos en 5 minutos bloqueaban). | Mensajes en castellano; solo cuentan los intentos fallidos. |
 | Cada archivo se mandaba de a 250 filas, en pedidos separados: un corte dejaba el archivo cargado a medias y sin registro en el historial. | `fn_cargar_archivo`: el archivo original se guarda primero y después filas y registro van en una sola transacción. Queda todo o nada. |
 | Un chart sin semana en el nombre se cargaba con la fecha del día (semana equivocada). | Se rechaza con un mensaje, igual que en `cargar-historicos`. |
@@ -414,7 +415,7 @@ Supabase fue el entorno de prueba; estas limitaciones venían de ahí y se corri
 | `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
 | `test_espejo.py` | Espejo de OneDrive: carpeta de cada tipo de carga, nombres que Windows no acepta, que nunca interrumpe una carga, que solo escribe, y la sincronización de todas las cargas. |
 | `test_importar_charts.py` | Carga masiva de charts históricos: mismo resultado que Carga CSV en el navegador, país por carpeta, archivos sin semana, archivos que no son charts, retomar sin duplicar. |
-| `test_uso_diario.py` | Sesiones (renovar, inactividad, cerrar, bloqueo, cambio de contraseña), freno de intentos fallidos, carga todo o nada, chart sin semana, unificación por Tempo ID y permisos, descarga con todos los filtros, compresión; y lo mismo en el navegador. |
+| `test_uso_diario.py` | Sesiones (renovar, inactividad, cerrar, bloqueo), cambio y restablecimiento de contraseña con código desde el ingreso, freno de intentos fallidos, carga todo o nada, chart sin semana, unificación por Tempo ID y permisos, descarga con todos los filtros, compresión; y lo mismo en el navegador. |
 | `test_rendimiento.py` | Con 20.000 canciones y 208.000 filas de charts: mismos totales que las funciones originales, orden de las páginas, búsqueda literal, filtros, y que abrir, buscar, paginar y filtrar en el navegador tarde menos de 3 s. |
 | `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, espejo de OneDrive (carga nueva copiada, borrado sin efecto, OneDrive sin permiso), respaldo automático (al arrancar, a nombre del usuario, copia en OneDrive, conserva los últimos 14), mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
 | `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, administrar usuarios, apagar, volver a abrir y actualizar. |

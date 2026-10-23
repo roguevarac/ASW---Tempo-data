@@ -111,10 +111,12 @@ en la computadora del usuario.</p>
 <p>El ingreso se realiza con email y contraseña. Mientras se utiliza la aplicación, la sesión se mantiene abierta; se
 cierra después de 8 horas sin uso o al presionar <b>Cerrar sesión</b>, y luego se solicita nuevamente la contraseña.
 Después de 8 intentos fallidos, el ingreso se bloquea por unos minutos.</p>
+<p>Debajo del botón <b>Ingresar</b> figuran dos opciones. En ambas, la contraseña nueva debe tener al menos 10
+caracteres y, al guardarla, se cierran las sesiones abiertas.</p>
 <ul>
-  <li><b>Cambiar contraseña</b> (arriba a la derecha): solicita la contraseña actual y la nueva, de al menos 10
-    caracteres. Al cambiarla se cierran las sesiones abiertas en otros equipos.</li>
-  <li>Si olvidaste la contraseña, contactá a la persona que administra el sistema.</li>
+  <li><b>Cambiar contraseña:</b> solicita el email, la contraseña actual y la nueva.</li>
+  <li><b>¿Olvidaste la contraseña?:</b> solicitá un código de restablecimiento a la persona que administra el sistema.
+    Ingresá el email, el código y la contraseña nueva. El código sirve una sola vez, durante 30 minutos.</li>
 </ul>
 <table>
   <tr><th>Rol</th><th>Permisos</th></tr>
@@ -134,7 +136,7 @@ Después de 8 intentos fallidos, el ingreso se bloquea por unos minutos.</p>
     <i>"Seleccionar país para ver fecha de última carga"</i>. Se toma el territorio del filtro de la pestaña activa; en
     Carga CSV e Historial de cargas, el último seleccionado. La fecha corresponde a la <b>semana del chart</b>, no al
     día de la carga: cargar hoy un chart anterior no la modifica.</li>
-  <li><b>Superior derecha:</b> usuario y rol, <b>Manual de uso</b>, <b>Cambiar contraseña</b> y <b>Cerrar sesión</b>.</li>
+  <li><b>Superior derecha:</b> usuario y rol, <b>Manual de uso</b> y <b>Cerrar sesión</b>.</li>
   <li><b>Pestañas:</b> Tabla principal, Tabla por territorio, Carga CSV e Historial de cargas.</li>
   <li><b>Pie de página:</b> cantidad de filas visibles con los filtros aplicados.</li>
 </ul>
@@ -262,14 +264,6 @@ página. La búsqueda y los filtros se aplican sobre todas las canciones, no sol
     "lo ingresado en AR en octubre". <b>Limpiar</b> quita el país y las fechas.</li>
   <li><b>Ver eliminados</b> (solo admin): incluye, en gris, las obras dadas de baja.</li>
 </ul>
-<h3>Columna Seguimiento</h3>
-<p>Para cada obra indica:</p>
-<ul>
-  <li><b>BO:</b> número de carga y fecha del último reporte BO que la incluyó;</li>
-  <li><b>CSV:</b> fecha de la última descarga del CSV que la incluyó.</li>
-</ul>
-<p>"nunca" indica que la obra todavía no fue incluida. El alcance de cada descarga ("solo las nuevas" o "todas") se
-elige al presionar el botón correspondiente.</p>
 <h3>Registro del Tempo ID</h3>
 <p>Ingresá el número en la celda y salí de ella (clic fuera o Tab): se guarda automáticamente. Las celdas vacías se
 marcan en rojo. El Tempo ID registrado se aplica también a todas las filas de esa obra en la tabla por territorio.</p>
@@ -412,8 +406,10 @@ datos, utilizá siempre <b>Carga CSV</b>.</p></div>
     unificación. Si no, verificá el Tempo ID en Tempo.</td></tr>
   <tr><td>"… no indica la semana del chart"</td><td>El nombre del chart no incluye la fecha. Descargalo nuevamente o
     renombralo con el formato original (ver <a href="#nombres">Nombres de los charts</a>) y volvé a cargarlo.</td></tr>
+  <tr><td>"El código no es válido o venció"</td><td>El código ya se utilizó, pasaron más de 30 minutos o se ingresó
+    mal varias veces. Solicitá un código nuevo.</td></tr>
   <tr><td>"La sesión venció. Volvé a ingresar."</td><td>Pasaron 8 horas sin uso, se cerró la sesión o se cambió la
-    contraseña en otro equipo. Ingresá nuevamente.</td></tr>
+    contraseña. Ingresá nuevamente.</td></tr>
   <tr><td>La fecha de última carga no cambia</td><td>Seleccioná el país. La fecha corresponde a la semana del chart más
     reciente, no al día de la carga.</td></tr>
   <tr><td>"Auditor de Rankings Digitales está iniciando o apagado"</td><td>El servidor se está iniciando (por ejemplo, después de
