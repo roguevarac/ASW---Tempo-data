@@ -204,19 +204,24 @@ def servicio(pgurl, storage_dir, intervalo=3):
                 pass
             time.sleep(300)
     ultimo = None
+    # El repaso completo revisa miles de archivos en OneDrive: se hace un rato después de arrancar, para no competir
+    # con el arranque del sistema ni con el primer ingreso. Las cargas nuevas se copian enseguida igual.
+    repaso_en = time.time() + float(os.environ.get("ESPEJO_DEMORA", "60"))
     while True:
         try:
             with psycopg.connect(pgurl, row_factory=dict_row, autocommit=True) as con:
                 panel = Panel(con)
                 while True:
                     maximo = con.execute("SELECT coalesce(max(id), 0) AS m FROM public.csv_uploads").fetchone()["m"]
-                    if ultimo is None or maximo < ultimo:
+                    if ultimo is None:
+                        ultimo = maximo
+                    if (repaso_en is not None and time.time() >= repaso_en) or maximo < ultimo:
                         # Al arrancar, o si la base volvió atrás (restaurar): repaso completo, sin pisar nada.
                         copiadas, aplica = sincronizar(pgurl, storage_dir)
                         log.info("Espejo OneDrive: %s de %s archivos de carga presentes.", copiadas, aplica)
                         panel.evento("ok" if copiadas == aplica else "aviso",
                                      f"Revisión completa: {copiadas} de {aplica} archivos de carga presentes en OneDrive")
-                        ultimo = maximo
+                        ultimo, repaso_en = maximo, None
                     nuevas = con.execute("SELECT id, filename, file_path, format, updated_rows FROM public.csv_uploads "
                                          "WHERE id > %s ORDER BY id", (ultimo,)).fetchall()
                     for c in nuevas:

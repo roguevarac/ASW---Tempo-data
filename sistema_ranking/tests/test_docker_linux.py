@@ -118,7 +118,7 @@ def login(email, clave):
 
 def dc(*a, entrada=None):
     return subprocess.run(["docker", "compose", "--project-directory", str(proyecto), "--env-file", str(config), *a],
-                          capture_output=True, text=True, input=entrada, env=ENTORNO)
+                          capture_output=True, text=True, input=entrada, env=dict(ENTORNO, RESPALDOS_DIR=str(respaldos)))
 
 
 def base_nueva(q):
@@ -348,6 +348,11 @@ try:
     check("usuarios: bloquear desde el menú", base_nueva("select banned_until > now() from auth.users where email='estandar@prueba.local'") == "t")
 
     # ================================================================ respaldo automático (servicio "respaldo")
+    check("respaldo automático: no compite con el arranque (el primero espera unos minutos)",
+          not list(respaldos.glob("ranking_auto_*.dump")), sorted(f.name for f in respaldos.iterdir()))
+    with config.open("a") as f:   # en la prueba, sin esa espera
+        f.write("RESPALDO_DEMORA=0\n")
+    dc("up", "-d", "respaldo")
     for _ in range(120):
         auto = sorted(respaldos.glob("ranking_auto_*.dump"))
         if auto and (respaldos / (auto[-1].name[:-5] + "_archivos.tgz")).exists():
@@ -496,8 +501,15 @@ try:
     codigo = fin(ranking("detener"))
     check("detener: apaga el sistema", codigo == 0 and login("admin@prueba.local", "clave-migrada-123").status_code == 599)
     # Lo que corre el ícono del escritorio: levanta todo y deja la ventana abierta (mantiene Ubuntu prendido).
+    t_abrir = time.time()
     p = ranking("abrir", "--mantener")
     p.expect("Dejá esta ventana abierta", timeout=300)
+    t_abrir = time.time() - t_abrir
+    print(f"     (abrir con el sistema apagado: {t_abrir:.1f} s)")
+    check("abrir con el sistema apagado: listo en menos de 40 s", t_abrir < 40, t_abrir)
+    check("abrir: las mejoras de la base ya estaban aplicadas y no se repiten", "Mejoras de la base al día" in dc("logs", "instalador").stdout)
+    check("abrir: deja el tiempo de arranque para el Panel de control",
+          "Arranque del sistema: " in base_nueva("select mensaje from panel.eventos where servicio = 'ranking.sh' order by id desc limit 1"))
     check("abrir (ícono): vuelve a levantar todo, los datos siguen y la ventana queda abierta",
           p.isalive() and login("admin@prueba.local", "clave-migrada-123").status_code == 200, texto("abrir.log")[-800:])
 

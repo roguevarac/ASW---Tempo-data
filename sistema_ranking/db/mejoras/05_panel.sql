@@ -118,6 +118,8 @@ BEGIN
                              WHERE servicio = 'respaldo' AND nivel <> 'ok' ORDER BY fecha DESC LIMIT 1),
             'solicitudes', (SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY s.id DESC), '[]') FROM
                             (SELECT * FROM panel.solicitudes ORDER BY id DESC LIMIT 5) s)),
+        'ultimo_arranque', (SELECT jsonb_build_object('fecha', fecha, 'mensaje', mensaje) FROM panel.eventos
+                            WHERE servicio = 'ranking.sh' AND mensaje LIKE 'Arranque del sistema%' ORDER BY fecha DESC LIMIT 1),
         'espejo', jsonb_build_object(
             'ultima_copia', (SELECT jsonb_build_object('fecha', fecha, 'mensaje', mensaje) FROM panel.eventos
                              WHERE servicio = 'espejo' AND nivel = 'ok' AND mensaje LIKE 'Copiado%' ORDER BY fecha DESC LIMIT 1),

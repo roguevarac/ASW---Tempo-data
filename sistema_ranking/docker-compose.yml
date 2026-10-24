@@ -34,7 +34,10 @@ services:
       - datos_db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ranking"]
-      interval: 5s
+      # Al arrancar se controla cada segundo (antes, cada 5 s: hasta 5 s de espera de más antes de levantar la API).
+      start_period: 120s
+      start_interval: 1s
+      interval: 10s
       retries: 30
     # Sin "ports": la base no queda expuesta fuera de Docker.
 
@@ -113,6 +116,7 @@ services:
       RESPALDO_ACTIVO: ${RESPALDOS_DIR:+1}
       RESPALDO_HORAS: ${RESPALDO_HORAS:-24}
       RESPALDO_CONSERVAR: ${RESPALDO_CONSERVAR:-14}
+      RESPALDO_DEMORA: ${RESPALDO_DEMORA:-600}
       ESPEJO: ${ESPEJO_DIR:+/espejo}
     volumes:
       - ./db:/db:ro

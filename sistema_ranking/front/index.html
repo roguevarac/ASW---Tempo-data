@@ -1522,7 +1522,8 @@ function renderPanelEstado(e){
   const sv = e.servicios || {}, r = e.recursos || {}, dt = e.datos || {};
   const servicios = [
     ['Base de datos', 'ok', 'Funcionando', `PostgreSQL ${esc((e.base.version || '').split(' ')[0])} · iniciada ${fmtFecha(e.base.iniciada)}`],
-    ['API y aplicación', 'ok', 'Funcionando', `iniciada ${fmtFecha(e.api.iniciada)}${e.api.fallas_recientes ? ` · ${e.api.fallas_recientes} errores en el registro` : ''}`],
+    ['API y aplicación', 'ok', 'Funcionando', `iniciada ${fmtFecha(e.api.iniciada)}${e.api.fallas_recientes ? ` · ${e.api.fallas_recientes} errores en el registro` : ''}`
+      + (e.ultimo_arranque ? `<br>Último arranque (${fmtFecha(e.ultimo_arranque.fecha)}): ${esc(e.ultimo_arranque.mensaje.replace(/^Arranque del sistema: /, ''))}` : '')],
     ...['espejo', 'respaldo'].map(k => {
       const [cl, tx] = estadoServicio(sv[k], 120);
       const det = sv[k] ? (k === 'espejo'
@@ -1935,6 +1936,6 @@ function attachAppEvents(){
   }
 })();
 </script>
-<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });</script>
 </body>
 </html>

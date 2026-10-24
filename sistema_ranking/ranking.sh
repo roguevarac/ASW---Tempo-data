@@ -52,7 +52,7 @@ si() {
 # oculto de Windows sin él), cada "up" vería otra configuración y reiniciaría la API.
 CLAVES_PROXY=(HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy)
 CLAVES_CONFIG=(POSTGRES_PASSWORD AUTHENTICATOR_PASSWORD JWT_SECRET PUERTO ESCUCHAR SESSION_HOURS MAX_UPLOAD_MB
-               STATEMENT_TIMEOUT DB_POOL IMAGEN_POSTGRES IMAGEN_PYTHON ESPEJO_DIR RESPALDO_HORAS RESPALDO_CONSERVAR
+               STATEMENT_TIMEOUT DB_POOL IMAGEN_POSTGRES IMAGEN_PYTHON ESPEJO_DIR RESPALDO_HORAS RESPALDO_CONSERVAR RESPALDO_DEMORA
                "${CLAVES_PROXY[@]}")
 dc() {
     local sin=() k; for k in "${CLAVES_CONFIG[@]}"; do sin+=(-u "$k"); done
@@ -137,11 +137,12 @@ correr_con_registro() {   # muestra la salida y, si falla, explica los errores d
     rm -f "$log"
     return "$codigo"
 }
+segundos() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1f", (b - a) / 1e9 }' | tr . ,; }
 esperar_sistema() {
     local i url; url="http://127.0.0.1:$(valor PUERTO)/health"
-    for i in $(seq 1 90); do
-        curl -fsS --noproxy '*' "$url" > /dev/null 2>&1 && return 0
-        sleep 1
+    for i in $(seq 1 180); do
+        curl -fsS --noproxy '*' --max-time 3 "$url" > /dev/null 2>&1 && return 0
+        sleep 0.5
     done
     dc logs --tail 30 api
     [ "${1:-}" = "--sin-salir" ] && return 1
@@ -370,7 +371,9 @@ cmd_migrar() {
 cmd_abrir() {
     local mantener=0 navegador=1 a
     for a in "$@"; do case "$a" in --mantener) mantener=1 ;; --sin-navegador) navegador=0 ;; esac; done
+    local t0 t1 t2; t0="$(date +%s%N)"
     verificar_docker; instalado
+    t1="$(date +%s%N)"
     echo "Arrancando Auditor de Rankings Digitales..."
     # --no-recreate: si ya está funcionando, no lo reinicia (las versiones nuevas las aplica actualizar). Solo si
     # recién se guardó un proxy o una carpeta de espejo nueva, la API se reinicia una vez para tomarlos.
@@ -378,7 +381,12 @@ cmd_abrir() {
     dc up -d "${recrear[@]+"${recrear[@]}"}" > /dev/null 2>&1 \
         || { dc up -d "${recrear[@]+"${recrear[@]}"}"; fallar "No arrancó (el motivo está arriba)."; }
     esperar_sistema
-    ok "Auditor de Rankings Digitales funcionando: $(direccion)"
+    t2="$(date +%s%N)"
+    ok "Auditor de Rankings Digitales funcionando: $(direccion) (en $(segundos "$t0" "$t2") s)"
+    # Para el Panel de control: cuánto tardó cada etapa (y cuánto hace que se encendió Ubuntu, si fue recién).
+    local ubuntu; ubuntu="$(awk '{print int($1)}' /proc/uptime 2> /dev/null)"
+    registrar_evento ok "Arranque del sistema: $(segundos "$t0" "$t2") s (Docker $(segundos "$t0" "$t1") s, base y aplicación $(segundos "$t1" "$t2") s)$(
+        [ -n "$ubuntu" ] && [ "$ubuntu" -lt 600 ] && echo "; Ubuntu encendido hace $ubuntu s")"
     [ "$navegador" = 1 ] && abrir_navegador "$(direccion)"
     if [ "$mantener" = 1 ]; then
         # Lo usa el lanzador de Windows (oculto): mientras este proceso viva, Ubuntu (y con él Docker y el sistema)

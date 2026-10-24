@@ -170,6 +170,15 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - El esquema `panel` lo crea el superusuario dentro de 05 (`RESET ROLE` / `SET ROLE app_owner`).
     - Restaurar y dar acceso al panel quedan en la consola a propósito.
     - `test_panel.py` (después de `test_uso_diario.py`) y `test_docker_linux.py` lo controlan.
+  - **Arranque rápido (24/10/2026):**
+    - healthcheck de la base con `start_interval: 1s`;
+    - `mejoras.sh` saltea si la firma (md5 de `db/mejoras/*.sql`) coincide con `panel.servicios.instalador.detalle.firma`;
+    - la API abre el pool sin esperar (`/health` 503 hasta que la base responda);
+    - el repaso del espejo espera `ESPEJO_DEMORA` (60 s) y el primer respaldo automático `RESPALDO_DEMORA` (600 s);
+    - el `CACHE` de `sw.js` lo escribe `generar_index.py` (firma de BASICOS): la PWA de la PC mostraba la pantalla vieja
+      "Ranking Digital está iniciando" porque la caché nunca cambiaba de nombre;
+    - `abrir` registra "Arranque del sistema: N s (...)" en `panel.eventos` y el Panel lo muestra. Usar esos datos si
+      vuelve a haber quejas de lentitud.
   - **Manual de uso:** `front/manual.html` (enlace "Manual de uso" arriba a la derecha).
     **Regla fija (pedido del usuario): toda mejora o agregado que cambie lo que ve o hace el usuario se entrega con el
     manual actualizado en el mismo commit, sin que lo pida.** Solo si la información le sirve a quien usa el sistema;

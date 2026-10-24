@@ -12,11 +12,13 @@
 # Se restauran igual: bash ranking.sh restaurar <nombre>. En OneDrive nunca se borra nada. Un error nunca detiene el
 # sistema: queda en el registro del Panel de control y se reintenta.
 # Variables: PGURL, RESPALDO_ACTIVO (lo pone compose si hay RESPALDOS_DIR), RESPALDO_HORAS (0 = sin automático),
-# RESPALDO_CONSERVAR, ESPEJO (vacío = sin copia a OneDrive).
+# RESPALDO_CONSERVAR, RESPALDO_DEMORA (segundos después de arrancar, 600), ESPEJO (vacío = sin copia a OneDrive).
 set -u
 DIR=/respaldos
 HORAS="${RESPALDO_HORAS:-24}"
 CONSERVAR="${RESPALDO_CONSERVAR:-14}"
+DEMORA="${RESPALDO_DEMORA:-600}"   # segundos: el respaldo automático no compite con el arranque ni con el primer ingreso
+case "$DEMORA" in ''|*[!0-9]*) DEMORA=600;; esac
 case "$HORAS" in ''|*[!0-9]*) HORAS=0;; esac
 
 sqlp() { psql "$PGURL" -X -q -At -v ON_ERROR_STOP=1 "$@" 2>/dev/null; }
@@ -94,7 +96,8 @@ latido() {
 }
 
 ultimo_latido=0
-reintento=0   # después de un respaldo automático fallido, se vuelve a intentar en una hora
+# Próximo intento de respaldo automático: unos minutos después de arrancar, y una hora después de uno fallido.
+reintento=$(( $(date +%s) + DEMORA ))
 while true; do
     ahora="$(date +%s)"
     [ $((ahora - ultimo_latido)) -ge 30 ] && { latido; ultimo_latido="$ahora"; }

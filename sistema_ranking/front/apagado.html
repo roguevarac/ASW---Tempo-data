@@ -37,7 +37,7 @@
       if (r.ok) { location.replace('/'); return; }
     } catch (e) { /* todavía no responde */ }
     if (Date.now() - inicio > 45000) document.getElementById('ayuda').hidden = false;
-    setTimeout(probar, 2000);
+    setTimeout(probar, 1000);
   }
   probar();
 </script>

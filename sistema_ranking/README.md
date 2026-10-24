@@ -419,6 +419,21 @@ Pestaña solo para las personas de `panel.acceso` (al principio, `rocio.guevara@
 
 Queda en la consola, a propósito: dar acceso al panel y restaurar un respaldo (detiene la API).
 
+### Arranque rápido (24/10/2026)
+
+- La base se controla cada segundo mientras arranca (`start_interval`); antes, cada 5 s.
+- `db/mejoras.sh` guarda una firma de `db/mejoras/*.sql` y no las vuelve a aplicar si no cambiaron
+  (`FORZAR_MEJORAS=1` las fuerza).
+- La API arranca sin esperar a la base y `/health` responde 503 hasta que la base esté lista.
+- Lo pesado se hace después del arranque, para no competir con el primer ingreso:
+  - el repaso completo del espejo de OneDrive, al minuto (`ESPEJO_DEMORA`); las cargas nuevas se copian enseguida;
+  - el primer respaldo automático, a los 10 minutos (`RESPALDO_DEMORA`).
+- Las pantallas de espera consultan cada segundo.
+- El service worker versiona su caché con una firma de la pantalla de espera y los íconos (la escribe
+  `front/generar_index.py`), así no queda una pantalla vieja guardada en la PC.
+- Cada `ranking.sh abrir` registra cuánto tardó (Docker, base y aplicación, y cuánto hace que se encendió Ubuntu). El
+  Panel de control lo muestra en Estado del sistema.
+
 ## Comportamientos heredados que se mantienen
 
 - El borrado lógico solo lo puede hacer el rol `admin` (decisión de permisos: así queda).

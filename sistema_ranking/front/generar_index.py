@@ -7,11 +7,12 @@ Solo cambia dos cosas; TODA la lógica del front queda igual:
   3. Se agrega lo que la hace instalable como aplicación (PWA): manifiesto, íconos y service worker.
 Si el HTML original cambia, volver a correr: python3 sistema_ranking/front/generar_index.py
 """
-import pathlib, re, sys
+import hashlib, pathlib, re, sys
 
 RAIZ = pathlib.Path(__file__).resolve().parents[2]
 ORIGEN = RAIZ / "frontend_ranking_digital.html"
-DESTINO = pathlib.Path(__file__).resolve().parent / "index.html"
+AQUI = pathlib.Path(__file__).resolve().parent
+DESTINO = AQUI / "index.html"
 
 html = ORIGEN.read_text(encoding="utf-8")
 lib = '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>'
@@ -36,7 +37,16 @@ pwa = ('<link rel="manifest" href="manifest.webmanifest">\n<meta name="theme-col
 if html.count("</head>") != 1 or html.count("</body>") != 1:
     sys.exit("No encontré </head> o </body> (una sola vez) en el HTML original")
 html = html.replace("</head>", pwa + "</head>")
-html = html.replace("</body>", "<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>\n</body>")
+html = html.replace("</body>", "<script>if ('serviceWorker' in navigator) "
+                    "navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });</script>\n</body>")
+# Versión de la caché del service worker = firma de lo que guarda (pantalla de espera, manifiesto e íconos).
+sw = AQUI / "sw.js"
+texto_sw = sw.read_text(encoding="utf-8")
+basicos = re.search(r"const BASICOS = \[(.*?)\];", texto_sw).group(1)
+firma = hashlib.sha256(b"".join((AQUI / n.strip(" '")).read_bytes() for n in basicos.split(","))).hexdigest()[:10]
+nuevo_sw = re.sub(r"const CACHE = '[^']*';", f"const CACHE = 'auditor-{firma}';", texto_sw)
+if nuevo_sw != texto_sw:
+    sw.write_text(nuevo_sw, encoding="utf-8")
 if "supabase.co" in html or "eyJ" in html:
     sys.exit("Quedó una referencia a Supabase o una clave en el HTML")
 DESTINO.write_text(html, encoding="utf-8")

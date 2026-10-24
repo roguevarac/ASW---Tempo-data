@@ -38,7 +38,7 @@
     img.onload = () => location.replace(URL_APP);
     img.onerror = () => {
       if (Date.now() - inicio > 120000) document.getElementById('ayuda').hidden = false;
-      setTimeout(probar, 1500);
+      setTimeout(probar, 1000);
     };
     img.src = URL_APP + 'iconos/icono-32.png?t=' + Date.now();
   }

@@ -93,7 +93,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 @app.on_event("startup")
 def _inicio():
-    pool.open(wait=True)
+    pool.open(wait=False)   # sin esperar a la base: la API responde enseguida y /health avisa cuando la base está lista
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     log.info("API iniciada")
 
@@ -692,8 +692,11 @@ def panel_respaldo(request: Request):
 # ---------------------------------------------------------------- front
 @app.get("/health")
 def salud():
-    with pool.connection() as conn:
-        conn.execute("SELECT 1")
+    try:
+        with pool.connection(timeout=3) as conn:
+            conn.execute("SELECT 1")
+    except Exception:
+        return JSONResponse({"ok": False, "message": "La base de datos todavía no responde"}, status_code=503)
     return {"ok": True}
 
 
