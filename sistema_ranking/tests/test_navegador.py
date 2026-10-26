@@ -99,10 +99,18 @@ with sync_playwright() as p:
     # ---- tabla principal: se ven las obras y se edita un tempo_id
     pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
     check("tabla principal muestra las obras cargadas", "Tema Navegador - Artista Navegador" in pag.content())
+    check("contador abajo: identificadas (con Tempo ID) y sin identificar", "Identificadas: 1 · Sin identificar: 1" in pag.inner_text(".pager"),
+          pag.inner_text(".pager"))
 
     campo = pag.locator('[data-field-master="tempo_id"][value=""]').first
     campo.fill("777002"); campo.press("Tab"); pag.wait_for_timeout(1500)
     check("editar tempo_id desde la tabla (fn_set_tempo_id)", sqlq("select tempo_id from tracks_master where track_name_clean='Segundo Tema'") == "777002")
+    check("el contador se actualiza al registrar un Tempo ID", "Identificadas: 2 · Sin identificar: 0" in pag.inner_text(".pager"),
+          pag.inner_text(".pager"))
+    pag.fill("#searchMaster", "Segundo"); pag.wait_for_timeout(1200)
+    check("el contador respeta la búsqueda (suma el total de la tabla)", "Identificadas: 1 · Sin identificar: 0" in pag.inner_text(".pager")
+          and "de 1" in pag.inner_text(".pager"), pag.inner_text(".pager"))
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
 
     pag.click('[data-tab="upload"]')
     # YouTube se carga a mano, igual que Spotify (no hay carga automática)

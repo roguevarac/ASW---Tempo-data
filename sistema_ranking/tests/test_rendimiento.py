@@ -120,8 +120,12 @@ with sync_playwright() as p:
           f"() => ({pie}).includes('{total_obras:,} canciones'.replace(/,/g, '.')) && document.querySelectorAll('[data-field-master]').length === 100",
           lambda: pag.inner_text("footer"))
     check("muestra 100 filas por página y el total", "1–100 de" in pag.inner_text(".pager"), pag.inner_text(".pager"))
+    ident = sql("select count(*) filter (where tempo_id is not null) || '|' || count(*) filter (where tempo_id is null) from tracks_master")
+    check("contador de identificadas y sin identificar, iguales a la base",
+          f"Identificadas: {int(ident.split('|')[0]):,} · Sin identificar: {int(ident.split('|')[1]):,}".replace(",", ".")
+          in pag.inner_text(".pager"), (ident, pag.inner_text(".pager")))
     medir("página siguiente", lambda: pag.click('.pager [data-dir="1"]'),
-          "() => document.querySelector('.pager span').innerText.startsWith('101–200')")
+          "() => document.querySelector('.pager .rango').innerText.startsWith('101–200')")
     esperado = sql("select count(*) from tracks_master where lower(track_artist_concat || ' ' || coalesce(tempo_id, '')) like '%tema 1234%'")
     medir("buscar (tipeando)", lambda: pag.type("#searchMaster", "Tema 1234", delay=40),
           f"() => ({pie}).endsWith('{esperado} canciones')", lambda: pag.inner_text("footer"))

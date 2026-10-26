@@ -73,6 +73,32 @@ AS $function$
     order by p.ultima desc nulls last, p.track_artist_concat, p.id;
 $function$;
 
+-- Tabla principal: cuántas obras tienen Tempo ID (número o marcador, como UNCONTROLLED) y cuántas no, con los mismos
+-- filtros y búsqueda que fn_master_pagina (las dos cantidades suman su total).
+CREATE OR REPLACE FUNCTION public.fn_master_conteo(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
+    p_pais pais_code_enum DEFAULT NULL::pais_code_enum, p_include_deleted boolean DEFAULT false, p_buscar text DEFAULT NULL::text)
+ RETURNS TABLE(identificadas bigint, sin_identificar bigint)
+ LANGUAGE sql
+ STABLE
+AS $function$
+    with filtrado as (
+        select distinct tt.track_master_id
+        from territory_tracks tt
+        where tt.deleted_at is null
+          and (p_pais      is null or tt.pais_code = p_pais)
+          and (p_date_from is null or tt.snapshot_date >= p_date_from)
+          and (p_date_to   is null or tt.snapshot_date <= p_date_to)
+    )
+    select count(*) filter (where nullif(trim(tm.tempo_id), '') is not null),
+           count(*) filter (where nullif(trim(tm.tempo_id), '') is null)
+    from tracks_master tm
+    where (p_include_deleted or tm.deleted_at is null)
+      and ((p_pais is null and p_date_from is null and p_date_to is null)
+           or tm.id in (select f.track_master_id from filtrado f))
+      and (fn_patron_busqueda(p_buscar) is null
+           or lower(coalesce(tm.track_artist_concat, '') || ' ' || coalesce(tm.tempo_id, '')) like fn_patron_busqueda(p_buscar));
+$function$;
+
 -- Tabla por territorio: una página, con los filtros de fn_territory_view más los de reclamos y estado de trabajo
 -- ('—' = sin valor) y la búsqueda por Tempo ID o título. Ordenada por territorio y título.
 CREATE OR REPLACE FUNCTION public.fn_territory_pagina(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,

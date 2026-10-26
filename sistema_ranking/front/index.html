@@ -119,6 +119,7 @@ select.edit-field{font-family:'IBM Plex Sans',sans-serif;}
 .estado.wait{color:var(--text-muted);}
 .pager{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:12px;font-size:12.5px;color:var(--text-muted);}
 .pager .btn:disabled{opacity:0.4;cursor:default;}
+.pager .conteo-id{margin-right:auto;}
 .subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
 .subtab{background:var(--panel);border:1px solid var(--line);color:var(--text-muted);border-radius:3px;padding:7px 12px;font-size:12.5px;cursor:pointer;}
 .subtab.active{border-color:var(--brass);color:var(--text-primary);}
@@ -277,12 +278,22 @@ function incluyeEliminados(){ return state.profile.app_role === 'admin' && state
 
 async function loadMaster(){
   const seq = ++state.seqMaster;
-  const { data, error } = await sb.rpc('fn_master_pagina', {
+  const filtros = {
     ...filtrosFechas(), p_pais: state.masterCountry || null, p_include_deleted: incluyeEliminados(),
     p_buscar: state.activeTab === 'master' ? (state.search || null) : null,
-    p_limite: PAGE_SIZE, p_offset: state.masterPage * PAGE_SIZE,
-  });
+  };
+  // Obras identificadas (con Tempo ID o marcador) y sin identificar: se vuelven a contar solo si cambian los filtros
+  // (al pasar de página no) o después de un cambio (se borra state.masterConteoClave).
+  const clave = JSON.stringify(filtros);
+  const contar = clave !== state.masterConteoClave
+    ? sb.rpc('fn_master_conteo', filtros) : Promise.resolve(null);
+  const [{ data, error }, conteo] = await Promise.all([
+    sb.rpc('fn_master_pagina', { ...filtros, p_limite: PAGE_SIZE, p_offset: state.masterPage * PAGE_SIZE }), contar]);
   if(seq !== state.seqMaster) return;           // llegó una respuesta más nueva
+  if(conteo && !conteo.error && conteo.data?.[0]){
+    state.masterConteo = { identificadas: Number(conteo.data[0].identificadas), sin: Number(conteo.data[0].sin_identificar) };
+    state.masterConteoClave = clave;
+  }
   if(error) console.error('fn_master_pagina:', error.message);
   if(!error && !(data || []).length && state.masterPage > 0){ state.masterPage = 0; return loadMaster(); }
   state.master = data || [];
@@ -317,6 +328,7 @@ async function loadTerritory(){
 async function loadAll(){
   state.loading = true; render();
   state.masterPage = 0; state.territoryPage = 0; state.territoryStale = true;
+  state.masterConteoClave = null;   // se vuelve a contar (pudo cambiar un Tempo ID o haber una carga nueva)
   const tareas = [loadMaster(), loadLastChartLoad()];
   if(state.activeTab === 'territory') tareas.push(loadTerritory());
   await Promise.all(tareas);
@@ -1074,11 +1086,11 @@ function renderTabs(){
 }
 
 // "1–100 de 25.000" y los botones para moverse entre páginas.
-function renderPager(tabla, total, pagina){
+function renderPager(tabla, total, pagina, extra = ''){
   if(!total) return '';
   const desde = pagina * PAGE_SIZE + 1, hasta = Math.min(total, (pagina + 1) * PAGE_SIZE);
   return `<div class="pager">
-    <span>${fmtNum(desde)}–${fmtNum(hasta)} de ${fmtNum(total)}</span>
+    ${extra}<span class="rango">${fmtNum(desde)}–${fmtNum(hasta)} de ${fmtNum(total)}</span>
     <button class="btn" data-pager="${tabla}" data-dir="-1" ${pagina === 0 ? 'disabled' : ''}>‹ Anterior</button>
     <button class="btn" data-pager="${tabla}" data-dir="1" ${hasta >= total ? 'disabled' : ''}>Siguiente ›</button>
   </div>`;
@@ -1112,7 +1124,8 @@ function renderMaster(){
       <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—">` : (r.tempo_id||'—')}</td>
     </tr>`).join('') : `<tr><td colspan="2"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
   </tbody></table>
-  ${renderPager('master', state.masterTotal, state.masterPage)}`;
+  ${renderPager('master', state.masterTotal, state.masterPage, state.masterConteo
+      ? `<span class="conteo-id">Identificadas: ${fmtNum(state.masterConteo.identificadas)} · Sin identificar: ${fmtNum(state.masterConteo.sin)}</span>` : '')}`;
 }
 
 function renderTerritory(){
