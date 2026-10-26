@@ -690,14 +690,29 @@ def panel_respaldo(request: Request):
 
 
 # ---------------------------------------------------------------- front
-@app.get("/health")
-def salud():
+def _base_lista():
     try:
         with pool.connection(timeout=3) as conn:
             conn.execute("SELECT 1")
+        return True
     except Exception:
+        return False
+
+
+@app.get("/health")
+def salud():
+    if not _base_lista():
         return JSONResponse({"ok": False, "message": "La base de datos todavía no responde"}, status_code=503)
     return {"ok": True}
+
+
+@app.get("/listo.png")
+def listo():
+    """Para la pantalla "Iniciando" del lanzador de Windows (un archivo local solo puede probar imágenes): responde una
+    imagen cuando la aplicación y la base están listas para ingresar."""
+    if not _base_lista():
+        return Response(status_code=503)
+    return FileResponse(FRONT_DIR / "iconos" / "icono-32.png", headers={"Cache-Control": "no-store"})
 
 
 # Tipos que mimetypes no siempre conoce (el manifiesto de la PWA debe ir como application/manifest+json).

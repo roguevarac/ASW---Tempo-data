@@ -6,7 +6,7 @@
  * - CACHE lleva una firma del contenido de BASICOS (la escribe front/generar_index.py): si cambia la pantalla de espera
  *   o un ícono, la versión guardada en la PC se reemplaza sola.
  */
-const CACHE = 'auditor-c8be2470eb';
+const CACHE = 'auditor-f0375c3988';
 const BASICOS = ['apagado.html', 'manifest.webmanifest', 'iconos/icono-192.png', 'iconos/icono-512.png', 'iconos/icono-32.png'];
 const API = ['/rest/', '/rpc/', '/auth/', '/storage/', '/panel/', '/health'];
 

@@ -96,6 +96,9 @@ check("ocultos: PowerShell sin ventana, minimizado, con el ícono",
       "-WindowStyle Hidden -File" in ps and "$a.WindowStyle = 7" in ps
       and r"$a.IconLocation = 'C:\Users\Juan O''Neil\AppData\Local\RankingDigital\ranking.ico' + ',0'" in ps, ps)
 check("apuntan a lanzar.ps1 (apóstrofo bien escapado)", r"'C:\Users\Juan O''Neil\AppData\Local\RankingDigital\lanzar.ps1'" in ps, ps)
+check("registra el enlace auditor-rankings:// para este usuario (sin administrador): enciende el servidor oculto",
+      r"'HKCU:\Software\Classes\auditor-rankings'" in ps and "'URL Protocol'" in ps
+      and r"""-WindowStyle Hidden -File "' + 'C:\Users\Juan O''Neil\AppData\Local\RankingDigital\lanzar.ps1' + '" -SoloServidor')""" in ps, ps[-900:])
 check("sin pedirlo, no lo agrega al inicio de Windows (y saca el viejo)", "if (0 -eq 1)" in ps and "Remove-Item (Join-Path $inicio 'Ranking Digital.lnk')" in ps)
 if HAY_PWSH:
     for nombre, contenido in (("accesos.ps1", ps), ("lanzar.ps1", texto)):

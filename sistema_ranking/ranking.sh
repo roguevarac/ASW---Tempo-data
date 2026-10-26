@@ -106,8 +106,9 @@ verificar_docker() {
     command -v docker > /dev/null 2>&1 || fallar "No encuentro docker. Instalá Docker Engine en Ubuntu (ver README)."
     if ! docker info > /dev/null 2>&1; then
         aviso "Docker no está corriendo; lo arranco (puede pedir tu contraseña de Ubuntu)..."
-        sudo service docker start > /dev/null || true
-        local i; for i in $(seq 1 30); do docker info > /dev/null 2>&1 && break; sleep 1; done
+        # Sin terminal (lanzador oculto de Windows) no se puede pedir la contraseña: sudo -n no la pide.
+        if [ -t 0 ]; then sudo service docker start > /dev/null || true; else sudo -n service docker start > /dev/null 2>&1 || true; fi
+        local i; for i in $(seq 1 "${ESPERA_DOCKER:-30}"); do docker info > /dev/null 2>&1 && break; sleep 1; done
         docker info > /dev/null 2>&1 || fallar "Docker no arrancó. Probá: sudo service docker start  (y mirá: sudo service docker status)"
     fi
     docker compose version > /dev/null 2>&1 || fallar "Falta el plugin de Docker Compose: sudo apt install docker-compose-plugin"
@@ -368,12 +369,11 @@ cmd_migrar() {
     abrir_navegador "$(direccion)"
 }
 
-cmd_abrir() {
-    local mantener=0 navegador=1 a
-    for a in "$@"; do case "$a" in --mantener) mantener=1 ;; --sin-navegador) navegador=0 ;; esac; done
-    local t0 t1 t2; t0="$(date +%s%N)"
+# Arranca todo y espera a que responda (con fallar si algo sale mal). Deja en T0, T1 y T2 los tiempos de cada etapa.
+arrancar() {
+    T0="$(date +%s%N)"
     verificar_docker; instalado
-    t1="$(date +%s%N)"
+    T1="$(date +%s%N)"
     echo "Arrancando Auditor de Rankings Digitales..."
     # --no-recreate: si ya está funcionando, no lo reinicia (las versiones nuevas las aplica actualizar). Solo si
     # recién se guardó un proxy o una carpeta de espejo nueva, la API se reinicia una vez para tomarlos.
@@ -381,7 +381,34 @@ cmd_abrir() {
     dc up -d "${recrear[@]+"${recrear[@]}"}" > /dev/null 2>&1 \
         || { dc up -d "${recrear[@]+"${recrear[@]}"}"; fallar "No arrancó (el motivo está arriba)."; }
     esperar_sistema
-    t2="$(date +%s%N)"
+    T2="$(date +%s%N)"
+    [ -n "${TIEMPOS:-}" ] && echo "$T0 $T1 $T2" > "$TIEMPOS"
+    return 0
+}
+
+cmd_abrir() {
+    local mantener=0 navegador=1 a
+    for a in "$@"; do case "$a" in --mantener) mantener=1 ;; --sin-navegador) navegador=0 ;; esac; done
+    if [ "$mantener" = 1 ]; then
+        # Lanzador oculto de Windows: nadie ve la salida, así que queda en un registro (arranque.log, junto a la
+        # configuración; bash ranking.sh verificar muestra el último arranque). Nunca se rinde: si Docker tarda (por
+        # ejemplo, al iniciar Windows con la PC ocupada) o algo falla, reintenta, y Ubuntu queda prendido.
+        local registro; registro="$(dirname "$CONFIG")/arranque.log"
+        [ -f "$registro" ] && tail -n 400 "$registro" > "$registro.tmp" 2> /dev/null && mv "$registro.tmp" "$registro"
+        exec > >(tee -a "$registro") 2>&1
+        echo "=== $(date '+%Y-%m-%d %H:%M:%S') abrir (Ubuntu encendido hace $(awk '{print int($1)}' /proc/uptime) s)"
+        export ESPERA_DOCKER=300 TIEMPOS; TIEMPOS="$(mktemp)"
+        local inicio; inicio="$(date +%s%N)"
+        until ( arrancar ); do
+            echo "$(date '+%H:%M:%S') No arrancó; reintento en 15 s."
+            sleep 15
+        done
+        read -r T0 T1 T2 < "$TIEMPOS"; rm -f "$TIEMPOS"
+        T0="$inicio"   # con los reintentos incluidos
+    else
+        arrancar
+    fi
+    local t0="$T0" t1="$T1" t2="$T2"
     ok "Auditor de Rankings Digitales funcionando: $(direccion) (en $(segundos "$t0" "$t2") s)"
     # Para el Panel de control: cuánto tardó cada etapa (y cuánto hace que se encendió Ubuntu, si fue recién).
     local ubuntu; ubuntu="$(awk '{print int($1)}' /proc/uptime 2> /dev/null)"
@@ -690,7 +717,14 @@ cmd_acceso_directo() {
         Acceso \$menu 'Auditor de Rankings Digitales' '' 'Abrir Auditor de Rankings Digitales'
         Acceso \$menu 'Apagar Auditor de Rankings Digitales' ' -Apagar' 'Apagar Auditor de Rankings Digitales (los datos quedan guardados)'
         Remove-Item (Join-Path \$inicio 'Auditor de Rankings Digitales.lnk') -ErrorAction SilentlyContinue
-        if ($inicio -eq 1) { Acceso \$inicio 'Auditor de Rankings Digitales' ' -SoloServidor' 'Encender el servidor del Auditor de Rankings Digitales' }"
+        if ($inicio -eq 1) { Acceso \$inicio 'Auditor de Rankings Digitales' ' -SoloServidor' 'Encender el servidor del Auditor de Rankings Digitales' }
+        # Enlace auditor-rankings:// (solo para este usuario, sin permisos de administrador): la pantalla de espera de la
+        # aplicación lo usa para encender el servidor cuando está apagado.
+        \$k = 'HKCU:\\Software\\Classes\\auditor-rankings'
+        New-Item -Path \$k -Force -Value 'URL:Auditor de Rankings Digitales' | Out-Null
+        New-ItemProperty -Path \$k -Name 'URL Protocol' -Value '' -Force | Out-Null
+        New-Item -Path (\$k + '\\DefaultIcon') -Force -Value ($(q "$ico_win") + ',0') | Out-Null
+        New-Item -Path (\$k + '\\shell\\open\\command') -Force -Value ('powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"' + $(q "$lanzar_win") + '\" -SoloServidor') | Out-Null"
     local donde; donde="$(cd /mnt/c 2>/dev/null || true; powershell.exe -NoProfile -Command "$ps" 2>&1 | tr -d '\r')" \
         || fallar "No pude crear los accesos: $donde"
     poner ACCESO_DIRECTO 1; poner INICIO_AUTOMATICO "$([ "$inicio" = 1 ] && echo S || echo N)"
@@ -730,6 +764,14 @@ cmd_verificar() {
             linea ok "Espejo de auditoría en OneDrive: $(valor ESPEJO_DIR)"
         else aviso "  AVISO  No se puede escribir en el espejo de OneDrive ($(valor ESPEJO_DIR)); ver README, sección Espejo"; fi
         n="$(charts_pendientes)"
+        local arranque; arranque="$(consulta "SELECT to_char(fecha AT TIME ZONE 'America/Argentina/Buenos_Aires', 'DD/MM HH24:MI') || ' · '
+            || replace(mensaje, 'Arranque del sistema: ', '') FROM panel.eventos WHERE servicio = 'ranking.sh'
+            AND mensaje LIKE 'Arranque del sistema%' ORDER BY id DESC LIMIT 1" 2> /dev/null)"
+        [ -n "$arranque" ] && linea ok "Último arranque: $arranque"
+        if [ -n "${WSL_DISTRO_NAME:-}" ] && [ "$(valor INICIO_AUTOMATICO)" != S ]; then
+            aviso "  AVISO  El servidor no se enciende al iniciar Windows: al abrir la aplicación hay que esperar a que arranque."
+            aviso "         Para que esté listo siempre:  bash ranking.sh acceso-directo   (y respondé S)"
+        fi
         local ultimo_auto; ultimo_auto="$(ls -1 "$RESPALDOS"/ranking_auto_*.dump 2> /dev/null | sort | tail -n 1)"
         if [ -z "$ultimo_auto" ]; then aviso "  AVISO  Todavía no hay respaldo automático (se hace al arrancar y una vez por día)"
         elif [ -n "$(find "$ultimo_auto" -mmin +$((49 * 60)) 2> /dev/null)" ]; then
@@ -768,7 +810,7 @@ $cambios
         dc build api > /dev/null 2>&1; dc up -d > /dev/null 2>&1; esperar_sistema
         fallar "Quedó funcionando la versión anterior. Pasale a Claude el mensaje de arriba (o el de bash ranking.sh logs)."
     fi
-    if [ "$(valor ACCESO_DIRECTO)" = 1 ] && command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ]; then
+    if command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ]; then
         local antes_auto="$AUTOMATICO"; AUTOMATICO=1; cmd_acceso_directo > /dev/null 2>&1 \
             && ok "Accesos de Windows actualizados." || aviso "No pude actualizar los accesos de Windows (bash ranking.sh acceso-directo)."
         AUTOMATICO="$antes_auto"

@@ -179,6 +179,11 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
       "Ranking Digital está iniciando" porque la caché nunca cambiaba de nombre;
     - `abrir` registra "Arranque del sistema: N s (...)" en `panel.eventos` y el Panel lo muestra. Usar esos datos si
       vuelve a haber quejas de lentitud.
+  - **Servidor apagado al abrir (26/10/2026):** la PWA de Edge no puede encender WSL.
+    - `acceso-directo` registra `auditor-rankings://` (HKCU -> `lanzar.ps1 -SoloServidor`) y `apagado.html` lo usa.
+    - `actualizar` regenera los accesos en WSL siempre.
+    - `abrir --mantener` reintenta sin fin (`ESPERA_DOCKER=300`, `sudo -n`) y escribe `arranque.log`.
+    - `verificar` avisa si `INICIO_AUTOMATICO` no es S.
   - **Manual de uso:** `front/manual.html` (enlace "Manual de uso" arriba a la derecha).
     **Regla fija (pedido del usuario): toda mejora o agregado que cambie lo que ve o hace el usuario se entrega con el
     manual actualizado en el mismo commit, sin que lo pida.** Solo si la información le sirve a quien usa el sistema;

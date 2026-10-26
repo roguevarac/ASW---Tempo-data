@@ -508,6 +508,8 @@ try:
     print(f"     (abrir con el sistema apagado: {t_abrir:.1f} s)")
     check("abrir con el sistema apagado: listo en menos de 40 s", t_abrir < 40, t_abrir)
     check("abrir: las mejoras de la base ya estaban aplicadas y no se repiten", "Mejoras de la base al día" in dc("logs", "instalador").stdout)
+    check("abrir --mantener (lanzador de Windows): deja el registro del arranque junto a la configuración",
+          "Auditor de Rankings Digitales funcionando" in (config.parent / "arranque.log").read_text())
     check("abrir: deja el tiempo de arranque para el Panel de control",
           "Arranque del sistema: " in base_nueva("select mensaje from panel.eventos where servicio = 'ranking.sh' order by id desc limit 1"))
     check("abrir (ícono): vuelve a levantar todo, los datos siguen y la ventana queda abierta",

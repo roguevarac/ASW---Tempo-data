@@ -434,6 +434,20 @@ Queda en la consola, a propósito: dar acceso al panel y restaurar un respaldo (
 - Cada `ranking.sh abrir` registra cuánto tardó (Docker, base y aplicación, y cuánto hace que se encendió Ubuntu). El
   Panel de control lo muestra en Estado del sistema.
 
+### Servidor apagado al abrir la aplicación (26/10/2026)
+
+La aplicación instalada desde Edge no puede encender el servidor; si Ubuntu estaba apagado, esperaba sin fin.
+- `ranking.sh acceso-directo` registra el enlace `auditor-rankings://` para el usuario de Windows (HKCU, sin
+  administrador), que corre `lanzar.ps1 -SoloServidor`. La pantalla de espera (`apagado.html`) lo usa sola y con el botón
+  **Encender el servidor**; Edge pide permiso la primera vez.
+- `actualizar` regenera los accesos en WSL aunque nunca se hayan creado (con inicio automático por defecto).
+- `abrir --mantener` (el lanzador oculto) no se rinde:
+  - espera a Docker hasta 5 minutos y reintenta cada 15 s;
+  - nunca pide la contraseña de sudo sin terminal;
+  - deja `arranque.log` junto a la configuración.
+- `verificar` muestra el último arranque y avisa si el servidor no se enciende con Windows.
+- `/listo.png` responde cuando la base está lista: la pantalla "iniciando" del lanzador entra recién entonces.
+
 ## Comportamientos heredados que se mantienen
 
 - El borrado lógico solo lo puede hacer el rol `admin` (decisión de permisos: así queda).

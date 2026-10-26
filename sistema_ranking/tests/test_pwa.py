@@ -35,6 +35,9 @@ for ic in m.get("icons", []):
     i = httpx.get(f"{BASE}/{ic['src']}")
     ancho, alto = struct.unpack(">II", i.content[16:24]) if i.content[:8] == b"\x89PNG\r\n\x1a\n" else (0, 0)
     check(f"ícono {ic['src']} ({ic['sizes']}, {ic.get('purpose')})", i.status_code == 200 and f"{ancho}x{alto}" == ic["sizes"])
+r = httpx.get(f"{BASE}/listo.png")
+check("listo.png: imagen cuando la aplicación y la base están listas (la usa la pantalla 'iniciando')",
+      r.status_code == 200 and r.content[:8] == b"\x89PNG\r\n\x1a\n" and r.headers.get("cache-control") == "no-store", r.status_code)
 r = httpx.get(f"{BASE}/sw.js")
 check("service worker servido como JavaScript", r.status_code == 200 and "javascript" in r.headers.get("content-type", ""), r.headers)
 check("los generadores (.py) de la carpeta del front no se publican", "import" not in httpx.get(f"{BASE}/generar_index.py").text[:200])
@@ -42,7 +45,10 @@ check("los generadores (.py) de la carpeta del front no se publican", "import" n
 with sync_playwright() as p:
     # Perfil normal (no incógnito, que nunca deja instalar aplicaciones), como el Edge del usuario.
     perfil = tempfile.mkdtemp(prefix="rk_perfil_")
-    ctx = p.chromium.launch_persistent_context(perfil, executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome")
+    # Como el Edge de Windows (la pantalla de espera ofrece encender el servidor solo en Windows).
+    ctx = p.chromium.launch_persistent_context(perfil, executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+                                               user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                                                          "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0")
     nav = ctx
     pag = ctx.pages[0] if ctx.pages else ctx.new_page()
     pag.goto(BASE + "/")
@@ -61,6 +67,12 @@ with sync_playwright() as p:
     pag.reload()
     pag.wait_for_selector("text=Auditor de Rankings Digitales está iniciando o apagado", timeout=10000)
     check("sin servidor: muestra 'Auditor de Rankings Digitales está iniciando o apagado'", True)
+    pag.wait_for_selector("#botonEncender", state="visible", timeout=10000)
+    check("sin servidor: ofrece encenderlo (enlace auditor-rankings:// del acceso de Windows) y sigue esperando",
+          "auditor-rankings://encender" in pag.content() and "está iniciando o apagado" in pag.content())
+    pag.wait_for_timeout(5000)   # pasa el intento automático de encenderlo: la pantalla sigue esperando
+    check("después del intento automático de encender el servidor, la pantalla sigue esperando",
+          "está iniciando o apagado" in pag.content() and pag.url.rstrip("/") == BASE, pag.url)
     ctx.set_offline(False)
     pag.wait_for_selector("#loginEmail", timeout=15000)
     check("cuando el servidor vuelve, entra solo al sistema", pag.url.rstrip("/") == BASE)
