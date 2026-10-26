@@ -412,6 +412,33 @@ try:
     for f in nuevos:   # para que las cuentas de respaldos manuales que siguen no cambien
         f.unlink(); (respaldos / (f.name[:-5] + "_archivos.tgz")).unlink(missing_ok=True)
 
+    # ================================================================ carga de Tempo IDs desde una planilla
+    obra = base_nueva("select track_name_clean || '|' || artist_name_clean from tracks_master "
+                      "where tempo_id is null and deleted_at is null order by track_name_clean limit 1")
+    planilla = base / "onedrive" / "Mis archivos" / "Tempos ID históricos.csv"
+    planilla.parent.mkdir(parents=True, exist_ok=True)
+    titulo_obra, artista_obra = obra.split("|", 1)
+    planilla.write_text(f"Concatenate;Tempo ID\n{titulo_obra.upper()} // {artista_obra};8880001\nNo Existe // Nadie;8880002\n",
+                        encoding="utf-8")
+    manuales_antes = set(respaldos.glob("ranking_2*.dump"))
+    r = subprocess.run(["bash", str(proyecto / "ranking.sh"), "cargar-tempo-ids", str(planilla), "--automatico"], cwd=proyecto,
+                       env=ENTORNO, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=600)
+    reportes = sorted(respaldos.glob("carga-tempo-ids-*.csv"))
+    check("cargar-tempo-ids: simula, hace un respaldo, carga y deja el reporte (y su copia en OneDrive)",
+          r.returncode == 0 and "SIMULACIÓN" in r.stdout + r.stderr and "Cargadas:                      1" in r.stdout
+          and base_nueva(f"select tempo_id from tracks_master where track_name_clean = $${titulo_obra}$$") == "8880001"
+          and len(set(respaldos.glob("ranking_2*.dump")) - manuales_antes) == 1 and reportes
+          and "NO ENCONTRADA" in reportes[-1].read_text(encoding="utf-8-sig")
+          and (ESPEJO / "Reportes Tempo Control" / "Tempo IDs" / reportes[-1].name).exists(),
+          (r.stdout + r.stderr)[-1500:])
+    for f in set(respaldos.glob("ranking_2*.dump")) - manuales_antes:
+        f.unlink(); (respaldos / (f.name[:-5] + "_archivos.tgz")).unlink(missing_ok=True)
+    # Deja el historial de archivos como estaba (las pruebas de vaciar-historial cuentan los archivos guardados).
+    ruta_planilla = base_nueva(f"select file_path from csv_uploads where filename = $${planilla.name}$$")
+    dc("exec", "-T", "api", "rm", "-f", f"/data/storage/csv-uploads/{ruta_planilla}")
+    base_nueva(f"delete from storage.objects where name = $${ruta_planilla}$$; "
+               f"delete from csv_uploads where filename = $${planilla.name}$$")
+
     # ================================================================ respaldo y restauración
     antes = {t: base_nueva(f"select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from {t} x")
              for t in ("public.tracks_master", "public.territory_tracks", "public.csv_uploads", "public.audit_logs", "auth.users", "storage.objects")}

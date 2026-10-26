@@ -40,6 +40,7 @@ correr "Esquema igual al de Supabase" python3 tests/comparar_con_supabase.py
 correr "API de punta a punta" python3 tests/test_e2e.py
 correr "Uso diario: sesiones, cargas completas, unificación por Tempo ID" python3 tests/test_uso_diario.py
 correr "Panel de control" python3 tests/test_panel.py
+correr "Carga masiva de Tempo IDs desde una planilla" python3 tests/test_tempo_ids.py
 base_nueva
 correr "Front en el navegador" python3 tests/test_navegador.py
 correr "Aplicación instalable (PWA)" python3 tests/test_pwa.py

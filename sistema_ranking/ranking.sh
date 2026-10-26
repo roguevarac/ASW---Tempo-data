@@ -13,6 +13,7 @@
 #   bash ranking.sh vaciar-historial  borra solo los archivos del historial (antes hace un respaldo)
 #   bash ranking.sh empezar-de-cero   borra todos los datos menos los usuarios (antes hace un respaldo)
 #   bash ranking.sh cargar-historicos  carga una vez los charts de "Spotify Charts" y "Youtube Charts" de OneDrive
+#   bash ranking.sh cargar-tempo-ids <archivo>  carga Tempo IDs desde una planilla "Título // Artistas" (.xlsx o .csv)
 #   bash ranking.sh espejo          copia a OneDrive (espejo de auditoría) los archivos cargados que falten
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
 #   bash ranking.sh acceso-directo  crea la aplicación "Auditor de Rankings Digitales" en Windows (escritorio, menú Inicio, inicio)
@@ -561,6 +562,44 @@ cmd_cargar_historicos() {
     echo "En la aplicación: Historial de cargas muestra cada semana cargada por país."
 }
 
+# Carga masiva de Tempo IDs desde una planilla "Título // Artistas" + Tempo ID (.xlsx o .csv). Primero simula y muestra
+# el resultado; con la confirmación, hace un respaldo y carga. Deja el reporte (CSV para Excel) en la carpeta de
+# respaldos y en OneDrive (Reportes Tempo Control/Tempo IDs). Ver migracion/importar_tempo_ids.py.
+cmd_cargar_tempo_ids() {
+    verificar_docker; instalado
+    local archivo="${1:-}"
+    [ -n "$archivo" ] || fallar "Uso: bash ranking.sh cargar-tempo-ids <archivo .xlsx o .csv>"
+    case "$archivo" in [A-Za-z]:\\*|[A-Za-z]:/*) command -v wslpath > /dev/null 2>&1 && archivo="$(wslpath -u "$archivo")";; esac
+    [ -f "$archivo" ] || fallar "No encuentro el archivo: $archivo"
+    local nombre; nombre="$(basename "$archivo")"
+    dc up -d db > /dev/null 2>&1
+    mkdir -p "$RESPALDOS"
+    local reporte; reporte="$RESPALDOS/carga-tempo-ids-$(date +%Y%m%d_%H%M%S)"
+    titulo "Carga de Tempo IDs: $nombre"
+    echo "Simulación (no cambia nada todavía):"
+    herramienta python /app/migracion/importar_tempo_ids.py --nombre "$nombre" --simular < "$archivo" > "$reporte-simulacion.csv" \
+        || fallar "No se pudo leer o cruzar el archivo (el motivo está arriba)."
+    echo "Detalle fila por fila: $reporte-simulacion.csv"
+    si "¿Cargar estos Tempo IDs? (antes se hace un respaldo)" S || fallar "Cancelado. No se cargó nada."
+    cmd_respaldo
+    titulo "Cargando"
+    local resumen
+    resumen="$(herramienta python /app/migracion/importar_tempo_ids.py --nombre "$nombre" < "$archivo" 2>&1 > "$reporte.csv")" \
+        || { echo "$resumen"; fallar "La carga no se completó y no cambió nada (el motivo está arriba)."; }
+    echo "$resumen"
+    rm -f "$reporte-simulacion.csv"
+    ok "Carga terminada. Detalle fila por fila (para Excel): $reporte.csv"
+    registrar_evento ok "Carga de Tempo IDs ($nombre): $(echo "$resumen" | grep -m1 'Cargadas' | tr -s ' ')"
+    local e; e="$(valor ESPEJO_DIR)"
+    if [ -n "$e" ]; then
+        local d="$e/Reportes Tempo Control/Tempo IDs"
+        if mkdir -p "$d" 2> /dev/null && cp "$reporte.csv" "$d/" 2> /dev/null; then ok "Copia del reporte en OneDrive: $d"
+        else herramienta_root sh -c 'mkdir -p "$1" && cat > "$1/$2"' _ "/espejo/Reportes Tempo Control/Tempo IDs" "$(basename "$reporte.csv")" \
+                 < "$reporte.csv" && ok "Copia del reporte en OneDrive: $d" || aviso "No pude copiar el reporte a OneDrive."; fi
+    fi
+    echo "En la aplicación: la tabla principal muestra los Tempo ID cargados."
+}
+
 cmd_restaurar() {
     verificar_docker; instalado
     local f="${1:-}"; f="${f%.dump}"; f="$(basename "$f")"
@@ -851,6 +890,7 @@ case "${1:-}" in
     certificados) cmd_certificados ;;
     espejo) cmd_espejo ;;
     cargar-historicos) shift; cmd_cargar_historicos "$@" ;;
+    cargar-tempo-ids) shift; cmd_cargar_tempo_ids "$@" ;;
     vaciar-historial) cmd_vaciar_historial ;;
     empezar-de-cero) cmd_empezar_de_cero ;;
     acceso-directo|icono) cmd_acceso_directo ;;

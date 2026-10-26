@@ -448,6 +448,33 @@ La aplicación instalada desde Edge no puede encender el servidor; si Ubuntu est
 - `verificar` muestra el último arranque y avisa si el servidor no se enciende con Windows.
 - `/listo.png` responde cuando la base está lista: la pantalla "iniciando" del lanzador entra recién entonces.
 
+### Carga masiva de Tempo IDs (`bash ranking.sh cargar-tempo-ids <archivo>`)
+
+Planilla de dos columnas: "Título // Artistas" (o "Título - Artistas") y Tempo ID, en .xlsx o .csv. Una ruta de Windows
+también sirve.
+- **Limpieza** (`migracion/importar_tempo_ids.py`, lee el .xlsx sin librerías): tildes mal codificadas
+  ("FrÃ¡gil"), tildes sueltas, tachados, comillas tipográficas, espacios.
+- **Cruce** (`fn_cargar_tempo_ids`, `db/mejoras/06_tempo_ids.sql`): con la normalización de los charts y sin mayúsculas,
+  tildes, signos ni espacios. Niveles:
+  1. exacta;
+  2. artistas en otro orden;
+  3. un artista en común;
+  4. título sin "(feat. …)";
+  5. solo título, si la fila no trae artistas y hay una sola obra.
+- **Reglas:**
+  - todas las obras que coinciden reciben el Tempo ID; si varias tienen el mismo, se unifican (`unificar_obras`);
+  - nunca se pisa un Tempo ID numérico distinto;
+  - si el archivo trae dos Tempo ID para la misma obra, no se carga ninguno;
+  - UNCONTROLLED, COMPILADO y vacíos solo se informan.
+- **Proceso:**
+  - primero simula y muestra el resumen; con la confirmación, hace un respaldo y carga;
+  - el reporte fila por fila (CSV con `;` para Excel) queda en la carpeta de respaldos y en OneDrive
+    (`Reportes Tempo Control/Tempo IDs`);
+  - el archivo original queda en el Historial de cargas.
+- **Resultado medido** con la planilla real (10.074 filas) contra una base armada con las variantes de los charts:
+  93 % de las filas con Tempo ID numérico cargadas, ninguna asignación incorrecta, 20 s. Repetir la carga no cambia
+  nada.
+
 ## Comportamientos heredados que se mantienen
 
 - El borrado lógico solo lo puede hacer el rol `admin` (decisión de permisos: así queda).
@@ -469,6 +496,7 @@ La aplicación instalada desde Edge no puede encender el servidor; si Ubuntu est
 | `test_importar_charts.py` | Carga masiva de charts históricos: mismo resultado que Carga CSV en el navegador, país por carpeta, archivos sin semana, archivos que no son charts, retomar sin duplicar. |
 | `test_uso_diario.py` | Sesiones (renovar, inactividad, cerrar, bloqueo), cambio y restablecimiento de contraseña con código desde el ingreso, freno de intentos fallidos, carga todo o nada, chart sin semana, unificación por Tempo ID y permisos, descarga con todos los filtros, compresión; y lo mismo en el navegador. |
 | `test_panel.py` | Panel de control: 403 para cualquier otro usuario, alta con código de activación, rol, bloqueo, cierre de sesiones, actividad, semanas y archivos faltantes, "Respaldar ahora", registro; y lo mismo en el navegador. |
+| `test_tempo_ids.py` | Carga de Tempo IDs desde un .xlsx: tildes como mayúsculas o mal codificadas, otro orden, menos artistas, feat., solo título, coreano, señuelos, conflictos, UNCONTROLLED, simular, repetir sin cambios, historial y que no se pueda llamar desde la aplicación. |
 | `test_rendimiento.py` | Con 20.000 canciones y 208.000 filas de charts: mismos totales que las funciones originales, orden de las páginas, búsqueda literal, filtros, y que abrir, buscar, paginar y filtrar en el navegador tarde menos de 3 s. |
 | `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, espejo de OneDrive (carga nueva copiada, borrado sin efecto, OneDrive sin permiso), respaldo automático (al arrancar, a nombre del usuario, copia en OneDrive, conserva los últimos 14), "Respaldar ahora" del panel y avisos de los servicios, mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
 | `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, administrar usuarios, apagar, volver a abrir y actualizar. |

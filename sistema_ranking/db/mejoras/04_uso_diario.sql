@@ -212,6 +212,41 @@ end;
 $function$;
 
 -- ---------------------------------------------------------------- Tempo ID
+-- Unifica dos obras que son la misma canción (mismo Tempo ID): charts, reportes, controles y envíos de p_origen pasan a
+-- p_destino (lo que ya tiene p_destino para el mismo territorio y semana queda) y p_origen deja de existir. Interna: la
+-- usan fn_asignar_tempo_id (con la confirmación de la persona) y la carga de Tempo IDs históricos. Sin el prefijo fn_
+-- a propósito: la API solo publica funciones fn_*, así que no se puede llamar directamente.
+CREATE OR REPLACE FUNCTION public.unificar_obras(p_origen uuid, p_destino uuid, p_tempo_id text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+begin
+    perform set_config('app.allow_hard_delete', 'true', true);
+    delete from territory_tracks tt where tt.track_master_id = p_origen and exists (
+        select 1 from territory_tracks s where s.track_master_id = p_destino and s.pais_code = tt.pais_code
+           and s.snapshot_date = tt.snapshot_date and s.platform = tt.platform);
+    update territory_tracks set track_master_id = p_destino, tempo_id = p_tempo_id where track_master_id = p_origen;
+    delete from territory_bo_report t where t.track_master_id = p_origen and exists (
+        select 1 from territory_bo_report s where s.track_master_id = p_destino and s.pais_code = t.pais_code);
+    update territory_bo_report set track_master_id = p_destino where track_master_id = p_origen;
+    delete from territory_tempo_report t where t.track_master_id = p_origen and exists (
+        select 1 from territory_tempo_report s where s.track_master_id = p_destino and s.pais_code = t.pais_code);
+    update territory_tempo_report set track_master_id = p_destino where track_master_id = p_origen;
+    delete from territory_control t where t.track_master_id = p_origen and exists (
+        select 1 from territory_control s where s.track_master_id = p_destino and s.pais_code = t.pais_code);
+    update territory_control set track_master_id = p_destino where track_master_id = p_origen;
+    insert into envio_obras (envio_id, track_master_id)
+        select envio_id, p_destino from envio_obras where track_master_id = p_origen
+        on conflict do nothing;
+    delete from tracks_master where id = p_origen;   -- sus envio_obras se borran en cascada
+    update tracks_master set estado_bo = 'ok' where id = p_destino and estado_bo <> 'ok';
+end;
+$function$;
+REVOKE ALL ON FUNCTION public.unificar_obras(uuid, uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.unificar_obras(uuid, uuid, text) TO authenticated;
+
+
 -- Asigna (o quita) el Tempo ID de una obra. Si otra obra ya lo tiene:
 --  * Tempo ID numérico y p_unificar: es la misma canción (por ejemplo, escrita distinto en Spotify y en YouTube). La
 --    obra se unifica con la que ya lo tenía: sus charts, reportes, controles y envíos pasan a esa obra y la editada
@@ -252,26 +287,7 @@ begin
             using errcode = 'unique_violation';
     end if;
 
-    perform set_config('app.allow_hard_delete', 'true', true);
-    -- Lo que la obra editada comparte con la otra (mismo territorio y semana, o mismo territorio) queda de la otra.
-    delete from territory_tracks tt where tt.track_master_id = p_track_id and exists (
-        select 1 from territory_tracks s where s.track_master_id = v_otra.id and s.pais_code = tt.pais_code
-           and s.snapshot_date = tt.snapshot_date and s.platform = tt.platform);
-    update territory_tracks set track_master_id = v_otra.id, tempo_id = v_clean where track_master_id = p_track_id;
-    delete from territory_bo_report t where t.track_master_id = p_track_id and exists (
-        select 1 from territory_bo_report s where s.track_master_id = v_otra.id and s.pais_code = t.pais_code);
-    update territory_bo_report set track_master_id = v_otra.id where track_master_id = p_track_id;
-    delete from territory_tempo_report t where t.track_master_id = p_track_id and exists (
-        select 1 from territory_tempo_report s where s.track_master_id = v_otra.id and s.pais_code = t.pais_code);
-    update territory_tempo_report set track_master_id = v_otra.id where track_master_id = p_track_id;
-    delete from territory_control t where t.track_master_id = p_track_id and exists (
-        select 1 from territory_control s where s.track_master_id = v_otra.id and s.pais_code = t.pais_code);
-    update territory_control set track_master_id = v_otra.id where track_master_id = p_track_id;
-    insert into envio_obras (envio_id, track_master_id)
-        select envio_id, v_otra.id from envio_obras where track_master_id = p_track_id
-        on conflict do nothing;
-    delete from tracks_master where id = p_track_id;   -- sus envio_obras se borran en cascada
-    update tracks_master set estado_bo = 'ok' where id = v_otra.id and estado_bo <> 'ok';
+    perform unificar_obras(p_track_id, v_otra.id, v_clean);
     return 1;
 end;
 $function$;

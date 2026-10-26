@@ -184,6 +184,13 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - `actualizar` regenera los accesos en WSL siempre.
     - `abrir --mantener` reintenta sin fin (`ESPERA_DOCKER=300`, `sudo -n`) y escribe `arranque.log`.
     - `verificar` avisa si `INICIO_AUTOMATICO` no es S.
+  - **Carga de Tempo IDs desde planilla (26/10/2026):** `bash ranking.sh cargar-tempo-ids <archivo>`.
+    - `migracion/importar_tempo_ids.py` limpia el texto y `fn_cargar_tempo_ids` (`db/mejoras/06_tempo_ids.sql`) cruza.
+    - Claves: `fn_clave_texto`, `fn_claves_artistas`, `fn_clave_titulo_base`.
+    - Unifica con `unificar_obras` (04, sin prefijo fn_ para que la API no la publique).
+    - Simula, respalda, carga y deja el reporte en `RESPALDOS` y OneDrive.
+    - La planilla real del usuario (no está en el repo) tiene 6.619 Tempo ID numéricos y 3.448 "UNCONTROLLED" (no se
+      cargan: `UNIQUE(tempo_id)`); las tildes aparecen como mayúsculas ("ParEntesis").
   - **Manual de uso:** `front/manual.html` (enlace "Manual de uso" arriba a la derecha).
     **Regla fija (pedido del usuario): toda mejora o agregado que cambie lo que ve o hace el usuario se entrega con el
     manual actualizado en el mismo commit, sin que lo pida.** Solo si la información le sirve a quien usa el sistema;
