@@ -80,7 +80,7 @@ th{color:var(--text-muted);font-weight:500;font-size:12px;text-transform:upperca
     <li><a href="#descargas">Reporte BO y CSV: nuevas o todas</a></li>
     <li><a href="#territorio">Tabla por territorio</a></li>
     <li><a href="#historial">Historial de cargas</a></li>
-    <li><a href="#onedrive">Respaldo en OneDrive</a></li>
+    <li><a href="#onedrive">Guardado y respaldos</a></li>
     <li><a href="#panel">Panel de control</a></li>
     <li><a href="#problemas">Mensajes frecuentes</a></li>
   </ol>
@@ -376,7 +376,29 @@ se informa en la ventana de su botón de descarga.</p>
 </section>
 
 <section id="onedrive">
-<h2>Respaldo en OneDrive</h2>
+<h2>Guardado de la información y respaldos</h2>
+<p>La información se conserva en tres lugares independientes, de modo que una falla en uno no implica perder datos:</p>
+<table>
+  <tr><th>Lugar</th><th>Qué guarda</th><th>Cuándo</th></tr>
+  <tr><td><b>Base de datos del sistema</b> (Docker, en la computadora)</td><td>Toda la información: obras, Tempo ID,
+    charts, reportes, usuarios y archivos cargados. Es la fuente de verdad de la aplicación.</td><td>Al instante, con
+    cada carga o cambio.</td></tr>
+  <tr><td><b>Respaldos en la computadora</b></td><td>Copia completa de la base de datos y de los archivos cargados.
+    Se conservan los últimos 14 respaldos diarios.</td><td>Una vez por día, de forma automática, y cada vez que se
+    selecciona <b>Respaldar ahora</b> en el Panel de control.</td></tr>
+  <tr><td><b>OneDrive</b></td><td>Copia de cada archivo cargado y de los respaldos de la base de datos.</td><td>Unos
+    segundos después de cada carga y después de cada respaldo.</td></tr>
+</table>
+
+<h3>Base de datos en Docker</h3>
+<p>El sistema funciona dentro de Docker, en Ubuntu (WSL) de la computadora. La base de datos guarda cada cambio en
+el disco en el momento en que se realiza: cerrar la aplicación, apagar el servidor o reiniciar la computadora no
+borra información. Una carga se guarda completa o no se guarda: si se interrumpe, la información queda como estaba
+antes y basta con repetirla.</p>
+<p>Esta información depende de la computadora. Ante una falla del disco, un cambio de equipo o la reinstalación de
+Ubuntu, se recupera desde los respaldos.</p>
+
+<h3>Respaldo en OneDrive</h3>
 <p>Cada archivo cargado en el sistema se copia automáticamente en la carpeta compartida de OneDrive
 <code>SMP-Administration Argentina - Documents\Latam\RANKING DIGITAL REGIONAL</code>, como respaldo y registro de
 auditoría:</p>
@@ -389,10 +411,23 @@ auditoría:</p>
   <tr><td><code>respaldo_documentacion_sistema</code></td><td>Respaldos completos del sistema y documentación técnica. En
     <code>respaldos\automaticos</code>, el respaldo diario de la base de datos.</td></tr>
 </table>
-<p>Además, el sistema realiza un respaldo completo por día de forma automática, sin intervención.</p>
+<p>Al estar en OneDrive, los respaldos quedan fuera de la computadora, en la nube de la empresa: si el equipo se daña
+o se reemplaza, el sistema se reinstala y se restaura el último respaldo, con la información hasta ese momento. Si OneDrive no está
+disponible por un tiempo, las copias pendientes se completan cuando vuelve a estarlo, y la aplicación sigue
+funcionando con normalidad.</p>
 <div class="caja"><p>La información del sistema reside en su base de datos. La carpeta de OneDrive es una copia: el sistema
 no la lee, por lo que borrar o modificar un archivo allí no altera la información de la aplicación. Para incorporar
-datos, utilizá siempre <b>Carga CSV</b>.</p></div>
+datos, utilizá siempre <b>Carga CSV</b>. No conviene borrar ni mover los archivos de esa carpeta: son el respaldo.</p></div>
+
+<h3>Recomendaciones de seguridad</h3>
+<ul>
+  <li>Verificá en el Panel de control, sección <b>Respaldos y OneDrive</b>, que el último respaldo y la última copia
+    en OneDrive sean recientes.</li>
+  <li>Seleccioná <b>Respaldar ahora</b> antes de una carga grande o de un cambio importante en las obras.</li>
+  <li>Mantené OneDrive iniciado y sincronizado en la computadora.</li>
+  <li>La restauración de un respaldo reemplaza toda la información actual y se realiza desde la consola, por la
+    persona responsable del sistema.</li>
+</ul>
 </section>
 
 <section id="panel">

@@ -246,7 +246,8 @@ with sync_playwright() as p:
           all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Solo las nuevas", "Estado de trabajo automático",
                                           "Nombres de los charts", "youtube-TopSongs-ar-weekly-2021-01-07.csv",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
-                                          "Respaldo en OneDrive", "no altera la información")),
+                                          "Respaldo en OneDrive", "no altera la información",
+                                          "Base de datos en Docker", "Recomendaciones de seguridad")),
           texto_manual[:300])
     manual.close()
 
