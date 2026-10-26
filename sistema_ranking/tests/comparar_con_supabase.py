@@ -20,7 +20,12 @@ viejo = list(csv.DictReader(open(RAIZ / "migracion_supabase/origen/esquema_supab
 IGNORAR = {"permiso", "tamano", "bucket", "bucket_contenido", "auth_total", "auth_proveedor", "politica_storage"}
 # Cambios hechos a propósito (ver README): no cuentan como pérdida.
 A_PROPOSITO = {("extension", "pg_cron"), ("extension", "pg_net"), ("extension", "supabase_vault"),
-               ("extension", "pg_stat_statements")}  # estadísticas: opcional, no la usa ninguna función
+               ("extension", "pg_stat_statements"),  # estadísticas: opcional, no la usa ninguna función
+               # Tempo ID: los marcadores (UNCONTROLLED, COMPILADO) se repiten; solo el número es único
+               # (db/mejoras/07_marcadores.sql: índice único parcial y trigger que no copia marcadores a territory_control).
+               ("restriccion UNIQUE", "public.tracks_master.uq_tracks_master_tempo_id"),
+               ("restriccion FK", "public.territory_tracks.fk_territory_tempo_id"),
+               ("funcion", "public.trg_sync_tempo_id_to_territory")}
 k = lambda r: (r["tipo"], r["objeto"], r["definicion"])
 V = {k(r) for r in viejo if r["tipo"] not in IGNORAR}
 N = {k(r) for r in nuevo if r["tipo"] not in IGNORAR}

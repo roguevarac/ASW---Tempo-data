@@ -465,15 +465,21 @@ también sirve.
   - todas las obras que coinciden reciben el Tempo ID; si varias tienen el mismo, se unifican (`unificar_obras`);
   - nunca se pisa un Tempo ID numérico distinto;
   - si el archivo trae dos Tempo ID para la misma obra, no se carga ninguno;
-  - UNCONTROLLED, COMPILADO y vacíos solo se informan.
+  - los marcadores (UNCONTROLLED, COMPILADO) se cargan en las obras sin Tempo ID numérico, sin unificar; si la misma obra
+    tiene un número en otra fila, gana el número;
+  - los vacíos solo se informan.
+- **Marcadores repetibles** (`db/mejoras/07_marcadores.sql`): `UNIQUE(tempo_id)` pasó a un índice único parcial (solo
+  números, mismo nombre). Se quitó `fk_territory_tempo_id`, que exigía la restricción y solo copiaba el Tempo ID a los
+  charts (lo hace el trigger). El trigger ya no copia marcadores a `territory_control`.
 - **Proceso:**
   - primero simula y muestra el resumen; con la confirmación, hace un respaldo y carga;
   - el reporte fila por fila (CSV con `;` para Excel) queda en la carpeta de respaldos y en OneDrive
     (`Reportes Tempo Control/Tempo IDs`);
   - el archivo original queda en el Historial de cargas.
 - **Resultado medido** con la planilla real (10.074 filas) contra una base armada con las variantes de los charts:
-  93 % de las filas con Tempo ID numérico cargadas, ninguna asignación incorrecta, 20 s. Repetir la carga no cambia
-  nada.
+  93 % de las filas con Tempo ID numérico y 87 % de las UNCONTROLLED cargadas, ningún número asignado a una obra
+  equivocada, 46 s. En 298 filas la planilla da a la misma canción un número y UNCONTROLLED: queda el número. Repetir
+  la carga no cambia nada.
 
 ## Comportamientos heredados que se mantienen
 

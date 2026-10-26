@@ -152,13 +152,16 @@ def main():
         cur.execute("SET statement_timeout = 0")
         cur.execute("SELECT * FROM fn_cargar_tempo_ids(%s::jsonb)", (json.dumps(preparadas, ensure_ascii=False),))
         resultado = cur.fetchall()
-        cuenta = collections.Counter(r[3] for r in resultado)
+        es_numero = lambda r: str(r[2] or "").isdigit()
+        cuenta = collections.Counter(r[3] for r in resultado if es_numero(r))
+        marcas = collections.Counter(r[3] for r in resultado if not es_numero(r) and r[3] != "SIN TEMPO ID")
+        vacios = sum(1 for r in resultado if r[3] == "SIN TEMPO ID")
         niveles = collections.Counter(r[4] for r in resultado if r[3] in ("CARGADO", "SIN CAMBIOS"))
         unificadas = sum(1 for r in resultado if r[6] and "Unificada" in r[6])
         if simular:
             con.rollback()
         else:
-            cargadas = cuenta.get("CARGADO", 0)
+            cargadas = cuenta.get("CARGADO", 0) + marcas.get("CARGADO", 0)
             ruta = guardar_archivo(cur, datos, nombre, os.environ.get("STORAGE_DIR", "/data/storage"))
             errores = [f"{r[1]}: {r[3]} ({r[6]})" for r in resultado if r[3] in ("NO ENCONTRADA", "CONFLICTO", "CONFLICTO EN EL ARCHIVO")]
             cur.execute("""INSERT INTO csv_uploads (filename, uploaded_by, total_rows, created_tracks, updated_rows, error_count,
@@ -174,7 +177,8 @@ def main():
         salida.writerow([r[0], r[1], r[2], r[3], r[4] or "", r[5] or "", r[6] or ""])
 
     total = len(resultado)
-    con_tempo = total - cuenta.get("SIN TEMPO ID", 0)
+    con_tempo = sum(cuenta.values())
+    con_marca = sum(marcas.values())
     p = lambda n: f"{n} ({100 * n / con_tempo:.0f} %)" if con_tempo else str(n)
     print(("SIMULACIÓN (no se cambió nada)\n" if simular else "") +
           f"Filas del archivo: {total} · con Tempo ID numérico: {con_tempo}\n"
@@ -183,7 +187,12 @@ def main():
           f"  No encontradas en el sistema:  {p(cuenta.get('NO ENCONTRADA', 0))}\n"
           f"  Conflicto (ya tenían otro):    {cuenta.get('CONFLICTO', 0)}\n"
           f"  Conflicto en el archivo:       {cuenta.get('CONFLICTO EN EL ARCHIVO', 0)} (la misma obra con dos Tempo ID)\n"
-          f"  Sin Tempo ID (UNCONTROLLED, COMPILADO o vacío): {cuenta.get('SIN TEMPO ID', 0)}\n"
+          f"Filas con marcador (UNCONTROLLED, COMPILADO): {con_marca}\n"
+          f"  Cargadas:                      {marcas.get('CARGADO', 0)}\n"
+          f"  Ya lo tenían o tienen un Tempo ID numérico: {marcas.get('SIN CAMBIOS', 0)}\n"
+          f"  No encontradas en el sistema:  {marcas.get('NO ENCONTRADA', 0)}\n"
+          f"  En conflicto:                  {marcas.get('CONFLICTO EN EL ARCHIVO', 0) + marcas.get('CONFLICTO', 0)}\n"
+          f"Filas sin Tempo ID ni marcador (vacías): {vacios}\n"
           f"Coincidencias: " + ", ".join(f"{k}: {v}" for k, v in sorted(niveles.items(), key=lambda x: -x[1]) if k),
           file=sys.stderr)
 

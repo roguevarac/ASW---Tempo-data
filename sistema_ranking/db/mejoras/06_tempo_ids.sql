@@ -12,8 +12,9 @@
 -- Una fila puede coincidir con varias obras (la misma canción escrita distinto en cada chart): todas reciben el Tempo ID
 -- y quedan unificadas en una, como cuando se asigna a mano un Tempo ID repetido.
 --
--- Reglas: nunca se pisa un Tempo ID numérico distinto (queda como conflicto); los marcadores (UNCONTROLLED, COMPILADO)
--- y los vacíos no se cargan (UNIQUE(tempo_id) no permite repetirlos), solo se informan.
+-- Reglas: nunca se pisa un Tempo ID numérico distinto (queda como conflicto). Los marcadores (UNCONTROLLED, COMPILADO)
+-- se cargan en las obras sin Tempo ID numérico (se pueden repetir: 07_marcadores.sql) y nunca unifican obras; si la
+-- misma obra recibe un número de otra fila, gana el número. Los vacíos solo se informan.
 -- Idempotente: se aplica en cada arranque (db/mejoras.sh).
 -- =====================================================================
 SET search_path = public;
@@ -152,13 +153,40 @@ begin
         end if;
     end loop;
 
+    -- Marcadores (UNCONTROLLED, COMPILADO): en las obras sin Tempo ID numérico, después de los números.
+    for p in
+        select distinct on (m.obra) m.obra, a.marcador as tempo
+        from _ti_match m join _ti_archivo a on a.fila = m.fila
+        where a.tempo is null and a.marcador <> 'vacío'
+          and m.obra not in (select r.obra from _ti_res r where r.resultado like 'CONFLICTO%')
+        order by m.obra, m.nivel, a.fila
+    loop
+        select tm.tempo_id into v_actual from tracks_master tm where tm.id = p.obra and tm.deleted_at is null;
+        if not found then
+            insert into _ti_res values (p.obra, p.tempo, 'SIN CAMBIOS',
+                'La obra quedó unificada con otra que tiene Tempo ID numérico; el marcador no se carga');
+        elsif v_actual = p.tempo then
+            insert into _ti_res values (p.obra, p.tempo, 'SIN CAMBIOS', 'Ya tenía ese marcador');
+        elsif v_actual ~ '^[0-9]+$' then
+            insert into _ti_res values (p.obra, p.tempo, 'SIN CAMBIOS',
+                'Tiene el Tempo ID ' || v_actual || '; el marcador no se carga');
+        else
+            update tracks_master
+            set tempo_id = p.tempo,
+                estado_bo = case when p.tempo = 'UNCONTROLLED' then 'uncontrolled'::estado_bo_enum else estado_bo end
+            where id = p.obra;
+            insert into _ti_res values (p.obra, p.tempo, 'CARGADO', null);
+        end if;
+    end loop;
+
     return query
     select a.fila, a.texto, coalesce(a.tempo, a.marcador),
-           case when a.tempo is null then 'SIN TEMPO ID'
+           case when a.tempo is null and a.marcador = 'vacío' then 'SIN TEMPO ID'
                 when not exists (select 1 from _ti_match m where m.fila = a.fila)
                      and exists (select 1 from tracks_master tm where tm.tempo_id = a.tempo) then 'SIN CAMBIOS'
                 when not exists (select 1 from _ti_match m where m.fila = a.fila) then 'NO ENCONTRADA'
                 else (select r.resultado from _ti_match m join _ti_res r on r.obra = m.obra where m.fila = a.fila
+                        and (r.tempo is null or r.tempo = coalesce(a.tempo, a.marcador))
                       order by array_position(array['CARGADO', 'SIN CAMBIOS', 'CONFLICTO', 'CONFLICTO EN EL ARCHIVO'],
                                               r.resultado) limit 1) end,
            (select case min(m.nivel) when 1 then 'exacta' when 2 then 'artistas en otro orden'
@@ -169,15 +197,13 @@ begin
             from _ti_match m join _ti_obras o on o.id = m.obra
             left join _ti_res r on r.obra = m.obra and r.resultado like 'CONFLICTO%'
             where m.fila = a.fila),
-           case when a.tempo is null then
-                    case a.marcador when 'vacío' then 'Sin Tempo ID en el archivo'
-                         else 'Marcador ' || a.marcador || ': no es un Tempo ID' end
+           case when a.tempo is null and a.marcador = 'vacío' then 'Sin Tempo ID en el archivo'
                 when not exists (select 1 from _ti_match m where m.fila = a.fila) then coalesce(
                     (select 'El Tempo ID ya está en "' || tm.track_artist_concat || '"' from tracks_master tm
                      where tm.tempo_id = a.tempo), 'No hay una obra cargada con ese título')
                 else (select string_agg(distinct r.detalle, '; ') from _ti_match m join _ti_res r on r.obra = m.obra
                       where m.fila = a.fila and r.detalle is not null
-                        and (r.tempo is null or r.tempo = a.tempo)) end
+                        and (r.tempo is null or r.tempo = coalesce(a.tempo, a.marcador))) end
     from _ti_archivo a
     order by a.fila;
 end;

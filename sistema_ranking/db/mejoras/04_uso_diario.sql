@@ -268,13 +268,15 @@ begin
     if not exists (select 1 from tracks_master where id = p_track_id and deleted_at is null) then
         raise exception 'La obra no existe o fue eliminada.';
     end if;
+    -- Solo un Tempo ID numérico es de una sola obra; los marcadores (UNCONTROLLED, COMPILADO) se repiten.
     select id, track_artist_concat, deleted_at into v_otra
-    from tracks_master where tempo_id = v_clean and id <> p_track_id;
+    from tracks_master where tempo_id = v_clean and id <> p_track_id and v_clean ~ '^[0-9]+$';
 
     if v_otra.id is null then
         update tracks_master
         set tempo_id = v_clean,
-            estado_bo = case when v_clean is not null then 'ok'::estado_bo_enum else estado_bo end
+            estado_bo = case when v_clean ~ '^[0-9]+$' then 'ok'::estado_bo_enum
+                             when upper(v_clean) = 'UNCONTROLLED' then 'uncontrolled'::estado_bo_enum else estado_bo end
         where id = p_track_id;
         return 0;
     end if;

@@ -52,7 +52,8 @@ OBRAS = [
     ("TI Repetido", "Uno"), ("TI Repetido", "Dos"),                  # solo título, pero hay dos: no
     ("TI Contradicción", "Banda"),                                   # el archivo trae dos Tempo ID: no
     ("TI 사람 Pt.2", "SUGA, IU"),                                     # coreano
-    ("TI Uncontrolled", "Nadie"),
+    ("TI Uncontrolled", "Nadie"), ("TI Uncontrolled Dos", "Otra Nadie"),   # el mismo marcador en dos obras
+    ("TI Numero Gana", "Banda N"),                                   # una fila con número y otra con UNCONTROLLED
 ]
 FILAS = [
     ("Concatenate", "Tempo ID"),
@@ -69,6 +70,9 @@ FILAS = [
     ("TI Contradicción // Banda, Invitado", 9100011),
     ("TI 사람 Pt.2 (feat. IU) // SUGA & IU", 9100012),
     ("TI Uncontrolled // Nadie", "UNCONTROLLED"),
+    ("TI Uncontrolled Dos // Otra Nadie", "UNCONTROLLED"),
+    ("TI Numero Gana // Banda N", "UNCONTROLLED"),
+    ("TI Numero Gana // Banda N", 9100014),
     ("TI Vacío // Nadie", None),
     ("TI No Existe // Nadie", 9100013),
 ]
@@ -139,13 +143,20 @@ check("el archivo trae dos Tempo ID para la misma obra: no se carga ninguno",
       tempo("TI Contradicción", "Banda") == "-" and r("TI Contradicción // Banda")[3] == "CONFLICTO EN EL ARCHIVO"
       and "[conflicto en el archivo]" in r("TI Contradicción // Banda")[5], r("TI Contradicción // Banda"))
 check("título en coreano", tempo("TI 사람 Pt.2", "SUGA, IU") == "9100012", r("TI 사람 Pt.2 (feat. IU) // SUGA & IU"))
-check("UNCONTROLLED y vacío: se informan y no se cargan",
-      r("TI Uncontrolled // Nadie")[3] == "SIN TEMPO ID" and "UNCONTROLLED" in r("TI Uncontrolled // Nadie")[6]
-      and r("TI Vacío // Nadie")[3] == "SIN TEMPO ID" and tempo("TI Uncontrolled", "Nadie") == "-")
+check("UNCONTROLLED: se carga, también repetido en varias obras",
+      tempo("TI Uncontrolled", "Nadie") == "UNCONTROLLED" and tempo("TI Uncontrolled Dos", "Otra Nadie") == "UNCONTROLLED"
+      and r("TI Uncontrolled // Nadie")[3] == "CARGADO"
+      and sqlq("SELECT estado_bo FROM tracks_master WHERE track_name_raw = 'TI Uncontrolled'") == "uncontrolled")
+check("si la misma obra trae un Tempo ID numérico en otra fila, gana el número",
+      tempo("TI Numero Gana", "Banda N") == "9100014" and r("TI Numero Gana // Banda N")[3] in ("CARGADO", "SIN CAMBIOS"))
+check("fila vacía: se informa y no se carga", r("TI Vacío // Nadie")[3] == "SIN TEMPO ID")
+check("un Tempo ID numérico sigue siendo de una sola obra",
+      "uq_tracks_master_tempo_id" in subprocess.run(["psql", PGURL, "-c",
+          "UPDATE tracks_master SET tempo_id = '9100001' WHERE track_name_raw = 'TI Señuelo'"], capture_output=True, text=True).stderr)
 check("obra que no está en el sistema", r("TI No Existe // Nadie")[3] == "NO ENCONTRADA")
 check("queda en el historial (Tempo IDs) con el archivo original",
       sqlq("SELECT format || '|' || updated_rows || '|' || (file_path LIKE 'tempo_ids/%')::int FROM csv_uploads "
-           "WHERE filename = 'Tempos_ID.xlsx' ORDER BY id DESC LIMIT 1") == "master_tempo|7|1"
+           "WHERE filename = 'Tempos_ID.xlsx' ORDER BY id DESC LIMIT 1") == "master_tempo|10|1"
       and (pathlib.Path(os.environ["STORAGE_DIR"]) / "csv-uploads" / sqlq(
           "SELECT file_path FROM csv_uploads WHERE filename = 'Tempos_ID.xlsx' ORDER BY id DESC LIMIT 1")).read_bytes() == xlsx.read_bytes())
 

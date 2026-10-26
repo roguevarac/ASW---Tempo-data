@@ -238,7 +238,8 @@ try:
     check("instalar: la base escucha solo en esta PC", sql(url_nueva(), "show listen_addresses") == "127.0.0.1")
     r = subprocess.run([sys.executable, str(RAIZ / "tests" / "comparar_con_supabase.py")], capture_output=True, text=True,
                        env=dict(os.environ, PGURL=url_nueva()))
-    check("instalar: estructura idéntica a la de Supabase (151 objetos)", r.returncode == 0 and "idénticos en la base propia: 151" in r.stdout,
+    check("instalar: estructura igual a la de Supabase (salvo los cambios a propósito del README)",
+          r.returncode == 0 and "faltan o cambiaron:\ncambios a propósito:" in r.stdout,
           r.stdout[-600:] + r.stderr[-300:])
     check("instalar: el sistema responde", httpx.get(api("/health")).status_code == 200, log[-1500:])
     check("instalar: el admin creado entra", login("jefe@nuevo.local", "clave-jefe-12345").status_code == 200, log[-1500:])
