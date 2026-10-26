@@ -200,6 +200,11 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - El usuario quiere cargar también los UNCONTROLLED (26/10/2026): `db/mejoras/07_marcadores.sql` deja único solo el
       Tempo ID numérico (índice parcial `uq_tracks_master_tempo_id`) y quita `fk_territory_tempo_id`. Los marcadores
       nunca unifican obras ni pisan un número; con número y marcador para la misma obra, gana el número.
+  - **Dos perfiles (27/10/2026, pedido del usuario):** "Usuario estándar" y "Administrador" (= acceso al Panel de
+    control, hoy solo rocio.guevara@sonymusicpub.com). El front muestra el perfil según `panel.acceso`, no el
+    `app_role`; no hay selector de rol en el Panel ni rol "auditor" (`db/mejoras/08_perfiles.sql` los pasa a
+    usuario_estandar). Sin "Ver eliminados" (nada se elimina desde el sistema). El manual no lleva la tabla de nombres
+    de charts ni la rutina trimestral.
   - **Manual de uso:** `front/manual.html` (enlace "Manual de uso" arriba a la derecha).
     **Regla fija (pedido del usuario): toda mejora o agregado que cambie lo que ve o hace el usuario se entrega con el
     manual actualizado en el mismo commit, sin que lo pida.** Solo si la información le sirve a quien usa el sistema;

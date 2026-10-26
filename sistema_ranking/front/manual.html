@@ -120,12 +120,10 @@ caracteres y, al guardarla, se cierran las sesiones abiertas.</p>
     Ingresá el email, el código y la contraseña nueva. El código sirve una sola vez, durante 30 minutos.</li>
 </ul>
 <table>
-  <tr><th>Rol</th><th>Permisos</th></tr>
-  <tr><td><b>admin</b></td><td>Carga de archivos, edición de Tempo ID y estados de trabajo, y descargas. Además, puede ver
-    las obras eliminadas (casilla <b>Ver eliminados</b>).</td></tr>
-  <tr><td><b>usuario_estandar</b></td><td>Carga de archivos, edición de Tempo ID y estados de trabajo, y descargas.</td></tr>
-  <tr><td><b>auditor</b></td><td>Consulta y descargas. La pestaña Carga CSV figura como "solo lectura" y las tablas no
-    son editables.</td></tr>
+  <tr><th>Perfil</th><th>Permisos</th></tr>
+  <tr><td><b>Usuario estándar</b></td><td>Carga de archivos, edición de Tempo ID y estados de trabajo, y descargas.</td></tr>
+  <tr><td><b>Administrador</b></td><td>Lo mismo que el usuario estándar y, además, acceso al <a href="#panel">Panel de
+    control</a>. Actualmente, rocio.guevara@sonymusicpub.com.</td></tr>
 </table>
 </section>
 
@@ -137,7 +135,7 @@ caracteres y, al guardarla, se cierran las sesiones abiertas.</p>
     <i>"Seleccionar país para ver fecha de última carga"</i>. Se toma el territorio del filtro de la pestaña activa; en
     Carga CSV e Historial de cargas, el último seleccionado. La fecha corresponde a la <b>semana del chart</b>, no al
     día de la carga: cargar hoy un chart anterior no la modifica.</li>
-  <li><b>Superior derecha:</b> usuario y rol, <b>Manual de uso</b> y <b>Cerrar sesión</b>.</li>
+  <li><b>Superior derecha:</b> usuario y perfil, <b>Manual de uso</b> y <b>Cerrar sesión</b>.</li>
   <li><b>Pestañas:</b> Tabla principal, Tabla por territorio, Carga CSV e Historial de cargas.</li>
   <li><b>Pie de página:</b> cantidad de filas visibles con los filtros aplicados.</li>
 </ul>
@@ -145,7 +143,6 @@ caracteres y, al guardarla, se cierran las sesiones abiertas.</p>
 
 <section id="rutina">
 <h2>Rutina de trabajo</h2>
-<h3>Semanal, o cuando ingresan canciones nuevas</h3>
 <ol class="pasos">
   <li><b>Cargar los charts</b> de Spotify y YouTube de cada territorio en <b>Carga CSV</b>. Las canciones nuevas se
     agregan a la tabla principal sin Tempo ID.</li>
@@ -163,10 +160,6 @@ caracteres y, al guardarla, se cierran las sesiones abiertas.</p>
     Control</b>.</li>
   <li><b>Revisar la tabla por territorio:</b> filtrar <b>Estado de trabajo: REVISAR</b> y resolver cada obra.</li>
 </ol>
-<h3>Trimestral, o cuando se requiera una revisión completa</h3>
-<p>Repetir los pasos 3 a 5 con la opción <b>Todas</b> en lugar de <b>Solo las nuevas</b>: el reporte BO incluye todas
-las obras con Tempo ID, también las ya enviadas. El mismo criterio aplica al CSV de la tabla principal. Ver
-<a href="#descargas">Reporte BO y CSV: nuevas o todas</a>.</p>
 </section>
 
 <section id="carga">
@@ -196,7 +189,7 @@ no quedan datos parciales y el archivo puede volver a cargarse.</p>
 </table>
 <div class="caja">
   <p><b>Charts:</b> subí los archivos .csv con el nombre de descarga; el territorio y la semana del título se utilizan
-  para interpretar el archivo (ver <a href="#nombres">Nombres de los charts</a>).</p>
+  para interpretar el archivo. Un chart cuyo nombre no incluye la fecha no se carga.</p>
   <p><b>Reportes:</b> solo se cargan las obras cuyo Tempo ID ya figura en la tabla principal. Conviene completar los
   Tempo ID antes de cargar los reportes.</p>
   <p><b>Reporte BackOffice:</b> el territorio se toma del nombre del archivo (por ejemplo <code>…_PAIS_PARAGUAY…</code>). Si
@@ -204,27 +197,6 @@ no quedan datos parciales y el archivo puede volver a cargarse.</p>
   <p><b>Archivos repetidos:</b> volver a cargar un archivo no duplica información; se actualizan la semana y el
   territorio correspondientes, o los datos de esas obras.</p>
 </div>
-<h3 id="nombres">Nombres de los charts</h3>
-<p>En los charts, el territorio, la semana y la plataforma se obtienen del <b>nombre del archivo</b>. Se reconocen los
-siguientes formatos:</p>
-<table>
-  <tr><th>Nombre del archivo</th><th>Plataforma</th><th>Territorio</th><th>Semana</th></tr>
-  <tr><td><code>regional-ar-weekly-2021-01-07.csv</code></td><td>Spotify</td><td>AR</td><td>07/01/2021</td></tr>
-  <tr><td><code>regional-ar-weekly-2024-07-04.csv</code></td><td>Spotify</td><td>AR</td><td>04/07/2024</td></tr>
-  <tr><td><code>regional-py-weekly-2023-12-14 -ult.csv</code></td><td>Spotify</td><td>PY</td><td>14/12/2023</td></tr>
-  <tr><td><code>youtube-py-weekly-2023-03-09.csv</code></td><td>YouTube</td><td>PY</td><td>09/03/2023</td></tr>
-  <tr><td><code>youtube-TopSongs-ar-weekly-2021-01-07.csv</code></td><td>YouTube</td><td>AR</td><td>07/01/2021</td></tr>
-  <tr><td><code>youtube-charts-top-songs-py-weekly-20230309.csv</code></td><td>YouTube</td><td>PY</td><td>09/03/2023</td></tr>
-</table>
-<ul>
-  <li><b>Plataforma:</b> YouTube si el nombre contiene "youtube" (o los enlaces son de YouTube); en otro caso, Spotify.</li>
-  <li><b>Territorio:</b> código de dos letras entre guiones (<code>-ar-</code>, <code>-py-</code>…) o nombre del país.</li>
-  <li><b>Semana:</b> fecha con formato <code>2021-01-07</code> o <code>20210107</code>. Un chart cuyo nombre no incluye la
-    fecha no se carga; por eso se recomienda no modificar esas partes del nombre.</li>
-  <li>Los agregados al final del nombre (como <code>-ult</code>) no afectan la lectura.</li>
-</ul>
-<p>También se interpretan el formato anterior de los charts de Spotify, el formato oficial de YouTube, los números con
-separador de miles (por ejemplo, en archivos editados con Excel) y los caracteres con acentos o "ñ".</p>
 </section>
 
 <section id="titulos">
@@ -266,7 +238,6 @@ el total.</p>
   <li><b>País:</b> canciones que figuraron en los charts de ese territorio.</li>
   <li><b>Desde / Hasta:</b> canciones que figuraron en los charts en ese período. Combinado con el país, por ejemplo:
     "lo ingresado en AR en octubre". <b>Limpiar</b> quita el país y las fechas.</li>
-  <li><b>Ver eliminados</b> (solo admin): incluye, en gris, las obras dadas de baja.</li>
 </ul>
 <h3>Registro del Tempo ID</h3>
 <p>Ingresá el número en la celda y salí de ella (clic fuera o Tab): se guarda automáticamente. Las celdas vacías se
@@ -442,7 +413,7 @@ el funcionamiento del sistema y la actividad de los usuarios sin utilizar la con
   <tr><td><b>Respaldos y OneDrive</b></td><td>Último respaldo, última copia en OneDrive y registro de cada copia y
     respaldo, con su resultado. <b>Respaldar ahora</b> realiza un respaldo completo y lo copia en OneDrive; conviene
     utilizarlo después de una carga importante.</td></tr>
-  <tr><td><b>Usuarios</b></td><td>Alta de usuarios, rol y oficina, bloqueo y desbloqueo, código para restablecer la
+  <tr><td><b>Usuarios</b></td><td>Alta de usuarios, oficina, bloqueo y desbloqueo, código para restablecer la
     contraseña y cierre de las sesiones abiertas.</td></tr>
   <tr><td><b>Actividad</b></td><td>Ingresos, cargas, descargas y cambios manuales de cada usuario, con filtros por
     usuario, tipo de acción y fechas. Sin fechas, muestra los últimos 90 días.</td></tr>
@@ -453,7 +424,7 @@ el funcionamiento del sistema y la actividad de los usuarios sin utilizar la con
 </table>
 <h3>Alta de un usuario</h3>
 <ol class="pasos">
-  <li>En <b>Usuarios</b>, ingresá el email, seleccioná el rol y, si corresponde, la oficina. Presioná
+  <li>En <b>Usuarios</b>, ingresá el email y, si corresponde, la oficina. Presioná
     <b>Crear usuario</b>.</li>
   <li>El sistema muestra un código de activación, válido 72 horas. Entregáselo a la persona: no vuelve a
     mostrarse.</li>
@@ -483,7 +454,7 @@ computadora donde está instalado el sistema (<code>bash ranking.sh usuarios</co
   <tr><td>"El Tempo ID … ya está asignado a …"</td><td>Si es la misma canción, volvé a ingresarlo y aceptá la
     unificación. Si no, verificá el Tempo ID en Tempo.</td></tr>
   <tr><td>"… no indica la semana del chart"</td><td>El nombre del chart no incluye la fecha. Descargalo nuevamente o
-    renombralo con el formato original (ver <a href="#nombres">Nombres de los charts</a>) y volvé a cargarlo.</td></tr>
+    renombralo con el nombre original de descarga y volvé a cargarlo.</td></tr>
   <tr><td>"El código no es válido o venció"</td><td>El código ya se utilizó, pasaron más de 30 minutos o se ingresó
     mal varias veces. Solicitá un código nuevo.</td></tr>
   <tr><td>"La sesión venció. Volvé a ingresar."</td><td>Pasaron 8 horas sin uso, se cerró la sesión o se cambió la

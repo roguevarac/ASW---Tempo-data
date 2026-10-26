@@ -170,12 +170,16 @@ with sync_playwright() as p:
     pag.click("#logoutBtn"); pag.wait_for_selector("#loginEmail")
     pag.fill("#loginEmail", "panel@prueba.local"); pag.fill("#loginPass", "clave-panel-123"); pag.click("#loginBtn")
     pag.wait_for_selector('[data-tab="panel"]')
+    check("sin la casilla 'Ver eliminados' (tampoco para el administrador)", pag.locator("#toggleDeleted, #toggleDeletedT").count() == 0
+          and "Ver eliminados" not in pag.inner_text("body"))
     pag.click('[data-tab="panel"]'); pag.wait_for_selector(".servicio")
     texto = pag.inner_text(".panel-body")
     check("Estado del sistema: servicios, recursos, contenido y respaldos",
           all(t in texto for t in ("Base de datos", "Funcionando", "Disco", "Memoria", "Obras sin Tempo ID", "Último respaldo")), texto[:400])
     pag.click('[data-panel-sub="usuarios"]'); pag.wait_for_selector("#panelCrear")
-    pag.fill("#panelNuevoEmail", "desde.navegador@prueba.local"); pag.select_option("#panelNuevoRol", "auditor")
+    check("dos perfiles: el encabezado muestra Administrador y no hay selector de rol",
+          "Administrador" in pag.inner_text(".who") and pag.locator("#panelNuevoRol, [data-usuario-rol]").count() == 0)
+    pag.fill("#panelNuevoEmail", "desde.navegador@prueba.local")
     pag.fill("#panelNuevaOficina", "UY"); pag.click("#panelCrear"); pag.wait_for_selector("#panelCodigo")
     cod = pag.inner_text("#panelCodigo")
     check("alta desde el panel: muestra el código de activación una vez", len(cod) == 9 and "72 horas" in pag.inner_text(".modal"), cod)
@@ -185,9 +189,13 @@ with sync_playwright() as p:
     pag.click('[data-usuario-accion="bloquear"][data-email="desde.navegador@prueba.local"]')
     pag.wait_for_function("() => document.querySelector('tr[data-usuario=\"desde.navegador@prueba.local\"]').innerText.includes('Bloqueado')")
     check("bloquear desde el panel", sqlq("select banned_until > now() from auth.users where email = 'desde.navegador@prueba.local'") == "t")
-    pag.select_option('[data-usuario-rol="desde.navegador@prueba.local"]', "usuario_estandar"); pag.wait_for_timeout(1000)
-    check("cambiar el rol desde el panel", sqlq("select app_role from app_users a join auth.users u on u.id = a.user_id "
-                                                "where u.email = 'desde.navegador@prueba.local'") == "usuario_estandar")
+    check("el usuario creado es usuario estándar", "Usuario estándar" in pag.inner_text('tr[data-usuario="desde.navegador@prueba.local"]')
+          and sqlq("select app_role from app_users a join auth.users u on u.id = a.user_id "
+                   "where u.email = 'desde.navegador@prueba.local'") == "usuario_estandar")
+    pag.fill('[data-usuario-oficina="desde.navegador@prueba.local"]', "PE"); pag.press('[data-usuario-oficina="desde.navegador@prueba.local"]', "Tab")
+    pag.wait_for_timeout(1000)
+    check("cambiar la oficina desde el panel", sqlq("select app_role || '|' || oficina from app_users a join auth.users u on u.id = a.user_id "
+                                                    "where u.email = 'desde.navegador@prueba.local'") == "usuario_estandar|PE")
     pag.click('[data-panel-sub="respaldos"]'); pag.wait_for_selector("#panelRespaldar")
     pag.click("#panelRespaldar"); pag.wait_for_timeout(1000)
     check("Respaldar ahora desde el panel", sqlq("select count(*) from panel.solicitudes where estado = 'pendiente'") == "1"
