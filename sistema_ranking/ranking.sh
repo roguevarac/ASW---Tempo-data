@@ -562,6 +562,43 @@ cmd_cargar_historicos() {
     echo "En la aplicación: Historial de cargas muestra cada semana cargada por país."
 }
 
+# Si la ruta indicada no existe, busca la planilla en las carpetas habituales de Windows (Descargas, Escritorio y
+# Documentos, también dentro de OneDrive) y en el espejo: por el mismo nombre (sin importar mayúsculas, espacios o
+# guiones bajos) y, si no, por "*tempo*id*". Con un solo candidato lo usa; con varios, los muestra.
+buscar_planilla() {
+    local pedido="$1" base usuario raices=() d
+    base="$(basename "$pedido")"
+    case "$pedido" in /mnt/[a-z]/Users/*/*) usuario="$(printf '%s' "$pedido" | cut -d/ -f1-5)";; esac
+    [ -z "$usuario" ] && [ -n "${WSL_DISTRO_NAME:-}" ] && usuario="$(wslpath -u "$(cd /mnt/c 2>/dev/null || true; \
+        powershell.exe -NoProfile -Command '$env:USERPROFILE' 2>/dev/null | tr -d '\r')" 2>/dev/null)"
+    if [ -n "$usuario" ] && [ -d "$usuario" ]; then
+        for d in "$usuario" "$usuario"/OneDrive*; do
+            [ -d "$d" ] && raices+=("$d/Downloads" "$d/Descargas" "$d/Desktop" "$d/Escritorio" "$d/Documents" "$d/Documentos")
+        done
+    fi
+    [ -n "$(valor ESPEJO_DIR)" ] && raices+=("$(valor ESPEJO_DIR)")
+    local existentes=() candidatos=()
+    for d in "${raices[@]}"; do [ -d "$d" ] && existentes+=("$d"); done
+    [ ${#existentes[@]} -gt 0 ] || { aviso "No encuentro el archivo: $pedido" >&2; return 1; }
+    local clave; clave="$(printf '%s' "${base%.*}" | tr 'A-Z _' 'a-z--')"
+    mapfile -t candidatos < <(find "${existentes[@]}" -maxdepth 3 -type f \( -iname '*.xlsx' -o -iname '*.csv' \) 2>/dev/null \
+        | while IFS= read -r f; do b="$(basename "$f")"; [ "$(printf '%s' "${b%.*}" | tr 'A-Z _' 'a-z--')" = "$clave" ] && echo "$f"; done)
+    [ ${#candidatos[@]} -gt 0 ] || mapfile -t candidatos < <(find "${existentes[@]}" -maxdepth 3 -type f -iname '*tempo*id*.xlsx' 2>/dev/null)
+    if [ ${#candidatos[@]} -eq 1 ]; then
+        echo "No estaba en $pedido; uso: ${candidatos[0]}" >&2
+        printf '%s\n' "${candidatos[0]}"
+        return 0
+    fi
+    aviso "No encuentro el archivo: $pedido" >&2
+    if [ ${#candidatos[@]} -gt 1 ]; then
+        echo "Encontré estos parecidos; corré el comando con el que corresponda (entre comillas):" >&2
+        printf '  %s\n' "${candidatos[@]}" >&2
+    else
+        echo "Buscalo con:  find /mnt/c/Users -maxdepth 5 -iname '*tempo*id*.xlsx' 2>/dev/null" >&2
+    fi
+    return 1
+}
+
 # Carga masiva de Tempo IDs desde una planilla "Título // Artistas" + Tempo ID (.xlsx o .csv). Primero simula y muestra
 # el resultado; con la confirmación, hace un respaldo y carga. Deja el reporte (CSV para Excel) en la carpeta de
 # respaldos y en OneDrive (Reportes Tempo Control/Tempo IDs). Ver migracion/importar_tempo_ids.py.
@@ -570,7 +607,7 @@ cmd_cargar_tempo_ids() {
     local archivo="${1:-}"
     [ -n "$archivo" ] || fallar "Uso: bash ranking.sh cargar-tempo-ids <archivo .xlsx o .csv>"
     case "$archivo" in [A-Za-z]:\\*|[A-Za-z]:/*) command -v wslpath > /dev/null 2>&1 && archivo="$(wslpath -u "$archivo")";; esac
-    [ -f "$archivo" ] || fallar "No encuentro el archivo: $archivo"
+    [ -f "$archivo" ] || archivo="$(buscar_planilla "$archivo")" || exit 1
     local nombre; nombre="$(basename "$archivo")"
     dc up -d db > /dev/null 2>&1
     mkdir -p "$RESPALDOS"
