@@ -450,17 +450,32 @@ La aplicación instalada desde Edge no puede encender el servidor; si Ubuntu est
 
 ### Carga masiva de Tempo IDs (`bash ranking.sh cargar-tempo-ids <archivo>`)
 
-Planilla de dos columnas: "Título // Artistas" (o "Título - Artistas") y Tempo ID, en .xlsx o .csv. Una ruta de Windows
-también sirve.
+Planilla de dos columnas, en cualquier orden: "Título // Artistas" (o "Título - Artistas") y Tempo ID, en .xlsx o
+.csv. Una ruta de Windows también sirve.
 - **Limpieza** (`migracion/importar_tempo_ids.py`, lee el .xlsx sin librerías): tildes mal codificadas
-  ("FrÃ¡gil"), tildes sueltas, tachados, comillas tipográficas, espacios.
+  ("FrÃ¡gil", y "FrA¡gil" / "MuA±eca" de la planilla normalizada), tildes sueltas, tachados, caracteres invisibles,
+  comillas tipográficas, espacios. "Sin artista" cuenta como vacío ("Título - Artista - Sin artista" se separa bien).
 - **Cruce** (`fn_cargar_tempo_ids`, `db/mejoras/06_tempo_ids.sql`): con la normalización de los charts y sin mayúsculas,
   tildes, signos ni espacios. Niveles:
   1. exacta;
   2. artistas en otro orden;
   3. un artista en común;
   4. título sin "(feat. …)";
-  5. solo título, si la fila no trae artistas y hay una sola obra.
+  5. solo título, si la fila no trae artistas y hay una sola obra;
+  6. otra versión: sin "(Official Video)", "- Sped Up", "(Remastered …)", "(Acústico)", "(Prod. …)"… (nunca los remixes)
+     y un artista en común.
+
+  Solo para filas y obras que quedan sin coincidencia (obras sin Tempo ID numérico), por parecido (trigramas propios,
+  sin extensiones):
+  7. título parecido: un artista en común y título con 75 % de parecido o una sola letra distinta (8 letras o más);
+  8. artista parecido: el mismo título (8 letras o más) y el artista con 50 % de parecido.
+
+  En 7 y 8, los números del título y la condición de remix tienen que ser iguales ("Vol. 52" no es "Vol. 53"), y la
+  obra tiene que ser la única posible para la fila y la fila la única para la obra. Lo que no alcanza queda en el
+  reporte como "Sugerencia para revisar" (desde 40 % de parecido).
+- **Segunda pasada** (en la misma transacción): las obras con Tempo ID o marcador, de esta carga o de antes (también
+  los asignados a mano), se usan como filas: sus otras versiones sin identificar lo heredan y se unifican. Mismas reglas
+  (un número distinto nunca se pisa). En el reporte aparecen con "sistema" en la columna Fila.
 - **Reglas:**
   - todas las obras que coinciden reciben el Tempo ID; si varias tienen el mismo, se unifican (`unificar_obras`);
   - nunca se pisa un Tempo ID numérico distinto;
@@ -476,10 +491,12 @@ también sirve.
   - el reporte fila por fila (CSV con `;` para Excel) queda en la carpeta de respaldos y en OneDrive
     (`Reportes Tempo Control/Tempo IDs`);
   - el archivo original queda en el Historial de cargas.
-- **Resultado medido** con la planilla real (10.074 filas) contra una base armada con las variantes de los charts:
-  93 % de las filas con Tempo ID numérico y 87 % de las UNCONTROLLED cargadas, ningún número asignado a una obra
-  equivocada, 46 s. En 298 filas la planilla da a la misma canción un número y UNCONTROLLED: queda el número. Repetir
-  la carga no cambia nada.
+- **Resultado medido** con la planilla real (10.074 filas) contra una base armada con las variantes de los charts
+  (versiones, letras de menos, artistas mal escritos y casi 600 señuelos del mismo artista con otro número, "Pt. 2" o
+  "(Remix)"): 94 % de las filas con Tempo ID numérico y 90 % de las UNCONTROLLED cargadas, ningún número asignado a una
+  obra equivocada, unos 70 s. La planilla "normalizada v2" (9.936 filas) tiene los mismos 3.929 Tempo ID; no agrega
+  obras, pero resuelve algunas filas que en la primera tienen dos Tempo ID: conviene cargar la primera y después la v2.
+  Repetir la carga no cambia nada.
 
 ## Comportamientos heredados que se mantienen
 

@@ -191,6 +191,12 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - Simula, respalda, carga y deja el reporte en `RESPALDOS` y OneDrive.
     - La planilla real del usuario (no está en el repo) tiene 6.619 Tempo ID numéricos y 3.448 "UNCONTROLLED"; las
       tildes aparecen como mayúsculas ("ParEntesis").
+    - Cruce ampliado (26/10/2026, pedido "trabajo mayor en identificar obras"): niveles 6 (otra versión, nunca remix),
+      7 (título parecido) y 8 (artista parecido), con trigramas propios (`fn_trigramas`, `fn_parecido`, `fn_una_letra`;
+      sin pg_trgm) y misma firma de números/remix. Sugerencias para revisar en el reporte. Segunda pasada: las obras
+      ya identificadas pasan su Tempo ID a sus otras versiones. La planilla "normalizada v2" trae el Tempo ID en la
+      columna A, "Sin artista" y tildes como "FrA¡gil": el importador lo detecta. Medido con la planilla real: 0 errores
+      número contra número (harness en el scratchpad, no en el repo).
     - El usuario quiere cargar también los UNCONTROLLED (26/10/2026): `db/mejoras/07_marcadores.sql` deja único solo el
       Tempo ID numérico (índice parcial `uq_tracks_master_tempo_id`) y quita `fk_territory_tempo_id`. Los marcadores
       nunca unifican obras ni pisan un número; con número y marcador para la misma obra, gana el número.

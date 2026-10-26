@@ -1,13 +1,15 @@
 """
 Carga masiva de Tempo IDs desde una planilla (bash ranking.sh cargar-tempo-ids <archivo>).
 
-La planilla tiene dos columnas: "Título // Artistas" (o "Título - Artistas") y el Tempo ID (.xlsx o .csv). El archivo
+La planilla tiene dos columnas, en cualquier orden: "Título // Artistas" (o "Título - Artistas") y el Tempo ID (.xlsx o
+.csv). El archivo
 llega por la entrada estándar. Este script limpia el texto y la base hace el cruce y la carga (fn_cargar_tempo_ids,
 db/mejoras/06_tempo_ids.sql):
   - tildes mal codificadas ("FrÃ¡gil" -> "Frágil"), tildes sueltas, comillas tipográficas y espacios de más;
-  - título y artistas por el último "//" (o el último " - " si no hay "//").
+  - título y artistas por el último "//" (o el último " - " si no hay "//"); el Tempo ID puede estar en cualquier
+    columna, y "Sin artista" cuenta como vacío.
 La normalización de títulos (tildes, "&", versiones en vivo, mayúsculas, signos) es la de la base, igual que en la
-carga de charts.
+carga de charts. Después, cada obra con Tempo ID se lo pasa a sus otras versiones sin identificar (segunda pasada).
 
     PGURL=... STORAGE_DIR=... python importar_tempo_ids.py --nombre archivo.xlsx [--simular] < archivo.xlsx > reporte.csv
 
@@ -87,32 +89,69 @@ def arreglar_codificacion(s):
         except (UnicodeError, ValueError):
             pass
         return m.group(0)
-    return re.sub(r"([ÃÂ])(.)", par, s)
+    s = re.sub(r"([ÃÂ])(.)", par, s)
+    # La misma tilde mal codificada, con la "Ã" pasada a "A" ("FrA¡gil", "MuA±eca"; "AcrA3stico" con "³" como "3").
+    s = re.sub(r"(?<=[a-zA-Z])A([\u00a1-\u00bf\u0081])", lambda m: par(re.match(r"(.)(.)", "Ã" + m.group(1))), s)
+    return re.sub(r"(?<=[a-z])A3(?=[a-z])", "ó", s)
 
 
 def limpiar(s):
     s = arreglar_codificacion(str(s or ""))
     s = unicodedata.normalize("NFC", s)                                    # tildes sueltas -> letra con tilde
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")          # tachados y marcas que quedan sueltas
+    s = "".join(c for c in s if unicodedata.category(c) not in ("Mn", "Cf", "Cc"))   # marcas sueltas e invisibles
     s = s.translate(str.maketrans({"’": "'", "‘": "'", "´": "'", "“": '"', "”": '"', "–": "-", "—": "-", " ": " "}))
     return re.sub(r"\s+", " ", s).strip()
 
 
+SIN_ARTISTA = re.compile(r"(sin artistas?|unknown( artist)?|desconocido|n/?a|-+)", re.I)
+VERSION = re.compile(r"\b(remix|rmx|mix|en vivo|live|sped|slowed|remaster\w*|edit|ac[uú]stic[oa]|versi[oó]n|version|"
+                     r"official|oficial|audio|video|feat|ft|prod)\b", re.I)
+
+
 def separar(texto):
+    """(título, artistas): por el último "//"; si no hay, por el último " - " (o " / "). Si los artistas son "Sin artista"
+    (planilla normalizada), los artistas pueden estar en el título: "Título - Artista - Sin artista"."""
     if "//" in texto:
         titulo, artistas = texto.rsplit("//", 1)
+    elif texto.endswith(" -"):                       # "Envolver -": sin artistas
+        titulo, artistas = texto[:-2], ""
     elif " - " in texto:
         titulo, artistas = texto.rsplit(" - ", 1)
+    elif " / " in texto:
+        titulo, artistas = texto.rsplit(" / ", 1)
     else:
         titulo, artistas = texto, ""
-    return titulo.strip(), artistas.strip()
+    titulo, artistas = titulo.strip(), artistas.strip()
+    if SIN_ARTISTA.fullmatch(artistas):
+        artistas = ""
+        if " - " in titulo and not VERSION.search(titulo.rsplit(" - ", 1)[1]):
+            titulo, artistas = (x.strip() for x in titulo.rsplit(" - ", 1))
+    return titulo, artistas
+
+
+def es_tempo(v):
+    """Un Tempo ID, un marcador (UNCONTROLLED, COMPILADO) o una celda vacía."""
+    v = str(v or "").strip()
+    return v == "" or v.isdigit() or (v.isupper() and " " not in v and len(v) <= 20 and "//" not in v)
+
+
+def orden_columnas(filas):
+    """(texto, tempo) en ese orden: la planilla puede traer el Tempo ID en la columna A ("Tempo ID | Track - Artista")."""
+    if filas and "tempo" in str(filas[0][0] or "").lower():
+        return [(b, a) for a, b in filas]
+    if filas and "tempo" in str(filas[0][1] or "").lower():
+        return filas
+    muestra = filas[1:201]
+    a_tempo = sum(1 for a, b in muestra if es_tempo(a) and not es_tempo(b))
+    b_tempo = sum(1 for a, b in muestra if es_tempo(b) and not es_tempo(a))
+    return [(b, a) for a, b in filas] if a_tempo > b_tempo else filas
 
 
 def preparar(filas):
     datos = []
-    for n, (texto, tempo) in enumerate(filas, start=1):
-        if n == 1 and str(texto or "").strip().lower() in ("concatenate", "track - artista", "obra") \
-                or n == 1 and "tempo" in str(tempo or "").lower():
+    for n, (texto, tempo) in enumerate(orden_columnas(filas), start=1):
+        if n == 1 and (str(texto or "").strip().lower() in ("concatenate", "track - artista", "obra")
+                       or "track - artista" in str(texto or "").lower() or "tempo" in str(tempo or "").lower()):
             continue   # encabezado
         texto = limpiar(texto)
         if not texto and tempo in (None, ""):
@@ -152,6 +191,14 @@ def main():
         cur.execute("SET statement_timeout = 0")
         cur.execute("SELECT * FROM fn_cargar_tempo_ids(%s::jsonb)", (json.dumps(preparadas, ensure_ascii=False),))
         resultado = cur.fetchall()
+        # Segunda pasada: cada obra con Tempo ID (de esta carga o de antes) se lo pasa a sus otras versiones sin
+        # identificar (la misma canción escrita distinto en otro chart), con las mismas reglas.
+        cur.execute("""SELECT * FROM fn_cargar_tempo_ids((
+                           SELECT coalesce(jsonb_agg(jsonb_build_object('fila', n, 'texto', track_artist_concat,
+                                      'titulo', track_name_clean, 'artistas', artist_name_clean, 'tempo_id', tempo_id)), '[]')
+                           FROM (SELECT row_number() OVER (ORDER BY id) AS n, * FROM tracks_master
+                                 WHERE deleted_at IS NULL AND coalesce(tempo_id, '') <> '') t))""")
+        propagadas = [r for r in cur.fetchall() if r[3] == "CARGADO"]
         es_numero = lambda r: str(r[2] or "").isdigit()
         cuenta = collections.Counter(r[3] for r in resultado if es_numero(r))
         marcas = collections.Counter(r[3] for r in resultado if not es_numero(r) and r[3] != "SIN TEMPO ID")
@@ -161,7 +208,7 @@ def main():
         if simular:
             con.rollback()
         else:
-            cargadas = cuenta.get("CARGADO", 0) + marcas.get("CARGADO", 0)
+            cargadas = cuenta.get("CARGADO", 0) + marcas.get("CARGADO", 0) + len(propagadas)
             ruta = guardar_archivo(cur, datos, nombre, os.environ.get("STORAGE_DIR", "/data/storage"))
             errores = [f"{r[1]}: {r[3]} ({r[6]})" for r in resultado if r[3] in ("NO ENCONTRADA", "CONFLICTO", "CONFLICTO EN EL ARCHIVO")]
             cur.execute("""INSERT INTO csv_uploads (filename, uploaded_by, total_rows, created_tracks, updated_rows, error_count,
@@ -175,6 +222,9 @@ def main():
     salida.writerow(["Fila", "Obra en el archivo", "Tempo ID", "Resultado", "Coincidencia", "Obra en el sistema", "Detalle"])
     for r in resultado:
         salida.writerow([r[0], r[1], r[2], r[3], r[4] or "", r[5] or "", r[6] or ""])
+    for r in propagadas:
+        salida.writerow(["sistema", r[1], r[2], "CARGADO", r[4] or "", r[5] or "",
+                         "Otra versión de una obra ya identificada en el sistema" + (f"; {r[6]}" if r[6] else "")])
 
     total = len(resultado)
     con_tempo = sum(cuenta.values())
@@ -193,6 +243,9 @@ def main():
           f"  No encontradas en el sistema:  {marcas.get('NO ENCONTRADA', 0)}\n"
           f"  En conflicto:                  {marcas.get('CONFLICTO EN EL ARCHIVO', 0) + marcas.get('CONFLICTO', 0)}\n"
           f"Filas sin Tempo ID ni marcador (vacías): {vacios}\n"
+          f"Otras versiones de obras ya identificadas, identificadas por similitud: {len(propagadas)}\n"
+          f"Sin encontrar, con una sugerencia para revisar en el reporte: "
+          f"{sum(1 for r in resultado if r[3] == 'NO ENCONTRADA' and str(r[6] or '').startswith('Sugerencia'))}\n"
           f"Coincidencias: " + ", ".join(f"{k}: {v}" for k, v in sorted(niveles.items(), key=lambda x: -x[1]) if k),
           file=sys.stderr)
 

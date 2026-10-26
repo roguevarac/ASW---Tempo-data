@@ -13,7 +13,8 @@
 #   bash ranking.sh vaciar-historial  borra solo los archivos del historial (antes hace un respaldo)
 #   bash ranking.sh empezar-de-cero   borra todos los datos menos los usuarios (antes hace un respaldo)
 #   bash ranking.sh cargar-historicos  carga una vez los charts de "Spotify Charts" y "Youtube Charts" de OneDrive
-#   bash ranking.sh cargar-tempo-ids <archivo>  carga Tempo IDs desde una planilla "Título // Artistas" (.xlsx o .csv)
+#   bash ranking.sh cargar-tempo-ids <archivo>  carga Tempo IDs desde una planilla "Título // Artistas" (.xlsx o .csv);
+#                                               también pasa los Tempo ID a otras versiones de las obras identificadas
 #   bash ranking.sh espejo          copia a OneDrive (espejo de auditoría) los archivos cargados que falten
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
 #   bash ranking.sh acceso-directo  crea la aplicación "Auditor de Rankings Digitales" en Windows (escritorio, menú Inicio, inicio)
