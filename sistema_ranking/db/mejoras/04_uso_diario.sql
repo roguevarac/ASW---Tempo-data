@@ -158,6 +158,19 @@ GRANT EXECUTE ON FUNCTION auth.abrir_sesion(uuid), auth.cerrar_sesion(uuid), aut
 GRANT EXECUTE ON FUNCTION auth.sesion_valida(uuid, uuid, interval) TO authenticated, service_role;
 
 -- ---------------------------------------------------------------- carga de un archivo
+-- La semana que falta antes de p_semana (la siguiente a la última cargada del país en esa plataforma), o NULL si no
+-- falta ninguna: primera carga, semana ya cargada, anterior a la última o la siguiente.
+CREATE OR REPLACE FUNCTION public.fn_semana_faltante(p_plataforma text, p_pais pais_code_enum, p_semana date)
+ RETURNS date
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+    select case when u.ultima is not null and p_semana > u.ultima + 10 then u.ultima + 7 end
+    from (select max(snapshot_date) as ultima from territory_tracks
+          where platform = p_plataforma and pais_code = p_pais and deleted_at is null) u;
+$function$;
+
 -- Carga las filas ya interpretadas por el front (mismo formato que las funciones *_batch) y registra la carga en
 -- csv_uploads, todo en la misma transacción. Sin formato (archivo ilegible o desconocido) solo registra los avisos. p_errores: los avisos del front (filas descartadas antes de llegar acá).
 -- Devuelve updated, created_tracks y errors (los mismos datos que quedan en csv_uploads).
@@ -174,10 +187,25 @@ declare
     v_nuevas integer := 0;
     v_clave text;
     v_res jsonb;
+    v_falta date;
     r record;
 begin
     if p_formato is not null and p_formato not in ('spotify', 'youtube', 'bo_report', 'tempo_report', 'master_tempo') then
         raise exception 'Tipo de archivo desconocido: %', p_formato;
+    end if;
+    -- Charts: no se puede saltear una semana (pedido del usuario, 28/10/2026). Si el país ya tiene semanas cargadas en
+    -- esa plataforma, la nueva tiene que ser la siguiente a la última (o una ya cargada o anterior). Los charts son
+    -- semanales: más de 10 días después de la última semana cargada significa que falta al menos una.
+    if p_formato in ('spotify', 'youtube') and jsonb_array_length(v_filas) > 0 then
+        select fn_semana_faltante(p_formato, (v_filas -> 0 ->> 'pais_code')::pais_code_enum,
+                                  nullif(v_filas -> 0 ->> 'snapshot_date', '')::date)
+          into v_falta;
+        if v_falta is not null then
+            v_errores := v_errores || ('No se cargó: falta cargar la semana del ' || to_char(v_falta, 'DD/MM/YYYY')
+                || ' de ' || case p_formato when 'youtube' then 'YouTube' else 'Spotify' end || ' para ' || (v_filas -> 0 ->> 'pais_code')
+                || '. Cargá primero esa semana.');
+            v_filas := '[]'::jsonb;
+        end if;
     end if;
     if p_formato is not null and jsonb_array_length(v_filas) > 0 then
         v_clave := case when p_formato in ('spotify', 'youtube') then 'track_name'
@@ -583,7 +611,7 @@ AS $function$
         coalesce(v.mech_bo::text || '%', ''),
         coalesce(v.estado, ''),
         coalesce(v.reclamos, ''),
-        coalesce(v.estado_trabajo, ''),
+        replace(coalesce(v.estado_trabajo, ''), ' / ', ', '),   -- varios problemas: separados por coma
         coalesce(v.ticket, ''),
         coalesce(to_char(v.ticket_fecha, 'DD/MM/YYYY'), '')
     from fn_territory_pagina(p_date_from, p_date_to, p_pais, false, p_buscar, p_reclamos, p_estado_trabajo,

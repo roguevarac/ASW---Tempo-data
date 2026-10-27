@@ -241,9 +241,15 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   - **Estado de trabajo (28/10/2026, `db/mejoras/10_estado_trabajo.sql`, reemplaza `trg_bo_report_auto_revisar`):**
     problemas RECLAMO ACTIVO (`fn_reclamo_activo`: Reclamos con valor que no sea vacío/No/None/0/N/A/resuelto),
     REVISAR NOT WORK (`bo_status` informado y distinto de WORK) y REVISAR % (ex "REVISAR"); sin problemas, OK BO-Tempo /
-    OK - Obra AR/MX. **Una obra con varios problemas los muestra todos** ("REVISAR NOT WORK / REVISAR %", pedido del
-    usuario): el filtro (`fn_territory_pagina`) y las opciones separan por " / ". `fn_estado_automatico` decide qué se
-    recalcula; los manuales (duplicada, dif de split) no se pisan.
+    OK - Obra AR/MX. **Una obra con varios problemas los muestra todos** (pedido del usuario): se guardan unidos por
+    " / ", pero el usuario **no quiere ver la barra**: el front muestra una etiqueta por problema, una debajo de otra, y
+    la descarga los separa por coma. El filtro (`fn_territory_pagina`) y las opciones separan por " / ".
+    `fn_estado_automatico` decide qué se recalcula; los manuales (duplicada, dif de split) no se pisan. En plpgsql usar
+    `array_append` (`arreglo || 'texto'` lee el texto como arreglo y la fila falla).
+  - **Charts sin saltear semanas (28/10/2026):** `fn_cargar_archivo` no carga un chart más de 10 días posterior a la
+    última semana del país en esa plataforma (`fn_semana_faltante`) y avisa "falta cargar la semana del ...". Las
+    semanas ya cargadas o anteriores sí cargan. El front ordena los archivos por semana. `cargar-historicos` no pasa por
+    ese control (el historial de OneDrive puede tener huecos).
   - **Contador "Identificadas · Sin identificar"** arriba de la tabla principal (`.conteo-id`), no en el paginador.
   - **Dos perfiles (27/10/2026, pedido del usuario):** "Usuario estándar" y "Administrador" (= acceso al Panel de
     control, hoy solo rocio.guevara@sonymusicpub.com). El front muestra el perfil según `panel.acceso`, no el

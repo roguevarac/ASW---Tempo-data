@@ -179,23 +179,40 @@ def chart(nombre, semana, rank, streams, artista="Banda Fusion"):
             "snapshot_date": semana}
     return rpc(h, "fn_cargar_archivo", {"p_formato": "spotify", "p_archivo": f"regional-uy-weekly-{semana}.csv", "p_ruta": "f",
                                         "p_total": 1, "p_filas": [fila]})
-chart("Fusion Original", "2025-04-03", 4, 1000)
-chart("Fusion Original (Sped Up)", "2025-04-03", 30, 200)
+chart("Fusion Original", "2025-03-13", 4, 1000)
+chart("Fusion Original (Sped Up)", "2025-03-13", 30, 200)
 orig = sqlq("select id from tracks_master where track_name_raw = 'Fusion Original'")
 sped = sqlq("select id from tracks_master where track_name_raw = 'Fusion Original (Sped Up)'")
 rpc(h, "fn_asignar_tempo_id", {"p_track_id": orig, "p_tempo_id": "4440100"})
 r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": sped, "p_tempo_id": "4440100", "p_unificar": True})
 check("fusión: la misma semana suma los streams y queda el mejor puesto", r.json() == 1
       and sqlq(f"select rank || '|' || streams from territory_tracks where track_master_id = '{orig}'") == "4|1200", r.text)
-chart("Fusion Original (Sped Up)", "2025-04-03", 30, 200)
-chart("Fusion Original", "2025-04-03", 4, 1000)
+chart("Fusion Original (Sped Up)", "2025-03-13", 30, 200)
+chart("Fusion Original", "2025-03-13", 4, 1000)
 check("volver a cargar la misma semana no suma dos veces",
       sqlq(f"select rank || '|' || streams from territory_tracks where track_master_id = '{orig}'") == "4|1200")
-chart("Fusion Original (Sped Up)", "2025-04-10", 25, 300)
+chart("Fusion Original (Sped Up)", "2025-03-20", 25, 300)
 check("las cargas siguientes con el nombre de la obra fusionada van a la obra que quedó (no se vuelve a crear)",
       sqlq("select count(*) from tracks_master where track_name_raw like 'Fusion Original%' and deleted_at is null") == "1"
       and sqlq(f"select string_agg(snapshot_date || ' ' || streams || ' ' || tempo_id, ',' order by snapshot_date) from territory_tracks "
-               f"where track_master_id = '{orig}'") == "2025-04-03 1200 4440100,2025-04-10 300 4440100")
+               f"where track_master_id = '{orig}'") == "2025-03-13 1200 4440100,2025-03-20 300 4440100")
+
+# ------------------------------------------------------------------ charts: no se puede saltear una semana
+r = chart("Semana Seguida", "2025-04-03", 1, 10)
+check("saltear una semana: no carga nada y dice qué semana falta",
+      r.status_code == 200 and r.json()["updated"] == 0
+      and any("falta cargar la semana del 27/03/2025 de Spotify para UY" in e for e in r.json()["errors"])
+      and sqlq("select count(*) from territory_tracks where snapshot_date = '2025-04-03'") == "0", r.text)
+check("la siguiente semana sí carga", chart("Semana Seguida", "2025-03-27", 1, 10).json()["updated"] == 1)
+check("y después la otra", chart("Semana Seguida", "2025-04-03", 1, 10).json()["updated"] == 1)
+check("volver a cargar una semana ya cargada o una anterior (completar el historial) sí se puede",
+      chart("Semana Seguida", "2025-03-27", 2, 11).json()["updated"] == 1
+      and chart("Semana Seguida", "2025-01-02", 1, 10).json()["updated"] == 1)
+r = rpc(h, "fn_cargar_archivo", {"p_formato": "youtube", "p_archivo": "youtube-uy-weekly-2025-05-29.csv", "p_ruta": "f",
+                                 "p_total": 1, "p_filas": [{"track_name": "Semana Seguida", "artist_names": "Banda Fusion",
+                                                            "pais_code": "UY", "rank": "1", "snapshot_date": "2025-05-29"}]})
+check("cada plataforma lleva su propia secuencia de semanas (YouTube UY sigue a su última semana)",
+      r.json()["updated"] == 0 and any("semana del 20/03/2025 de YouTube" in e for e in r.json()["errors"]), r.text)
 
 # ------------------------------------------------------------------ limpieza: tildes mal codificadas
 chart("3 PECADOS DESPUES...", "2025-04-03", 7, 70, "Milo j")

@@ -193,6 +193,10 @@ no quedan datos parciales y el archivo puede volver a cargarse.</p>
 <div class="caja">
   <p><b>Charts:</b> subí los archivos .csv con el nombre de descarga; el territorio y la semana del título se utilizan
   para interpretar el archivo. Un chart cuyo nombre no incluye la fecha no se carga.</p>
+  <p><b>Semanas en orden:</b> no se puede saltear una semana. Cada territorio y plataforma continúa desde su última
+  semana cargada; si falta una, el archivo no se carga y se indica la semana que falta. Al seleccionar varios archivos
+  a la vez, se cargan de la semana más antigua a la más reciente. Las semanas anteriores a la última o ya cargadas se
+  pueden cargar en cualquier momento.</p>
   <p><b>Reportes:</b> solo se cargan las obras cuyo Tempo ID ya figura en la tabla principal. Conviene completar los
   Tempo ID antes de cargar los reportes.</p>
   <p><b>Reporte BackOffice:</b> el territorio se toma del nombre del archivo (por ejemplo <code>…_PAIS_PARAGUAY…</code>). Si
@@ -327,9 +331,9 @@ filtros abarcan todos los registros.</p>
 </table>
 <h3>Estado de trabajo automático</h3>
 <p>El sistema asigna el estado con los datos del Reporte BackOffice y del Reporte Tempo Control de la obra en ese
-territorio. Si la obra tiene más de un problema, se muestran todos, separados por " / " (por ejemplo,
-<b>REVISAR NOT WORK / REVISAR %</b>), y el filtro <b>Estado de trabajo</b> la incluye al seleccionar cualquiera de
-ellos:</p>
+territorio. Si la obra tiene más de un problema, se muestran todos en la misma celda, uno debajo del otro, y el
+filtro <b>Estado de trabajo</b> la incluye al seleccionar cualquiera de ellos. Por ejemplo, una obra con REVISAR NOT WORK
+y REVISAR % aparece al filtrar por cada uno. En la descarga, los problemas van separados por coma.</p>
 <ul>
   <li><b>RECLAMO ACTIVO:</b> el Reporte BackOffice informa un reclamo en la columna Reclamos. Los valores vacíos, "No",
     "None", "0" o de reclamo resuelto/cerrado no cuentan como reclamo.</li>
@@ -513,6 +517,8 @@ habilitado, el <b>Panel de control</b> (Estado del sistema) muestra el enlace pa
     (ver <a href="#carga">Carga CSV</a>). Verificá que sea el archivo original y que esté guardado como CSV.</td></tr>
   <tr><td>"El Tempo ID … ya está asignado a …"</td><td>Si es la misma canción, volvé a ingresarlo y aceptá la
     unificación. Si no, verificá el Tempo ID en Tempo.</td></tr>
+  <tr><td>"No se cargó: falta cargar la semana del …"</td><td>Entre la última semana cargada de ese territorio y
+    plataforma y la del archivo falta al menos una. Cargá primero la semana indicada y después el archivo.</td></tr>
   <tr><td>"… no indica la semana del chart"</td><td>El nombre del chart no incluye la fecha. Descargalo nuevamente o
     renombralo con el nombre original de descarga y volvé a cargarlo.</td></tr>
   <tr><td>"El código no es válido o venció"</td><td>El código ya se utilizó, pasaron más de 30 minutos o se ingresó
