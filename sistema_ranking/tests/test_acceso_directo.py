@@ -12,6 +12,7 @@ Variables: PWSH (PowerShell; sin él se saltean las partes 1-3 que lo necesitan)
 """
 import json
 import os
+import re
 import pathlib
 import shutil
 import subprocess
@@ -80,7 +81,7 @@ check("lanzar.ps1 con BOM y fin de línea de Windows (para PowerShell 5.1)",
 texto = lanzar.decode("utf-8-sig")
 check("lanzar.ps1 con la distro, la carpeta del proyecto y el puerto de esta PC",
       "$Distro = 'Ubuntu-26.04'" in texto and f"$Proyecto = '{proyecto}'" in texto and "$Puerto = 8123" in texto
-      and "__" not in texto.replace("__init__", ""), texto[:600])
+      and not re.search(r"__[A-Z_]+__", texto), texto[:600])   # sin marcadores sin completar (la carpeta temporal puede tener "__")
 check("iniciando.html espera al puerto de esta PC", "http://localhost:8123/" in (carpeta / "iniciando.html").read_text())
 check("ícono copiado", (carpeta / "ranking.ico").read_bytes() == (RAIZ / "windows" / "ranking.ico").read_bytes())
 check("borra el lanzador viejo (el de la ventana negra)", not (carpeta / "Ranking Digital.cmd").exists())
