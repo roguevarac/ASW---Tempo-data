@@ -122,6 +122,14 @@ with sync_playwright() as p:
     check("el contador respeta la búsqueda (suma el total de la tabla)", "Identificadas: 1 · Sin identificar: 0" in pag.inner_text(".conteo-id")
           and "de 1" in pag.inner_text(".pager"), pag.inner_text(".conteo-id"))
     pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    sqlq("insert into tracks_master (track_name_raw, artist_name_raw) values ('Tema Sin Tempo', 'Artista Guion')")
+    pag.fill("#searchMaster", "-"); pag.wait_for_timeout(1500)
+    filas = pag.evaluate("[...document.querySelectorAll('[data-field-master]')].map(i => i.value)")
+    check("buscar '-' muestra solo las obras sin Tempo ID",
+          filas == [""] and "Tema Sin Tempo" in pag.inner_text("tbody") and "Sin Tempo ID" in pag.inner_text("#filtroActivo"),
+          (filas, pag.inner_text("tbody")[:300]))
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from tracks_master where track_name_raw = 'Tema Sin Tempo'")
 
     pag.click('[data-tab="upload"]')
     # YouTube se carga a mano, igual que Spotify (no hay carga automática)
@@ -257,6 +265,16 @@ with sync_playwright() as p:
     tk.fill("INC-555"); tk.press("Enter"); pag.wait_for_timeout(1000)
     fe = pag.locator('[data-field-seg="fecha"]').first
     fe.fill("26092026"); fe.press("Enter"); pag.wait_for_timeout(1000)
+    pag.fill("#searchTerritory", "Navegador"); pag.wait_for_timeout(1500)
+    pag.click('[data-tab="master"]'); pag.wait_for_timeout(800)
+    pag.click('[data-tab="territory"]'); pag.wait_for_timeout(1200)
+    check("la búsqueda de la tabla por territorio se conserva al cambiar de pestaña",
+          pag.input_value("#searchTerritory") == "Navegador" and 'Búsqueda: "Navegador"' in pag.inner_text("#filtroActivo")
+          and "Tema Navegador" in pag.inner_text("tbody"), pag.inner_text("body")[:400])
+    pag.click("#clearFiltersT")
+    aviso = aceptar_filtro()
+    check("Limpiar en la tabla por territorio quita todos sus filtros",
+          "Filtros quitados" in aviso and pag.input_value("#searchTerritory") == "" and pag.locator("#filtroActivo").count() == 0, aviso)
     check("ticket y fecha se escriben en la tabla y la fecha se muestra DD/MM/AAAA",
           sqlq("select ticket || '|' || ticket_fecha from territory_seguimiento") == "INC-555|2026-09-26"
           and fe.input_value() == "26/09/2026", (sqlq("select ticket || '|' || ticket_fecha from territory_seguimiento"), fe.input_value()))

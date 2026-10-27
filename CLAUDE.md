@@ -221,6 +221,9 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     Cada cambio de filtro (país, fechas, Limpiar, reclamos, estado de trabajo) pasa por `aplicarFiltro` y abre un
     aviso con los filtros y la cantidad antes/ahora (`#okFiltro`). Línea `#filtroActivo` arriba de la tabla y clase
     `filtro-on` en los campos. Las pruebas que filtran tienen que cerrar el aviso.
+  - **Filtros por pestaña:** cada tabla tiene su búsqueda (`searchMaster`, `searchTerritory`) y sus fechas
+    (`dateFrom/dateTo`, `dateFromT/dateToT`); cambiar de pestaña no los borra. La tabla por territorio tiene
+    "Limpiar" (`#clearFiltersT`) para todos sus filtros. Buscar "-" = sin Tempo ID (`fn_coincide_busqueda`, 03).
   - **Contador "Identificadas · Sin identificar"** arriba de la tabla principal (`.conteo-id`), no en el paginador.
   - **Dos perfiles (27/10/2026, pedido del usuario):** "Usuario estándar" y "Administrador" (= acceso al Panel de
     control, hoy solo rocio.guevara@sonymusicpub.com). El front muestra el perfil según `panel.acceso`, no el

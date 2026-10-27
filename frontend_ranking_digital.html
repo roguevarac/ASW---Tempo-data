@@ -213,7 +213,8 @@ const ESTADOS = ['ok','duplicada','uncontrolled','porcentaje_incorrecto'];
 
 let state = {
   session: null, profile: null, loginError: '',
-  activeTab: 'master', search: '', territoryCountry: '', reclamosFilter: '', estadoTrabajoFilter: '',
+  activeTab: 'master', searchMaster: '', searchTerritory: '', territoryCountry: '', reclamosFilter: '', estadoTrabajoFilter: '',
+  dateFromT: '', dateToT: '',
   dateFrom: '', dateTo: '', masterCountry: '', history: null, historyLoading: false,
   master: [], territoryControl: [], uploads: [], loading: true,
   uploadQueue: [], uploadIndex: -1, uploading: false,
@@ -269,8 +270,10 @@ async function fetchAll(fn, params){
 // Así abrir la aplicación no depende de cuántos charts haya cargados.
 const PAGE_SIZE = 100;
 
-function filtrosFechas(){
-  return { p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null };
+// Cada pestaña tiene sus propios filtros: cambiar de pestaña no los borra.
+function filtrosFechas(tabla = 'master'){
+  return tabla === 'territory' ? { p_date_from: state.dateFromT || null, p_date_to: state.dateToT || null }
+                               : { p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null };
 }
 function incluyeEliminados(){ return false; }
 
@@ -278,7 +281,7 @@ async function loadMaster(){
   const seq = ++state.seqMaster;
   const filtros = {
     ...filtrosFechas(), p_pais: state.masterCountry || null, p_include_deleted: incluyeEliminados(),
-    p_buscar: state.activeTab === 'master' ? (state.search || null) : null,
+    p_buscar: state.searchMaster || null,
   };
   // Obras identificadas (con Tempo ID o marcador) y sin identificar: se vuelven a contar solo si cambian los filtros
   // (al pasar de página no) o después de un cambio (se borra state.masterConteoClave).
@@ -302,8 +305,8 @@ async function loadTerritory(){
   const seq = ++state.seqTerritory;
   const [t, o] = await Promise.all([
     sb.rpc('fn_territory_pagina', {
-      ...filtrosFechas(), p_pais: state.territoryCountry || null, p_include_deleted: incluyeEliminados(),
-      p_buscar: state.activeTab === 'territory' ? (state.search || null) : null,
+      ...filtrosFechas('territory'), p_pais: state.territoryCountry || null, p_include_deleted: incluyeEliminados(),
+      p_buscar: state.searchTerritory || null,
       p_reclamos: state.reclamosFilter || null, p_estado_trabajo: state.estadoTrabajoFilter || null,
       p_limite: PAGE_SIZE, p_offset: state.territoryPage * PAGE_SIZE,
     }),
@@ -325,12 +328,16 @@ async function loadTerritory(){
 // Filtros aplicados en la pestaña activa, para mostrarlos ("País: AR · Desde: 01/01/2025").
 function fechaCorta(f){ const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(f || ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : f; }
 function filtrosActivos(){
-  const pais = state.activeTab === 'territory' ? state.territoryCountry : state.masterCountry;
+  const t = state.activeTab === 'territory';
+  const pais = t ? state.territoryCountry : state.masterCountry;
+  const desde = t ? state.dateFromT : state.dateFrom, hasta = t ? state.dateToT : state.dateTo;
+  const busqueda = (t ? state.searchTerritory : state.searchMaster).trim();
   const f = [];
+  if(busqueda) f.push(busqueda === '-' ? 'Sin Tempo ID' : `Búsqueda: "${esc(busqueda)}"`);
   if(pais) f.push(`País: ${pais}`);
-  if(state.dateFrom) f.push(`Desde: ${fechaCorta(state.dateFrom)}`);
-  if(state.dateTo) f.push(`Hasta: ${fechaCorta(state.dateTo)}`);
-  if(state.activeTab === 'territory'){
+  if(desde) f.push(`Desde: ${fechaCorta(desde)}`);
+  if(hasta) f.push(`Hasta: ${fechaCorta(hasta)}`);
+  if(t){
     if(state.reclamosFilter) f.push(`Reclamos: ${state.reclamosFilter}`);
     if(state.estadoTrabajoFilter) f.push(`Estado de trabajo: ${state.estadoTrabajoFilter}`);
   }
@@ -383,7 +390,7 @@ async function loadAll(){
 // Búsqueda en la base, con una pequeña espera mientras se escribe.
 let esperaBusqueda = null;
 function buscar(valor, idCampo){
-  state.search = valor;
+  if(idCampo === 'searchMaster') state.searchMaster = valor; else state.searchTerritory = valor;
   clearTimeout(esperaBusqueda);
   esperaBusqueda = setTimeout(async () => {
     if(state.activeTab === 'master'){ state.masterPage = 0; await loadMaster(); }
@@ -1175,14 +1182,14 @@ function renderMaster(){
   return `
   <div class="toolbar">
     <div class="toolbar-left">
-      <input class="search" placeholder="Buscar por track, artista o tempo_id" value="${state.search}" id="searchMaster">
+      <input class="search ${state.searchMaster.trim() ? 'filtro-on' : ''}" placeholder="Buscar track, artista o Tempo ID (- = sin Tempo ID)" value="${esc(state.searchMaster)}" id="searchMaster">
       <select id="masterCountry" class="${state.masterCountry ? 'filtro-on' : ''}">
         <option value="">Todos los países</option>
         ${COUNTRIES.map(c=>`<option value="${c}" ${state.masterCountry===c?'selected':''}>${c}</option>`).join('')}
       </select>
       <label class="check">Desde <input type="date" class="edit-field ${state.dateFrom ? 'filtro-on' : ''}" style="width:auto" id="dateFrom" value="${state.dateFrom}"></label>
       <label class="check">Hasta <input type="date" class="edit-field ${state.dateTo ? 'filtro-on' : ''}" style="width:auto" id="dateTo" value="${state.dateTo}"></label>
-      ${(state.dateFrom||state.dateTo||state.masterCountry)?`<button class="btn" id="clearFilters">Limpiar</button>`:''}
+      ${(state.dateFrom||state.dateTo||state.masterCountry||state.searchMaster.trim())?`<button class="btn" id="clearFilters">Limpiar</button>`:''}
     </div>
     <div style="display:flex;gap:10px;align-items:center;">
       <button class="btn" id="exportBo">Descargar reporte BO</button>
@@ -1209,6 +1216,11 @@ function fechaTicket(r){
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
 }
 
+function filtrosTerritorio(){
+  return !!(state.territoryCountry || state.dateFromT || state.dateToT || state.reclamosFilter || state.estadoTrabajoFilter
+            || state.searchTerritory.trim());
+}
+
 function renderTerritory(){
   const rows = state.territoryControl;
 
@@ -1230,9 +1242,8 @@ function renderTerritory(){
         <option value="">Todos los países</option>
         ${COUNTRIES.map(c=>`<option value="${c}" ${state.territoryCountry===c?'selected':''}>${c}</option>`).join('')}
       </select>
-      <label class="check">Desde <input type="date" class="edit-field ${state.dateFrom ? 'filtro-on' : ''}" style="width:auto" id="dateFromT" value="${state.dateFrom}"></label>
-      <label class="check">Hasta <input type="date" class="edit-field ${state.dateTo ? 'filtro-on' : ''}" style="width:auto" id="dateToT" value="${state.dateTo}"></label>
-      ${(state.dateFrom||state.dateTo)?`<button class="btn" id="clearFiltersT">Limpiar fechas</button>`:''}
+      <label class="check">Desde <input type="date" class="edit-field ${state.dateFromT ? 'filtro-on' : ''}" style="width:auto" id="dateFromT" value="${state.dateFromT}"></label>
+      <label class="check">Hasta <input type="date" class="edit-field ${state.dateToT ? 'filtro-on' : ''}" style="width:auto" id="dateToT" value="${state.dateToT}"></label>
       <select id="reclamosFilter" class="${state.reclamosFilter ? 'filtro-on' : ''}">
         <option value="">Reclamos: todos</option>
         ${reclamosOptions.map(v=>`<option value="${v}" ${state.reclamosFilter===v?'selected':''}>${v}</option>`).join('')}
@@ -1241,7 +1252,8 @@ function renderTerritory(){
         <option value="">Estado de trabajo: todos</option>
         ${estadoTrabajoOptions.map(v=>`<option value="${v}" ${state.estadoTrabajoFilter===v?'selected':''}>${v}</option>`).join('')}
       </select>
-      <input class="search" placeholder="Buscar por tempo_id o track" value="${state.search}" id="searchTerritory">
+      <input class="search ${state.searchTerritory.trim() ? 'filtro-on' : ''}" placeholder="Buscar track, artista o Tempo ID (- = sin Tempo ID)" value="${esc(state.searchTerritory)}" id="searchTerritory">
+      ${filtrosTerritorio() ? `<button class="btn" id="clearFiltersT">Limpiar</button>` : ''}
     </div>
     <button class="btn primary" id="exportTerritory"><i>&#8595;</i> Descargar CSV${state.territoryCountry?` (${state.territoryCountry})`:''}</button>
   </div>
@@ -1913,16 +1925,14 @@ function attachLoginEvents(){
 function attachAppEvents(){
   document.getElementById('logoutBtn').onclick = doLogout;
   document.querySelectorAll('[data-tab]').forEach(t => t.onclick = async () => {
-    const habiaBusqueda = !!state.search;
-    state.activeTab = t.dataset.tab; state.search='';
+    state.activeTab = t.dataset.tab;
     if(!state.uploading) state.uploadQueue = [];
     if(state.activeTab === 'history' && !state.historial) loadHistorial();
     programarPanel();
     if(state.activeTab === 'panel'){ state.panel.mensaje = ''; loadPanel().then(() => { if(state.activeTab === 'panel') render(); }); }
     render();
-    // La búsqueda es de cada pestaña: al cambiar, se vuelve a pedir la página sin búsqueda.
-    if(state.activeTab === 'master' && habiaBusqueda){ state.masterPage = 0; await loadMaster(); render(); }
-    if(state.activeTab === 'territory' && (state.territoryStale || habiaBusqueda)){ state.territoryPage = 0; await loadTerritory(); render(); }
+    // Cada pestaña conserva sus filtros y su búsqueda; la tabla por territorio se pide al abrirla si quedó vieja.
+    if(state.activeTab === 'territory' && state.territoryStale){ await loadTerritory(); render(); }
   });
   document.querySelectorAll('[data-pager]').forEach(b => b.onclick = async () => {
     const dir = Number(b.dataset.dir);
@@ -1940,23 +1950,24 @@ function attachAppEvents(){
   if(sT) sT.oninput = (e) => buscar(e.target.value, 'searchTerritory');
 
   const cf = document.getElementById('countryFilter');
-  if(cf) cf.onchange = (e) => aplicarFiltro(() => { state.territoryCountry = state.lastCountry = e.target.value; });
+  const soloTerritorio = async () => { state.territoryPage = 0; await loadTerritory(); };
+  if(cf) cf.onchange = (e) => aplicarFiltro(() => { state.territoryCountry = state.lastCountry = e.target.value; }, soloTerritorio);
   const mc = document.getElementById('masterCountry');
   if(mc) mc.onchange = (e) => aplicarFiltro(() => { state.masterCountry = state.lastCountry = e.target.value; });
 
-  ['dateFrom','dateFromT'].forEach(id => {
-    const el = document.getElementById(id);
-    if(el) el.onchange = (e) => aplicarFiltro(() => { state.dateFrom = e.target.value; });
-  });
-  ['dateTo','dateToT'].forEach(id => {
-    const el = document.getElementById(id);
-    if(el) el.onchange = (e) => aplicarFiltro(() => { state.dateTo = e.target.value; });
-  });
-  ['clearFilters','clearFiltersT'].forEach(id => {
-    const el = document.getElementById(id);
-    if(el) el.onclick = () => aplicarFiltro(() => { state.dateFrom=''; state.dateTo=''; state.masterCountry=''; });
-  });
-  const soloTerritorio = async () => { state.territoryPage = 0; await loadTerritory(); };
+  const campo = (id, cambio, recargar) => { const el = document.getElementById(id);
+    if(el) el.onchange = (e) => aplicarFiltro(() => cambio(e.target.value), recargar); };
+  campo('dateFrom', v => { state.dateFrom = v; });
+  campo('dateTo', v => { state.dateTo = v; });
+  campo('dateFromT', v => { state.dateFromT = v; }, soloTerritorio);
+  campo('dateToT', v => { state.dateToT = v; }, soloTerritorio);
+  const lm = document.getElementById('clearFilters');
+  if(lm) lm.onclick = () => aplicarFiltro(() => { state.dateFrom=''; state.dateTo=''; state.masterCountry=''; state.searchMaster=''; });
+  const lt = document.getElementById('clearFiltersT');
+  if(lt) lt.onclick = () => aplicarFiltro(() => {
+    state.dateFromT=''; state.dateToT=''; state.territoryCountry=''; state.reclamosFilter=''; state.estadoTrabajoFilter='';
+    state.searchTerritory='';
+  }, soloTerritorio);
   const rf = document.getElementById('reclamosFilter');
   if(rf) rf.onchange = (e) => aplicarFiltro(() => { state.reclamosFilter = e.target.value; }, soloTerritorio);
   const etf = document.getElementById('estadoTrabajoFilter');
@@ -2010,8 +2021,8 @@ function attachAppEvents(){
   if(bgE) bgE.onclick = (e) => { if(e.target === bgE && !state.envioBusy){ state.envioDialog = null; render(); } };
   const exT = document.getElementById('exportTerritory');
   if(exT) exT.onclick = () => downloadFilteredCsv('fn_territory_exportar', {
-    p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null,
-    p_pais: state.territoryCountry || null, p_buscar: state.search || null,
+    ...filtrosFechas('territory'),
+    p_pais: state.territoryCountry || null, p_buscar: state.searchTerritory || null,
     p_reclamos: state.reclamosFilter || null, p_estado_trabajo: state.estadoTrabajoFilter || null,
   }, `tabla_territorio${state.territoryCountry?'_'+state.territoryCountry:''}.csv`);
 

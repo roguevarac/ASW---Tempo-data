@@ -27,6 +27,17 @@ AS $function$
            else '%' || replace(replace(replace(lower(trim(p_texto)), '\', '\\'), '%', '\%'), '_', '\_') || '%' end;
 $function$;
 
+-- Búsqueda de las tablas: por título, artista o Tempo ID; "-" busca las obras sin Tempo ID.
+CREATE OR REPLACE FUNCTION public.fn_coincide_busqueda(p_buscar text, p_tempo_id text, p_texto text)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+    select case when fn_patron_busqueda(p_buscar) is null then true
+                when trim(p_buscar) = '-' then coalesce(trim(p_tempo_id), '') = ''
+                else lower(coalesce(p_texto, '') || ' ' || coalesce(p_tempo_id, '')) like fn_patron_busqueda(p_buscar) end;
+$function$;
+
 -- Tabla principal: una página (p_limite filas desde p_offset), con los mismos filtros que fn_master_view, la búsqueda
 -- por título, artista o Tempo ID, el seguimiento de envíos de cada obra y el total de filas que cumplen el filtro.
 CREATE OR REPLACE FUNCTION public.fn_master_pagina(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
@@ -52,8 +63,7 @@ AS $function$
         left join filtrado f on f.track_master_id = tm.id
         where (p_include_deleted or tm.deleted_at is null)
           and ((p_pais is null and p_date_from is null and p_date_to is null) or f.track_master_id is not null)
-          and (fn_patron_busqueda(p_buscar) is null
-               or lower(coalesce(tm.track_artist_concat, '') || ' ' || coalesce(tm.tempo_id, '')) like fn_patron_busqueda(p_buscar))
+          and fn_coincide_busqueda(p_buscar, tm.tempo_id, tm.track_artist_concat)
     ), pagina as (
         select b.*, count(*) over () as total
         from base b
@@ -95,8 +105,7 @@ AS $function$
     where (p_include_deleted or tm.deleted_at is null)
       and ((p_pais is null and p_date_from is null and p_date_to is null)
            or tm.id in (select f.track_master_id from filtrado f))
-      and (fn_patron_busqueda(p_buscar) is null
-           or lower(coalesce(tm.track_artist_concat, '') || ' ' || coalesce(tm.tempo_id, '')) like fn_patron_busqueda(p_buscar));
+      and fn_coincide_busqueda(p_buscar, tm.tempo_id, tm.track_artist_concat);
 $function$;
 
 -- Ticket y fecha por obra y territorio (los escribe la persona en la tabla por territorio, con fn_guardar_seguimiento):
@@ -159,8 +168,7 @@ AS $function$
         where (p_include_deleted or (u.deleted_at is null and tm.deleted_at is null))
           and (p_reclamos is null or coalesce(br.reclamos, '—') = p_reclamos)
           and (p_estado_trabajo is null or coalesce(br.estado_trabajo, '—') = p_estado_trabajo)
-          and (fn_patron_busqueda(p_buscar) is null
-               or lower(coalesce(tm.tempo_id, '') || ' ' || coalesce(tm.track_artist_concat, '')) like fn_patron_busqueda(p_buscar))
+          and fn_coincide_busqueda(p_buscar, tm.tempo_id, tm.track_artist_concat)
     )
     select b.*, count(*) over () as total
     from base b
