@@ -169,7 +169,8 @@ def main():
         if ocupadas and not REEMPLAZAR:
             sys.exit("La base ya tiene datos: " + ", ".join(ocupadas) + ". Usá --reemplazar para borrarlos y cargar.")
         # El seguimiento de envíos (mejora propia, db/mejoras) apunta a las obras: se vacía con ellas.
-        propias = [t for t in ("envio_identificadas", "envio_obras", "envios")
+        propias = [t for t in ("envio_identificadas", "envio_obras", "envios", "obra_alias", "territory_tracks_partes",
+                                     "territory_seguimiento")
                    if cur.execute("SELECT to_regclass(%s) IS NOT NULL", (f"public.{t}",)).fetchone()[0]]
         propias_auth = "".join(f", auth.{t}" for t in ("sesiones", "codigos_clave")
                                if cur.execute("SELECT to_regclass(%s) IS NOT NULL", (f"auth.{t}",)).fetchone()[0])

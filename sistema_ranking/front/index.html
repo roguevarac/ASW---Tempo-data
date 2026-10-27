@@ -353,31 +353,63 @@ function buscar(valor, idCampo){
   }, 250);
 }
 
+// Valores admitidos en Tempo ID además del número (la base los valida igual: fn_valor_tempo).
+const MARCADORES_TEMPO = ['UNCONTROLLED', 'PENDING ARGENTINA', 'PENDING CHILE', 'PENDING URUGUAY', 'PENDING MIAMI',
+                          'PENDING USA', 'PENDING MEXICO', 'PENDING COREA', 'PENDING ESPAÑA'];
+const sinTildes = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+// El valor estándar, '' si está vacío o null si no es válido.
+function tempoEstandar(valor){
+  const v = String(valor || '').trim().replace(/\s+/g, ' ').toUpperCase();
+  if(!v || /^[0-9]+$/.test(v)) return v;
+  return MARCADORES_TEMPO.find(m => sinTildes(m) === sinTildes(v.replace(/^PENDIENTE /, 'PENDING '))) || null;
+}
+
 async function updateMasterField(id, field, value){
   if(field === 'tempo_id'){
     // Si otra obra ya tiene ese Tempo ID, es la misma canción escrita de otra forma: con la confirmación de la
-    // persona, las dos obras se unifican en la que ya lo tenía (charts, reportes y envíos de ambas).
-    const limpio = String(value || '').trim();
+    // persona, las dos obras se fusionan en la que ya lo tenía (charts, streams, reportes y envíos de ambas).
+    const limpio = tempoEstandar(value);
+    if(limpio === null){
+      alert(`Tempo ID no válido: "${String(value).trim()}". Ingresá el número o uno de estos valores: ${MARCADORES_TEMPO.join(', ')}.`);
+      loadAll();
+      return;
+    }
+    value = limpio;
     let unificar = false;
     if(/^[0-9]+$/.test(limpio)){
       const { data: otras } = await sb.from('tracks_master').select('id,track_artist_concat').eq('tempo_id', limpio).limit(2);
       const otra = (otras || []).find(o => o.id !== id);
       if(otra){
         unificar = confirm(`El Tempo ID ${limpio} ya está asignado a "${otra.track_artist_concat}".\n\n`
-          + `Si es la misma canción, aceptá para unificar las dos obras en "${otra.track_artist_concat}", con los `
-          + `charts, reportes y envíos de ambas. Para cancelar, presioná Cancelar.`);
+          + `Si es la misma canción, aceptá para fusionar las dos obras en "${otra.track_artist_concat}": los charts, `
+          + `streams, reportes y envíos de ambas pasan a esa obra, y las próximas cargas con este nombre también. `
+          + `Para cancelar, presioná Cancelar.`);
         if(!unificar){ await loadMaster(); render(); return; }
       }
     }
     const { data, error } = await sb.rpc('fn_asignar_tempo_id', { p_track_id: id, p_tempo_id: value, p_unificar: unificar });
     if(error) alert('No se guardó el Tempo ID. ' + error.message);
-    else if(data > 0) alert('Las obras quedaron unificadas.');
+    else if(data > 0) alert('Las obras quedaron fusionadas.');
     loadAll();
     return;
   }
   const patch = {}; patch[field] = value === '' ? null : value;
   await sb.from('tracks_master').update(patch).eq('id', id);
   loadAll();
+}
+
+// Ticket y fecha de una obra en un territorio (la fecha se escribe DDMMAAAA y se muestra DD/MM/AAAA).
+async function updateSeguimiento(el){
+  if(el.value === el.defaultValue) return;
+  const { data, error } = await sb.rpc('fn_guardar_seguimiento', { p_track_id: el.dataset.track, p_pais: el.dataset.pais,
+                                                                  p_campo: el.dataset.fieldSeg, p_valor: el.value });
+  if(error){ alert('No se guardó. ' + error.message); el.value = el.defaultValue; return; }
+  el.value = el.defaultValue = data || '';
+  const fila = state.territoryControl.find(r => r.track_master_id === el.dataset.track && r.pais_code === el.dataset.pais);
+  if(fila){
+    if(el.dataset.fieldSeg === 'ticket') fila.ticket = data || null;
+    else fila.ticket_fecha_txt = data || '';
+  }
 }
 
 async function updateBoReportField(id, field, value){
@@ -1116,14 +1148,22 @@ function renderMaster(){
     </div>
   </div>
   ${state.masterConteo ? `<div class="conteo-id">Identificadas: ${fmtNum(state.masterConteo.identificadas)} · Sin identificar: ${fmtNum(state.masterConteo.sin)}</div>` : ''}
+  <datalist id="marcadoresTempo">${MARCADORES_TEMPO.map(m => `<option value="${m}">`).join('')}</datalist>
   <table><thead><tr><th style="width:70%">Track - Artista</th><th>Tempo ID</th></tr></thead>
   <tbody>${rows.length ? rows.map(r=>`
     <tr class="${r.deleted_at?'is-deleted':''}">
       <td>${r.track_artist_concat}</td>
-      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—">` : (r.tempo_id||'—')}</td>
+      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—" list="marcadoresTempo">` : (r.tempo_id||'—')}</td>
     </tr>`).join('') : `<tr><td colspan="2"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
   </tbody></table>
   ${renderPager('master', state.masterTotal, state.masterPage)}`;
+}
+
+// Fecha del ticket como DD/MM/AAAA (la base la guarda como fecha).
+function fechaTicket(r){
+  if(r.ticket_fecha_txt !== undefined) return r.ticket_fecha_txt;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(r.ticket_fecha || '');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
 }
 
 function renderTerritory(){
@@ -1163,9 +1203,9 @@ function renderTerritory(){
     <button class="btn primary" id="exportTerritory"><i>&#8595;</i> Descargar CSV${state.territoryCountry?` (${state.territoryCountry})`:''}</button>
   </div>
   <table><thead><tr>
-    <th>País</th><th>Track - Artista</th><th>Created date</th><th>Tempo ID</th><th>BO</th><th>C/A</th>
-    <th class="num">% Perf Tempo</th><th class="num">% Mech Tempo</th>
-    <th>Estado</th><th>Reclamos</th><th class="num">% Mech BO</th><th>Estado de trabajo</th><th></th>
+    <th>País</th><th>Track - Artista</th><th>Created date</th><th>Tempo ID</th>
+    <th class="num">% Perf Tempo</th><th class="num">% Mech Tempo</th><th>BO ID</th><th>C/A</th><th class="num">% Mech BO</th>
+    <th>Estado</th><th>Reclamos</th><th>Estado de trabajo</th><th>Ticket</th><th>Fecha</th><th></th>
   </tr></thead>
   <tbody>${rows.length ? rows.map(r=>`
     <tr class="${r.deleted_at?'is-deleted':''}">
@@ -1173,21 +1213,23 @@ function renderTerritory(){
       <td>${r.track_artist_concat}</td>
       <td class="mono">${r.created_date || '—'}</td>
       <td class="tempo">${r.tempo_id || '—'}</td>
-      <td class="tempo">${r.bo || '—'}</td>
-      <td>${r.ca || '—'}</td>
       <td class="num">${pctTempo(r.perf_raw)}</td>
       <td class="num">${pctTempo(r.mech_raw)}</td>
+      <td class="tempo">${r.bo || '—'}</td>
+      <td>${r.ca || '—'}</td>
+      <td class="num">${r.mech_bo!==null && r.mech_bo!==undefined?r.mech_bo+'%':'—'}</td>
       <td>${r.estado || '—'}</td>
       <td>${r.reclamos || '—'}</td>
-      <td class="num">${r.mech_bo!==null && r.mech_bo!==undefined?r.mech_bo+'%':'—'}</td>
       <td>${(canWrite() && r.bo_report_id)
             ? `<select class="edit-field" data-field-bo="estado_trabajo" data-id="${r.bo_report_id}">
                  <option value=""${!r.estado_trabajo?' selected':''}>—</option>
                  ${ESTADO_TRABAJO_OPTIONS.map(o=>`<option value="${o}"${r.estado_trabajo===o?' selected':''}>${o}</option>`).join('')}
                </select>`
             : (r.estado_trabajo || '—')}</td>
+      <td>${canWrite() ? `<input class="edit-field corto" data-field-seg="ticket" data-track="${r.track_master_id}" data-pais="${r.pais_code}" value="${esc(r.ticket || '')}" placeholder="—">` : esc(r.ticket || '—')}</td>
+      <td>${canWrite() ? `<input class="edit-field corto" data-field-seg="fecha" data-track="${r.track_master_id}" data-pais="${r.pais_code}" value="${fechaTicket(r)}" placeholder="DDMMAAAA">` : (fechaTicket(r) || '—')}</td>
       <td><button class="rowbtn" data-history-track="${r.track_master_id}" data-history-pais="${r.pais_code}">Show prior</button></td>
-    </tr>`).join('') : `<tr><td colspan="13"><div class="empty">${state.loading || state.territoryStale?'Cargando...':'Sin registros para este filtro'}</div></td></tr>`}
+    </tr>`).join('') : `<tr><td colspan="15"><div class="empty">${state.loading || state.territoryStale?'Cargando...':'Sin registros para este filtro'}</div></td></tr>`}
   </tbody></table>
   ${renderPager('territory', state.territoryTotal, state.territoryPage)}`;
 }
@@ -1879,8 +1921,12 @@ function attachAppEvents(){
 
 
   document.querySelectorAll('[data-field-master]').forEach(el => {
-    const handler = () => updateMasterField(el.dataset.id, el.dataset.fieldMaster, el.value);
+    const handler = () => { if(el.value !== el.defaultValue) updateMasterField(el.dataset.id, el.dataset.fieldMaster, el.value); };
     if(el.tagName==='SELECT') el.onchange = handler; else el.onblur = handler;
+  });
+  document.querySelectorAll('[data-field-seg]').forEach(el => {
+    el.onblur = () => updateSeguimiento(el);
+    el.onkeydown = (e) => { if(e.key === 'Enter') el.blur(); };
   });
   document.querySelectorAll('[data-field-bo]').forEach(el => {
     const handler = () => updateBoReportField(el.dataset.id, el.dataset.fieldBo, el.value);

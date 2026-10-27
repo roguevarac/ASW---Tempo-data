@@ -19,7 +19,8 @@
 -- Una fila puede coincidir con varias obras (la misma canción escrita distinto en cada chart): todas reciben el Tempo ID
 -- y quedan unificadas en una, como cuando se asigna a mano un Tempo ID repetido.
 --
--- Reglas: nunca se pisa un Tempo ID numérico distinto (queda como conflicto). Los marcadores (UNCONTROLLED, COMPILADO)
+-- Reglas: nunca se pisa un Tempo ID numérico distinto (queda como conflicto). Los marcadores (UNCONTROLLED, PENDING ...;
+-- otros valores quedan como VALOR NO VÁLIDO)
 -- se cargan en las obras sin Tempo ID numérico (se pueden repetir: 07_marcadores.sql) y nunca unifican obras; si la
 -- misma obra recibe un número de otra fila, gana el número. Los vacíos solo se informan.
 -- Idempotente: se aplica en cada arranque (db/mejoras.sh).
@@ -158,7 +159,8 @@ begin
     cross join lateral (select nullif(upper(trim(coalesce(e ->> 'tempo_id', ''))), '') as v) v
     cross join lateral (select
         case when v.v ~ '^[0-9]+$' then nullif(ltrim(v.v, '0'), '') end as tempo,
-        case when v.v is null or v.v ~ '^0+$' then 'vacío' when v.v !~ '^[0-9]+$' then v.v end as marcador) t;
+        case when v.v is null or v.v ~ '^0+$' then 'vacío'
+             when v.v !~ '^[0-9]+$' then coalesce(nullif(fn_tempo_estandar(v.v), ''), '¿' || v.v) end as marcador) t;   -- ¿ = no válido
 
     insert into _ti_obras
     select tm.id, tm.tempo_id, tm.track_artist_concat, fn_clave_texto(tm.track_name_clean),
@@ -268,7 +270,7 @@ begin
     for p in
         select distinct on (m.obra) m.obra, a.marcador as tempo
         from _ti_match m join _ti_archivo a on a.fila = m.fila
-        where a.tempo is null and a.marcador <> 'vacío'
+        where a.tempo is null and a.marcador <> 'vacío' and a.marcador not like '¿%'
           and m.obra not in (select r.obra from _ti_res r where r.resultado like 'CONFLICTO%')
         order by m.obra, m.nivel, a.fila
     loop
@@ -291,8 +293,9 @@ begin
     end loop;
 
     return query
-    select a.fila, a.texto, coalesce(a.tempo, a.marcador),
+    select a.fila, a.texto, coalesce(a.tempo, ltrim(a.marcador, '¿')),
            case when a.tempo is null and a.marcador = 'vacío' then 'SIN TEMPO ID'
+                when a.marcador like '¿%' then 'VALOR NO VÁLIDO'
                 when not exists (select 1 from _ti_match m where m.fila = a.fila)
                      and exists (select 1 from tracks_master tm where tm.tempo_id = a.tempo) then 'SIN CAMBIOS'
                 when not exists (select 1 from _ti_match m where m.fila = a.fila) then 'NO ENCONTRADA'
@@ -310,6 +313,7 @@ begin
             left join _ti_res r on r.obra = m.obra and r.resultado like 'CONFLICTO%'
             where m.fila = a.fila),
            case when a.tempo is null and a.marcador = 'vacío' then 'Sin Tempo ID en el archivo'
+                when a.marcador like '¿%' then 'Solo se admiten el número o: ' || array_to_string(fn_marcadores_tempo(), ', ')
                 when not exists (select 1 from _ti_match m where m.fila = a.fila) then coalesce(
                     (select 'El Tempo ID ya está en "' || tm.track_artist_concat || '"' from tracks_master tm
                      where tm.tempo_id = a.tempo),

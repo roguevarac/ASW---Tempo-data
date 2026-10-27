@@ -99,15 +99,39 @@ AS $function$
            or lower(coalesce(tm.track_artist_concat, '') || ' ' || coalesce(tm.tempo_id, '')) like fn_patron_busqueda(p_buscar));
 $function$;
 
+-- Ticket y fecha por obra y territorio (los escribe la persona en la tabla por territorio, con fn_guardar_seguimiento):
+-- el número de ticket enviado cuando la obra está mal en Tempo o en BO, y la fecha correspondiente.
+CREATE TABLE IF NOT EXISTS public.territory_seguimiento (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    track_master_id uuid NOT NULL REFERENCES public.tracks_master(id) ON DELETE CASCADE,
+    pais_code pais_code_enum NOT NULL,
+    ticket text,
+    ticket_fecha date,
+    deleted_at timestamp with time zone,   -- no se usa; lo pide fn_audit_trigger
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_by text NOT NULL DEFAULT COALESCE((auth.uid())::text, (CURRENT_USER)::text),
+    UNIQUE (track_master_id, pais_code)
+);
+ALTER TABLE public.territory_seguimiento ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS territory_seguimiento_select ON public.territory_seguimiento;
+CREATE POLICY territory_seguimiento_select ON public.territory_seguimiento AS PERMISSIVE FOR SELECT TO authenticated USING (true);
+GRANT SELECT ON public.territory_seguimiento TO authenticated;
+GRANT ALL ON public.territory_seguimiento TO service_role;
+DROP TRIGGER IF EXISTS trg_audit_territory_seguimiento ON public.territory_seguimiento;
+CREATE TRIGGER trg_audit_territory_seguimiento AFTER INSERT OR DELETE OR UPDATE ON public.territory_seguimiento
+    FOR EACH ROW EXECUTE FUNCTION fn_audit_trigger();
+
 -- Tabla por territorio: una página, con los filtros de fn_territory_view más los de reclamos y estado de trabajo
 -- ('—' = sin valor) y la búsqueda por Tempo ID o título. Ordenada por territorio y título.
+DROP FUNCTION IF EXISTS public.fn_territory_pagina(date, date, pais_code_enum, boolean, text, text, text, integer, integer);
 CREATE OR REPLACE FUNCTION public.fn_territory_pagina(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
     p_pais pais_code_enum DEFAULT NULL::pais_code_enum, p_include_deleted boolean DEFAULT false, p_buscar text DEFAULT NULL::text,
     p_reclamos text DEFAULT NULL::text, p_estado_trabajo text DEFAULT NULL::text,
     p_limite integer DEFAULT 100, p_offset integer DEFAULT 0)
  RETURNS TABLE(id uuid, track_master_id uuid, pais_code pais_code_enum, tempo_id text, track_artist_concat text, snapshot_date date,
                created_date date, bo_report_id uuid, bo text, ca text, perf_raw text, mech_raw text, estado text, reclamos text,
-               mech_bo numeric, estado_trabajo text, estado_obra text, deleted_at timestamp with time zone, total bigint)
+               mech_bo numeric, estado_trabajo text, estado_obra text, deleted_at timestamp with time zone,
+               ticket text, ticket_fecha date, total bigint)
  LANGUAGE sql
  STABLE
 AS $function$
@@ -124,9 +148,11 @@ AS $function$
         select u.id, u.track_master_id, u.pais_code, tm.tempo_id, tm.track_artist_concat, u.snapshot_date, tr.created_date,
                br.id as bo_report_id, br.bo_id as bo, br.ca,
                coalesce(tr.perf_raw, tr.perf_pc::text) as perf_raw, coalesce(tr.mech_raw, tr.mech_pc::text) as mech_raw,
-               br.bo_status as estado, br.reclamos, br.mech_bo, br.estado_trabajo, tr.estado_obra, u.deleted_at
+               br.bo_status as estado, br.reclamos, br.mech_bo, br.estado_trabajo, tr.estado_obra, u.deleted_at,
+               sg.ticket, sg.ticket_fecha
         from ultimo u
         join tracks_master tm on tm.id = u.track_master_id
+        left join territory_seguimiento sg on sg.track_master_id = u.track_master_id and sg.pais_code = u.pais_code
         left join territory_bo_report br on br.track_master_id = u.track_master_id and br.pais_code = u.pais_code
         left join territory_tempo_report tr on tr.track_master_id = u.track_master_id and tr.pais_code = u.pais_code
                and tr.deleted_at is null

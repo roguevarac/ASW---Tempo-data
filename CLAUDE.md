@@ -203,6 +203,20 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - El usuario quiere cargar también los UNCONTROLLED (26/10/2026): `db/mejoras/07_marcadores.sql` deja único solo el
       Tempo ID numérico (índice parcial `uq_tracks_master_tempo_id`) y quita `fk_territory_tempo_id`. Los marcadores
       nunca unifican obras ni pisan un número; con número y marcador para la misma obra, gana el número.
+  - **Fusión real, limpieza y valores estándar (27/10/2026):**
+    - `unificar_obras` (04) guarda el nombre de la obra que desaparece en `obra_alias`; `fn_upsert_ranking_row`
+      (reemplazada en 04) carga ese nombre en la obra que quedó. En obras con alias, `territory_tracks_partes` guarda
+      los streams por nombre y `territory_tracks` la suma y el mejor puesto (recargar no suma dos veces). Base para el
+      futuro dashboard de streams.
+    - `fusionar_obras` elige el Tempo ID (el número gana); con dos números distintos no fusiona.
+    - `09_limpieza.sql`: `fn_reparar_texto` (UTF-8 leído como Windows-1252: "Ã¡", "â€¦") dentro de `fn_normalize_text`,
+      "…" -> "..."; vuelve a normalizar las obras cargadas y fusiona las que quedan iguales.
+    - Tempo ID: solo número o `fn_marcadores_tempo()` (UNCONTROLLED y PENDING ARGENTINA/CHILE/URUGUAY/MIAMI/USA/MEXICO/
+      COREA/ESPAÑA); `fn_valor_tempo` en `fn_asignar_tempo_id`, en la carga CSV de Tempo IDs (que además fusiona) y en
+      la planilla (VALOR NO VÁLIDO). El front ofrece la lista (`MARCADORES_TEMPO`).
+    - Tabla por territorio: País, Track - Artista, Created date, Tempo ID, % Perf/Mech Tempo, BO ID, C/A, % Mech BO,
+      Estado, Reclamos, Estado de trabajo, Ticket, Fecha. Ticket y fecha en `territory_seguimiento`
+      (`fn_guardar_seguimiento`, fecha DDMMAAAA). Las tablas nuevas que apuntan a obras van en los TRUNCATE.
   - **Contador "Identificadas · Sin identificar"** arriba de la tabla principal (`.conteo-id`), no en el paginador.
   - **Dos perfiles (27/10/2026, pedido del usuario):** "Usuario estándar" y "Administrador" (= acceso al Panel de
     control, hoy solo rocio.guevara@sonymusicpub.com). El front muestra el perfil según `panel.acceso`, no el

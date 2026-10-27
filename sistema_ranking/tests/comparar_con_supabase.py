@@ -25,7 +25,13 @@ A_PROPOSITO = {("extension", "pg_cron"), ("extension", "pg_net"), ("extension", 
                # (db/mejoras/07_marcadores.sql: índice único parcial y trigger que no copia marcadores a territory_control).
                ("restriccion UNIQUE", "public.tracks_master.uq_tracks_master_tempo_id"),
                ("restriccion FK", "public.territory_tracks.fk_territory_tempo_id"),
-               ("funcion", "public.trg_sync_tempo_id_to_territory")}
+               ("funcion", "public.trg_sync_tempo_id_to_territory"),
+               # Limpieza y fusión real (db/mejoras/04 y 09): tildes mal codificadas y "…"; las cargas de charts y de
+               # Tempo IDs usan los alias de las obras unificadas, suman streams y solo admiten los valores estándar.
+               ("funcion", "public.fn_normalize_text"), ("funcion", "public.fn_upsert_ranking_row"),
+               ("funcion", "public.fn_upsert_master_tempo_batch"),
+               # Descarga de la tabla por territorio con el orden nuevo y Ticket/Fecha (db/mejoras/04).
+               ("funcion", "public.fn_territory_exportar")}
 k = lambda r: (r["tipo"], r["objeto"], r["definicion"])
 V = {k(r) for r in viejo if r["tipo"] not in IGNORAR}
 N = {k(r) for r in nuevo if r["tipo"] not in IGNORAR}

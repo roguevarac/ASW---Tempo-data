@@ -130,7 +130,7 @@ def separar(texto):
 
 
 def es_tempo(v):
-    """Un Tempo ID, un marcador (UNCONTROLLED, COMPILADO) o una celda vacía."""
+    """Un Tempo ID, un marcador (UNCONTROLLED, PENDING ...) o una celda vacía."""
     v = str(v or "").strip()
     return v == "" or v.isdigit() or (v.isupper() and " " not in v and len(v) <= 20 and "//" not in v)
 
@@ -237,11 +237,12 @@ def main():
           f"  No encontradas en el sistema:  {p(cuenta.get('NO ENCONTRADA', 0))}\n"
           f"  Conflicto (ya tenían otro):    {cuenta.get('CONFLICTO', 0)}\n"
           f"  Conflicto en el archivo:       {cuenta.get('CONFLICTO EN EL ARCHIVO', 0)} (la misma obra con dos Tempo ID)\n"
-          f"Filas con marcador (UNCONTROLLED, COMPILADO): {con_marca}\n"
+          f"Filas con marcador (UNCONTROLLED, PENDING ...): {con_marca - marcas.get('VALOR NO VÁLIDO', 0)}\n"
           f"  Cargadas:                      {marcas.get('CARGADO', 0)}\n"
           f"  Ya lo tenían o tienen un Tempo ID numérico: {marcas.get('SIN CAMBIOS', 0)}\n"
           f"  No encontradas en el sistema:  {marcas.get('NO ENCONTRADA', 0)}\n"
           f"  En conflicto:                  {marcas.get('CONFLICTO EN EL ARCHIVO', 0) + marcas.get('CONFLICTO', 0)}\n"
+          f"Filas con un valor no admitido (no se cargan): {marcas.get('VALOR NO VÁLIDO', 0)}\n"
           f"Filas sin Tempo ID ni marcador (vacías): {vacios}\n"
           f"Otras versiones de obras ya identificadas, identificadas por similitud: {len(propagadas)}\n"
           f"Sin encontrar, con una sugerencia para revisar en el reporte: "

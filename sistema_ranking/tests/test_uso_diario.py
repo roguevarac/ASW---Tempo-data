@@ -173,13 +173,70 @@ check("el auditor no modifica ni unifica obras", r.status_code == 403 and sqlq(f
 check("quitar el Tempo ID (vacío)", rpc(h, "fn_asignar_tempo_id", {"p_track_id": uno, "p_tempo_id": ""}).json() == 0
       and sqlq(f"select coalesce(tempo_id, '-') from tracks_master where id = '{uno}'") == "-")
 
+# ------------------------------------------------------------------ fusión real: alias y streams
+def chart(nombre, semana, rank, streams, artista="Banda Fusion"):
+    fila = {"track_name": nombre, "artist_names": artista, "pais_code": "UY", "rank": str(rank), "streams": str(streams),
+            "snapshot_date": semana}
+    return rpc(h, "fn_cargar_archivo", {"p_formato": "spotify", "p_archivo": f"regional-uy-weekly-{semana}.csv", "p_ruta": "f",
+                                        "p_total": 1, "p_filas": [fila]})
+chart("Fusion Original", "2025-04-03", 4, 1000)
+chart("Fusion Original (Sped Up)", "2025-04-03", 30, 200)
+orig = sqlq("select id from tracks_master where track_name_raw = 'Fusion Original'")
+sped = sqlq("select id from tracks_master where track_name_raw = 'Fusion Original (Sped Up)'")
+rpc(h, "fn_asignar_tempo_id", {"p_track_id": orig, "p_tempo_id": "4440100"})
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": sped, "p_tempo_id": "4440100", "p_unificar": True})
+check("fusión: la misma semana suma los streams y queda el mejor puesto", r.json() == 1
+      and sqlq(f"select rank || '|' || streams from territory_tracks where track_master_id = '{orig}'") == "4|1200", r.text)
+chart("Fusion Original (Sped Up)", "2025-04-03", 30, 200)
+chart("Fusion Original", "2025-04-03", 4, 1000)
+check("volver a cargar la misma semana no suma dos veces",
+      sqlq(f"select rank || '|' || streams from territory_tracks where track_master_id = '{orig}'") == "4|1200")
+chart("Fusion Original (Sped Up)", "2025-04-10", 25, 300)
+check("las cargas siguientes con el nombre de la obra fusionada van a la obra que quedó (no se vuelve a crear)",
+      sqlq("select count(*) from tracks_master where track_name_raw like 'Fusion Original%' and deleted_at is null") == "1"
+      and sqlq(f"select string_agg(snapshot_date || ' ' || streams || ' ' || tempo_id, ',' order by snapshot_date) from territory_tracks "
+               f"where track_master_id = '{orig}'") == "2025-04-03 1200 4440100,2025-04-10 300 4440100")
+
+# ------------------------------------------------------------------ limpieza: tildes mal codificadas
+chart("3 PECADOS DESPUES...", "2025-04-03", 7, 70, "Milo j")
+chart("3 PECADOS DESPUESâ€¦", "2025-04-10", 8, 80, "Milo j")
+chart("3 PECADOS DESPUES…", "2025-04-17", 9, 90, "Milo j")
+chart("FrÃ¡gil Diario", "2025-04-03", 5, 50, "Banda Ã‘")
+check("'â€¦' y '…' se leen como '...': una sola obra",
+      sqlq("select count(*) || '|' || min(track_artist_concat) from tracks_master where track_name_raw like '3 PECADOS%'")
+      == "1|3 PECADOS DESPUES... - Milo j")
+check("tildes mal codificadas ('FrÃ¡gil', 'Ã‘')", sqlq("select track_artist_concat from tracks_master where track_name_raw like 'Fr%gil Diario'")
+      == "Fragil Diario - Banda N")
+
+# ------------------------------------------------------------------ Tempo ID: número o valores estándar
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": tres, "p_tempo_id": "COMPILADO"})
+check("Tempo ID: un valor fuera de la lista no se guarda y el mensaje los nombra",
+      r.status_code >= 400 and "PENDING ESPAÑA" in r.json().get("message", "") and
+      sqlq(f"select coalesce(tempo_id, '-') from tracks_master where id = '{tres}'") == "-", r.text)
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": tres, "p_tempo_id": "  pending   espana "})
+check("Tempo ID: se guarda siempre igual ('pending espana' -> 'PENDING ESPAÑA')", r.status_code == 200
+      and sqlq(f"select tempo_id from tracks_master where id = '{tres}'") == "PENDING ESPAÑA", r.text)
+
+# ------------------------------------------------------------------ ticket y fecha por territorio
+r = rpc(h, "fn_guardar_seguimiento", {"p_track_id": uno, "p_pais": "UY", "p_campo": "ticket", "p_valor": " INC-123 "})
+r2 = rpc(h, "fn_guardar_seguimiento", {"p_track_id": uno, "p_pais": "UY", "p_campo": "fecha", "p_valor": "26092026"})
+check("ticket y fecha (DDMMAAAA) se guardan por obra y territorio", r.json() == "INC-123" and r2.json() == "26/09/2026"
+      and sqlq(f"select ticket || '|' || ticket_fecha from territory_seguimiento where track_master_id = '{uno}'") == "INC-123|2026-09-26",
+      (r.text, r2.text))
+r = rpc(h, "fn_guardar_seguimiento", {"p_track_id": uno, "p_pais": "UY", "p_campo": "fecha", "p_valor": "31022026"})
+check("fecha inexistente: no se guarda y explica el formato", r.status_code >= 400 and "DDMMAAAA" in r.json().get("message", "")
+      and sqlq(f"select ticket_fecha from territory_seguimiento where track_master_id = '{uno}'") == "2026-09-26", r.text)
+r = rpc(h_aud, "fn_guardar_seguimiento", {"p_track_id": uno, "p_pais": "UY", "p_campo": "ticket", "p_valor": "X"})
+check("sin permiso de escritura no se guarda el ticket", r.status_code == 403, r.text)
+
 # ------------------------------------------------------------------ descarga de la tabla por territorio
 h_csv = dict(h, Accept="text/csv", **{"Accept-Encoding": "gzip"})
 r = httpx.post(f"{BASE}/rpc/fn_territory_exportar", headers=h_csv, json={"p_pais": "UY", "p_buscar": "diario", "p_reclamos": "No"})
 lineas = r.text.strip().split("\n")
 check("descarga con todos los filtros de la pantalla (país, búsqueda, reclamos)",
-      r.status_code == 200 and lineas[0].startswith("Pais,Track - Artista") and len(lineas) == 2
-      and lineas[1].startswith("UY,Diario Uno - Banda Diario,"), r.text[:300])
+      r.status_code == 200 and lineas[0].strip() == ("Pais,Track - Artista,Created date,Tempo ID,% Perf Tempo,% Mech Tempo,BO ID,C/A,"
+                                                      "% Mech BO,Estado,Reclamos,Estado de trabajo,Ticket,Fecha") and len(lineas) == 2
+      and lineas[1].startswith("UY,Diario Uno - Banda Diario,") and lineas[1].strip().endswith(",INC-123,26/09/2026"), r.text[:400])
 check("las respuestas grandes viajan comprimidas",
       httpx.get(f"{BASE}/", headers={"Accept-Encoding": "gzip"}).headers.get("content-encoding") == "gzip")
 

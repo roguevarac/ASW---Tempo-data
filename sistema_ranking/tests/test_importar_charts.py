@@ -40,7 +40,7 @@ def sql(q):
 
 
 def vaciar():
-    sql("TRUNCATE public.envio_identificadas, public.envio_obras, public.envios, public.territory_tracks, public.territory_control, public.territory_bo_report, "
+    sql("TRUNCATE public.envio_identificadas, public.envio_obras, public.envios, public.obra_alias, public.territory_tracks_partes, public.territory_seguimiento, public.territory_tracks, public.territory_control, public.territory_bo_report, "
         "public.territory_tempo_report, public.tracks_master, public.audit_logs, public.csv_uploads; DELETE FROM storage.objects")
 
 

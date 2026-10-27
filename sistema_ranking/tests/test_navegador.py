@@ -105,6 +105,15 @@ with sync_playwright() as p:
           pag.inner_text(".conteo-id"))
 
     campo = pag.locator('[data-field-master="tempo_id"][value=""]').first
+    check("Tempo ID ofrece la lista de valores estándar",
+          pag.evaluate("[...document.querySelectorAll('#marcadoresTempo option')].map(o => o.value).join('|')")
+          == "UNCONTROLLED|PENDING ARGENTINA|PENDING CHILE|PENDING URUGUAY|PENDING MIAMI|PENDING USA|PENDING MEXICO|PENDING COREA|PENDING ESPAÑA")
+    avisos = []
+    pag.once("dialog", lambda d: (avisos.append(d.message), d.accept()))
+    campo.fill("compilado"); campo.press("Tab"); pag.wait_for_timeout(1200)
+    check("Tempo ID fuera de la lista: avisa y no se guarda", avisos and "no válido" in avisos[0]
+          and sqlq("select coalesce(tempo_id, '-') from tracks_master where track_name_clean='Segundo Tema'") == "-", avisos)
+    campo = pag.locator('[data-field-master="tempo_id"][value=""]').first
     campo.fill("777002"); campo.press("Tab"); pag.wait_for_timeout(1500)
     check("editar tempo_id desde la tabla (fn_set_tempo_id)", sqlq("select tempo_id from tracks_master where track_name_clean='Segundo Tema'") == "777002")
     check("el contador se actualiza al registrar un Tempo ID", "Identificadas: 2 · Sin identificar: 0" in pag.inner_text(".conteo-id"),
@@ -224,6 +233,17 @@ with sync_playwright() as p:
     sqlq("select fn_upsert_bo_report_row('777001','AR','00123','C','ok','',50)")
     pag.click('[data-tab="territory"]'); pag.wait_for_timeout(1000)
     check("tabla por territorio muestra la obra", "Tema Navegador" in pag.content())
+    check("tabla por territorio: columnas en el orden pedido",
+          pag.evaluate("[...document.querySelectorAll('thead th')].map(t => t.textContent.trim()).filter(Boolean).join('|')")
+          == "País|Track - Artista|Created date|Tempo ID|% Perf Tempo|% Mech Tempo|BO ID|C/A|% Mech BO|Estado|Reclamos|Estado de trabajo|Ticket|Fecha",
+          pag.evaluate("[...document.querySelectorAll('thead th')].map(t => t.innerText.trim()).join('|')"))
+    tk = pag.locator('[data-field-seg="ticket"]').first
+    tk.fill("INC-555"); tk.press("Enter"); pag.wait_for_timeout(1000)
+    fe = pag.locator('[data-field-seg="fecha"]').first
+    fe.fill("26092026"); fe.press("Enter"); pag.wait_for_timeout(1000)
+    check("ticket y fecha se escriben en la tabla y la fecha se muestra DD/MM/AAAA",
+          sqlq("select ticket || '|' || ticket_fecha from territory_seguimiento") == "INC-555|2026-09-26"
+          and fe.input_value() == "26/09/2026", (sqlq("select ticket || '|' || ticket_fecha from territory_seguimiento"), fe.input_value()))
     pag.locator('[data-history-track]').first.click(); pag.wait_for_selector("#closeHistory", timeout=5000)
     check("histórico de cambios abre", pag.is_visible("#closeHistory"))
     pag.click("#closeHistory")

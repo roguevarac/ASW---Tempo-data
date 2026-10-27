@@ -185,7 +185,8 @@ no quedan datos parciales y el archivo puede volver a cargarse.</p>
   <tr><td><b>Reporte Tempo Control</b></td><td>Porcentajes de Tempo (% Perf y % Mech), fecha de creación y estado de cada
     obra, para todos los territorios que incluya.</td></tr>
   <tr><td><b>Tempo IDs</b></td><td>Tempo ID de obras de la tabla principal. Corresponde al CSV descargado de la tabla
-    principal, con la columna tempo_id completa.</td></tr>
+    principal, con la columna tempo_id completa con el número o uno de los valores admitidos (ver
+    <a href="#principal">Registro del Tempo ID</a>). Si un número ya está en otra obra, las dos se fusionan.</td></tr>
 </table>
 <div class="caja">
   <p><b>Charts:</b> subí los archivos .csv con el nombre de descarga; el territorio y la semana del título se utilizan
@@ -204,8 +205,11 @@ no quedan datos parciales y el archivo puede volver a cargarse.</p>
 <p>Una misma canción puede figurar escrita de distintas formas según el chart o la semana. Para registrarla como una
 sola obra, el sistema normaliza el título y el artista al cargarlos:</p>
 <ul>
+  <li><b>Corrige las tildes mal codificadas</b> de archivos guardados con otra codificación: "FrÃ¡gil" se lee como
+    "Frágil" y "DESPUESâ€¦" como "DESPUES…".</li>
   <li><b>Elimina los acentos:</b> "Canción" se registra como "Cancion". Los signos <code>¿</code> y <code>¡</code> se
     conservan.</li>
+  <li><b>Escribe los puntos suspensivos como tres puntos:</b> "DESPUES…" se registra como "DESPUES...".</li>
   <li><b>Reemplaza "&amp;" por una coma:</b> "Artista A &amp; Artista B" se registra como "Artista A, Artista B".</li>
   <li><b>Elimina las marcas de versión en vivo:</b> paréntesis o corchetes con "en vivo", "vivo" o "live", y los tramos
     entre guiones que comienzan con esas palabras.</li>
@@ -216,6 +220,7 @@ sola obra, el sistema normaliza el título y el artista al cargarlos:</p>
 <div class="ej"><code>¿Qué Pasó? [Live Session]</code><span>→</span><code>¿Que Paso?</code></div>
 <div class="ej"><code>Tema - En Vivo Gran Rex - Remix</code><span>→</span><code>Tema - Remix</code></div>
 <div class="ej"><code>Tema - Live at Luna Park</code><span>→</span><code>Tema</code></div>
+<div class="ej"><code>3 PECADOS DESPUESâ€¦</code><span>→</span><code>3 PECADOS DESPUES...</code></div>
 <p>Con el título y el artista normalizados se forma la columna <b>Track - Artista</b> ("Título - Artista"). Dos filas
 con el mismo título y artista normalizados corresponden a la misma obra, sin importar mayúsculas y minúsculas: sus
 charts se asocian a esa obra y no se crea una nueva.</p>
@@ -242,13 +247,18 @@ el total.</p>
 <h3>Registro del Tempo ID</h3>
 <p>Ingresá el número en la celda y salí de ella (clic fuera o Tab): se guarda automáticamente. Las celdas vacías se
 marcan en rojo. El Tempo ID registrado se aplica también a todas las filas de esa obra en la tabla por territorio.</p>
-<p>Además del número se admiten marcadores, como <b>UNCONTROLLED</b> (obra no controlada) o <b>COMPILADO</b>, que
-pueden repetirse en varias obras. El reporte BO incluye solo las obras con Tempo ID numérico.</p>
+<p>Además del número, solo se admiten estos valores, que pueden repetirse en varias obras y se ofrecen como lista al
+escribir en la celda: <b>UNCONTROLLED</b>, <b>PENDING ARGENTINA</b>, <b>PENDING CHILE</b>, <b>PENDING URUGUAY</b>,
+<b>PENDING MIAMI</b>, <b>PENDING USA</b>, <b>PENDING MEXICO</b>, <b>PENDING COREA</b> y <b>PENDING ESPAÑA</b>. Se
+registran siempre en mayúsculas, aunque se escriban de otra forma o sin tilde. Cualquier otro valor no se guarda. El
+reporte BO incluye solo las obras con Tempo ID numérico.</p>
 <p>Un Tempo ID corresponde a una sola obra. Si ya está asignado a otra, el sistema indica a cuál y consulta si se trata
 de la misma canción (por ejemplo, escrita de otra forma en Spotify y en YouTube):</p>
 <ul>
-  <li><b>Aceptar:</b> las dos obras se unifican en la que ya tenía el Tempo ID, con los charts, reportes y descargas
-    registradas de ambas.</li>
+  <li><b>Aceptar:</b> las dos obras se fusionan en la que ya tenía el Tempo ID. La otra deja de existir y todo pasa a
+    la obra que queda: charts, reportes y descargas registradas. Si las dos figuraron en el mismo chart y semana, sus
+    streams se suman y se conserva el mejor puesto. Las próximas cargas de charts con el nombre de la obra fusionada
+    se registran directamente en la obra que quedó.</li>
   <li><b>Cancelar:</b> no se modifica nada.</li>
 </ul>
 <h3>Botones de descarga</h3>
@@ -292,15 +302,20 @@ los datos de Tempo y de BO. Al igual que la tabla principal, muestra 100 filas p
 filtros abarcan todos los registros.</p>
 <table>
   <tr><th>Columna</th><th>Descripción</th></tr>
-  <tr><td>País, Track - Artista, Tempo ID</td><td>Obra y territorio.</td></tr>
+  <tr><td>País, Track - Artista</td><td>Territorio y obra.</td></tr>
   <tr><td>Created date</td><td>Fecha de creación de la obra en Tempo (del Reporte Tempo Control).</td></tr>
-  <tr><td>BO, C/A</td><td>Código de la obra en BO y su C/A (song owner), del Reporte BackOffice.</td></tr>
+  <tr><td>Tempo ID</td><td>El de la tabla principal.</td></tr>
   <tr><td>% Perf Tempo, % Mech Tempo</td><td>Porcentajes del Reporte Tempo Control para ese territorio, tal como se
     informan. Si Tempo informa un texto (por ejemplo NVFT o NOP), se muestra ese texto.</td></tr>
-  <tr><td>Estado, Reclamos, % Mech BO</td><td>Datos de BO: estado de la obra, reclamos (counterclaims) y porcentaje
-    mecánico.</td></tr>
+  <tr><td>BO ID, C/A, % Mech BO</td><td>Código de la obra en BO, su C/A (song owner) y el porcentaje mecánico, del
+    Reporte BackOffice.</td></tr>
+  <tr><td>Estado, Reclamos</td><td>Datos de BO: estado de la obra y reclamos (counterclaims).</td></tr>
   <tr><td>Estado de trabajo</td><td>Resultado de la comparación entre Tempo y BO (ver abajo). Puede modificarse
     manualmente.</td></tr>
+  <tr><td>Ticket</td><td>Número del ticket enviado cuando la obra está mal registrada. Se escribe en la celda y se
+    guarda al salir de ella o al presionar Enter.</td></tr>
+  <tr><td>Fecha</td><td>Fecha del ticket. Se escribe como DDMMAAAA (por ejemplo, 26092026) y se muestra como
+    26/09/2026.</td></tr>
   <tr><td>Show prior</td><td>Histórico de cambios de la obra en ese territorio, con fecha: cada cambio del Reporte
     BackOffice, del Reporte Tempo Control y del estado de trabajo.</td></tr>
 </table>

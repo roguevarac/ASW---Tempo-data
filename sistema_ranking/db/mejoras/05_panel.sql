@@ -301,7 +301,8 @@ BEGIN
                format('%s %s en %s', pm.n, CASE WHEN pm.n = 1 THEN 'fila modificada' ELSE 'filas modificadas' END,
                       CASE pm.tabla WHEN 'tracks_master' THEN 'la tabla principal'
                                     WHEN 'territory_bo_report' THEN 'datos de BO'
-                                    WHEN 'territory_tempo_report' THEN 'datos de Tempo' ELSE pm.tabla END)
+                                    WHEN 'territory_tempo_report' THEN 'datos de Tempo'
+                                    WHEN 'territory_seguimiento' THEN 'tickets de la tabla por territorio' ELSE pm.tabla END)
                || coalesce(' (' || nullif(concat_ws(', ', CASE WHEN pm.c_tempo THEN 'Tempo ID' END,
                                                     CASE WHEN pm.c_estado THEN 'estado de trabajo' END,
                                                     CASE WHEN pm.c_bajas THEN 'bajas' END), '') || ')', '') AS detalle
@@ -311,7 +312,7 @@ BEGIN
     descargas AS (
         SELECT e.created_at, coalesce(n.email, e.created_by), 'Descarga'::text,
                format('%s · %s · %s obras%s', CASE e.tipo WHEN 'reporte_bo' THEN 'Reporte BO' ELSE 'CSV de la tabla principal' END,
-                      CASE e.modo WHEN 'nuevas' THEN 'solo las nuevas' ELSE 'todas' END, e.obras,
+                      CASE e.modo WHEN 'nuevas' THEN 'solo las nuevas' WHEN 'identificadas' THEN 'identificadas desde la última descarga' ELSE 'todas' END, e.obras,
                       coalesce(' · carga ' || e.carga, ''))
         FROM envios e LEFT JOIN nombres n ON n.id = e.created_by
         WHERE e.created_at >= v_desde AND e.created_at < v_hasta
