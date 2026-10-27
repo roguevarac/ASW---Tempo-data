@@ -121,13 +121,23 @@ def entorno_dt():
 
 
 def dt(*args, timeout=120):
-    r = subprocess.run([str(BIN), *args], capture_output=True, text=True, timeout=timeout, env=entorno_dt())
-    return r.returncode, (r.stdout or "") + (r.stderr or "")
+    log.info("devtunnel %s", " ".join(args))
+    try:
+        r = subprocess.run([str(BIN), *args], capture_output=True, text=True, timeout=timeout, env=entorno_dt())
+    except subprocess.TimeoutExpired:
+        log.warning("devtunnel %s: sin respuesta en %s s", " ".join(args), timeout)
+        return 124, f"Sin respuesta de la herramienta de Microsoft en {timeout} s ({' '.join(args)})"
+    salida = (r.stdout or "") + (r.stderr or "")
+    if r.returncode != 0:
+        log.info("  -> código %s: %s", r.returncode, salida.strip()[-500:])
+    return r.returncode, salida
 
 
 def con_sesion():
-    codigo, salida = dt("user", "show")
-    return codigo == 0 and not re.search(r"not logged in|no user|not signed", salida, re.I)
+    codigo, salida = dt("user", "show", timeout=60)
+    ok = codigo == 0 and not re.search(r"not logged in|no user|not signed", salida, re.I)
+    log.info("Sesión de Microsoft: %s", salida.strip()[-300:] or f"código {codigo}")
+    return ok
 
 
 def preparar(tid, acceso):
@@ -170,6 +180,7 @@ class Panel:
             log.debug("Panel: %s", e)
 
     def estado(self, estado, **detalle):
+        log.info("Estado: %s %s", estado, detalle.get("mensaje") or detalle.get("url") or "")
         self._sql("SELECT panel.latido('tunel', %s::jsonb)", (json.dumps({"estado": estado, **detalle}),))
         clave = (estado, detalle.get("url"))
         if clave != self.ultimo:

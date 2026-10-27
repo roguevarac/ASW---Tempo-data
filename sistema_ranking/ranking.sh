@@ -481,7 +481,11 @@ cmd_estado() {
     echo "Configuración: $CONFIG    Respaldos: $RESPALDOS"
 }
 
-cmd_logs() { verificar_docker; instalado; dc logs --tail "${1:-100}" api db espejo respaldo; }
+cmd_logs() {
+    verificar_docker; instalado
+    local servicios=(api db espejo respaldo); [ "$(valor COMPARTIR)" = 1 ] && servicios+=(tunel)
+    dc logs --tail "${1:-100}" "${servicios[@]}"
+}
 
 cmd_respaldo() {
     verificar_docker; instalado
@@ -868,11 +872,22 @@ cmd_compartir() {
     poner COMPARTIR 1
     consulta "DELETE FROM panel.servicios WHERE servicio = 'tunel'" > /dev/null 2>&1
     dc up -d --no-deps --force-recreate tunel > /dev/null 2>&1 || { dc up -d --no-deps tunel; fallar "No arrancó el servicio de acceso (el motivo está arriba)."; }
-    local url="" i
-    for i in $(seq 1 "${ESPERA_TUNEL:-90}"); do url="$(enlace_compartido)"; [ -n "$url" ] && break; sleep 1; done
+    local url="" i estado=""
+    for i in $(seq 1 "${ESPERA_TUNEL:-180}"); do
+        url="$(enlace_compartido)"; [ -n "$url" ] && break
+        estado="$(consulta "SELECT detalle->>'estado' FROM panel.servicios WHERE servicio = 'tunel'" 2> /dev/null | tr -d '[:space:]')"
+        case "$estado" in sin_sesion|error) break ;; esac
+        [ $((i % 15)) = 0 ] && echo "  esperando a Microsoft... ($i s)"
+        sleep 1
+    done
     if [ -z "$url" ]; then
-        dc logs --tail 20 tunel
-        fallar "El acceso todavía no quedó abierto (el motivo está arriba). Se reintenta solo; el enlace aparece en el Panel de control."
+        echo "Registro del servicio de acceso:"
+        dc logs --no-log-prefix --tail 40 tunel
+        case "$estado" in
+            sin_sesion) fallar "La herramienta de Microsoft no encuentra la sesión iniciada. Pasame el registro de arriba." ;;
+            error) fallar "Microsoft rechazó la creación del acceso (el motivo está en el registro de arriba)." ;;
+            *) fallar "El acceso todavía no quedó abierto. Se reintenta solo; el enlace aparece en el Panel de control." ;;
+        esac
     fi
     registrar_evento ok "Acceso desde otras computadoras: $url"
     regenerar_accesos
