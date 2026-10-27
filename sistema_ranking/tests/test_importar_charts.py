@@ -79,7 +79,7 @@ paridad = [
              "Position,Track Name,Artist,Streams,URL\n"
              "1,Tema Viejo - Live at Luna Park,Artista Viejo,345678,https://open.spotify.com/track/abc\n"
              "2,Canción, Otro\n"),
-    escribir(sp / "ar" / "regional-ar-weekly-2024-07-04.csv", HEAD_SP +
+    escribir(sp / "ar" / "regional-ar-weekly-2021-01-14.csv", HEAD_SP +
              "1,spotify:track:9,Niño Ñandú,Corazón,Sello,1,1,1,1.234.567\n", "cp1252"),
     escribir(yt / "py" / "youtube-py-weekly-2023-03-09.csv", HEAD_YT +
              '1,--,Video Uno,Artista Video,4,"90,000",12.5%,https://www.youtube.com/watch?v=1\n'
@@ -167,7 +167,7 @@ with sync_playwright() as p:
     pag.click('[data-hist-tab="spotify"]'); pag.click('.chip[data-hist-pais="AR"]'); pag.wait_for_timeout(400)
     texto = pag.inner_text(".panel-body")
     check("Historial de cargas: cada semana importada con su archivo y 'importación histórica' como usuario",
-          "2021-01-07" in texto and "regional-ar-weekly-2024-07-04.csv" in texto and "importación histórica" in texto, texto[:500])
+          "2021-01-07" in texto and "regional-ar-weekly-2021-01-14.csv" in texto and "importación histórica" in texto, texto[:500])
     nav.close()
 
 vaciar()
