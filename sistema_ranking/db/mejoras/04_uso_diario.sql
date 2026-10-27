@@ -239,7 +239,10 @@ begin
     insert into envio_obras (envio_id, track_master_id)
         select envio_id, p_destino from envio_obras where track_master_id = p_origen
         on conflict do nothing;
-    delete from tracks_master where id = p_origen;   -- sus envio_obras se borran en cascada
+    insert into envio_identificadas (tipo, track_master_id, envio_id)
+        select tipo, p_destino, envio_id from envio_identificadas where track_master_id = p_origen
+        on conflict do nothing;
+    delete from tracks_master where id = p_origen;   -- sus envio_obras y envio_identificadas se borran en cascada
     update tracks_master set estado_bo = 'ok' where id = p_destino and estado_bo <> 'ok';
 end;
 $function$;
@@ -298,6 +301,10 @@ $function$;
 GRANT INSERT ON public.envio_obras TO authenticated;
 DROP POLICY IF EXISTS envio_obras_unificar ON public.envio_obras;
 CREATE POLICY envio_obras_unificar ON public.envio_obras AS PERMISSIVE FOR INSERT TO authenticated
+    WITH CHECK (fn_app_role() = ANY (ARRAY['admin'::text, 'usuario_estandar'::text]));
+GRANT INSERT ON public.envio_identificadas TO authenticated;
+DROP POLICY IF EXISTS envio_identificadas_unificar ON public.envio_identificadas;
+CREATE POLICY envio_identificadas_unificar ON public.envio_identificadas AS PERMISSIVE FOR INSERT TO authenticated
     WITH CHECK (fn_app_role() = ANY (ARRAY['admin'::text, 'usuario_estandar'::text]));
 
 -- ---------------------------------------------------------------- descarga de la tabla por territorio

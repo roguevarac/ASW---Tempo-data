@@ -119,7 +119,7 @@ select.edit-field{font-family:'IBM Plex Sans',sans-serif;}
 .estado.wait{color:var(--text-muted);}
 .pager{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:12px;font-size:12.5px;color:var(--text-muted);}
 .pager .btn:disabled{opacity:0.4;cursor:default;}
-.pager .conteo-id{margin-right:auto;}
+.conteo-id{display:block;margin:-4px 0 10px;font-size:12.5px;color:var(--text-muted);}
 .subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
 .subtab{background:var(--panel);border:1px solid var(--line);color:var(--text-muted);border-radius:3px;padding:7px 12px;font-size:12.5px;cursor:pointer;}
 .subtab.active{border-color:var(--brass);color:var(--text-primary);}
@@ -443,10 +443,10 @@ async function restore(kind, id){
   loadAll();
 }
 
-// ---------- Reporte BO y CSV de la tabla principal: solo obras nuevas o todas ----------
-// Cada descarga queda registrada con sus obras (fn_preparar_envio). "Nuevas" son las que nunca salieron en ese
-// tipo de descarga; "Todas" es la revisión completa (por ejemplo, cada trimestre). Las dos usan los filtros de
-// país y fechas de la tabla principal.
+// ---------- Reporte BO y CSV de la tabla principal: todas o identificadas desde la última descarga ----------
+// Cada descarga queda registrada con sus obras (fn_preparar_envio). "Identificadas" son las que obtuvieron Tempo ID
+// desde la última descarga de ese tipo (nunca figuraron identificadas en una descarga anterior). Las dos usan los
+// filtros de país y fechas de la tabla principal.
 const ENVIO_TIPOS = {
   reporte_bo:    { titulo: 'Descargar reporte BO', cosa: 'reporte BO', soloTempo: true },
   csv_principal: { titulo: 'Descargar CSV de la tabla principal', cosa: 'CSV', soloTempo: false },
@@ -466,7 +466,7 @@ async function openEnvioDialog(tipo){
   if(state.envioDialog && state.envioDialog.tipo === tipo){
     state.envioDialog.ultimo = u.data?.[0] || null;
     const r = c.data?.[0] || {};
-    state.envioDialog.conteo = { todas: Number(r.todas || 0), nuevas: Number(r.nuevas || 0) };
+    state.envioDialog.conteo = { todas: Number(r.todas || 0), identificadas: Number(r.identificadas || 0) };
     render();
   }
 }
@@ -486,7 +486,7 @@ function renderEnvioDialog(){
   const filtros = [state.masterCountry && `país ${state.masterCountry}`, state.dateFrom && `desde ${state.dateFrom}`,
                    state.dateTo && `hasta ${state.dateTo}`].filter(Boolean).join(', ');
   const u = d.ultimo;
-  const ultimo = u ? `Última descarga: ${fmtFecha(u.created_at)}${u.carga ? ` · carga ${u.carga}` : ''} · ${u.modo === 'nuevas' ? 'solo nuevas' : 'todas'} · ${u.obras} obras`
+  const ultimo = u ? `Última descarga: ${fmtFecha(u.created_at)}${u.carga ? ` · carga ${u.carga}` : ''} · ${({ nuevas: 'solo nuevas', identificadas: 'identificadas desde la anterior' })[u.modo] || 'todas'} · ${u.obras} obras`
                    : `Sin descargas previas de este tipo.`;
   const obras = (n) => `${n} obra${n === 1 ? '' : 's'}`;
   return `
@@ -496,13 +496,13 @@ function renderEnvioDialog(){
       <h2 class="display">${t.titulo}</h2>
       <p class="sub">${ultimo}<br>${filtros ? `Filtros aplicados: ${filtros}.` : 'Sin filtros: incluye toda la tabla principal.'}${t.soloTempo ? ' Incluye únicamente obras con Tempo ID.' : ''}</p>
       ${!c ? `<div class="empty">Calculando…</div>` : `
-      <button class="btn envio-op" data-envio-modo="nuevas" ${c.nuevas && !state.envioBusy ? '' : 'disabled'}>
-        <b>Solo las nuevas · ${obras(c.nuevas)}</b>
-        <span>Obras que nunca se incluyeron en un ${t.cosa}. Seguimiento semanal.</span>
-      </button>
       <button class="btn envio-op" data-envio-modo="todas" ${c.todas && !state.envioBusy ? '' : 'disabled'}>
         <b>Todas · ${obras(c.todas)}</b>
-        <span>Incluye las obras ya enviadas. Revisión completa (por ejemplo, trimestral).</span>
+        <span>${t.soloTempo ? 'Todas las obras con Tempo ID.' : 'Todas las obras de la tabla principal.'}</span>
+      </button>
+      <button class="btn envio-op" data-envio-modo="identificadas" ${c.identificadas && !state.envioBusy ? '' : 'disabled'}>
+        <b>Identificadas desde la última descarga · ${obras(c.identificadas)}</b>
+        <span>Obras que obtuvieron Tempo ID después de la última descarga de un ${t.cosa}.</span>
       </button>`}
     </div>
   </div>`;
@@ -515,7 +515,7 @@ async function startEnvio(modo){
     const { data, error } = await sb.rpc('fn_preparar_envio', { p_tipo: tipo, p_modo: modo, ...envioFiltros() });
     if(error){ alert('No se pudo preparar la descarga: ' + error.message); return; }
     const envio = data?.[0];
-    if(!envio || !envio.obras){ alert(modo === 'nuevas' ? 'No hay obras nuevas para descargar.' : 'No hay obras para descargar.'); return; }
+    if(!envio || !envio.obras){ alert(modo === 'identificadas' ? 'No hay obras identificadas desde la última descarga.' : 'No hay obras para descargar.'); return; }
     if(tipo === 'reporte_bo') await downloadBoReport(envio, modo);
     else await downloadMasterCsv(envio, modo);
     state.envioDialog = null;
@@ -563,7 +563,7 @@ async function downloadBoReport(envio, modo){
     lines.push(`${String(r.tempo_id).trim()};${track};BOcarga${carga}`);
   });
 
-  const filename = `reporte_bo_carga${carga}${modo === 'nuevas' ? '_nuevas' : ''}.csv`;
+  const filename = `reporte_bo_carga${carga}${modo === 'identificadas' ? '_identificadas' : ''}.csv`;
   const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -575,7 +575,7 @@ async function downloadBoReport(envio, modo){
 }
 
 async function downloadMasterCsv(envio, modo){
-  const filename = `tabla_principal${modo === 'nuevas' ? '_nuevas' : ''}.csv`;
+  const filename = `tabla_principal${modo === 'identificadas' ? '_identificadas' : ''}.csv`;
   const blob = await downloadFilteredCsv('fn_envio_obras', { p_envio_id: envio.envio_id }, filename, 'track_artist_concat,tempo_id');
   if(blob) await archiveDownload(blob, filename, 'csv_principal', 'csv_principal', envio.obras);
 }
@@ -1110,6 +1110,7 @@ function renderMaster(){
       <button class="btn primary" id="exportMaster"><i>&#8595;</i> Descargar CSV</button>
     </div>
   </div>
+  ${state.masterConteo ? `<div class="conteo-id">Identificadas: ${fmtNum(state.masterConteo.identificadas)} · Sin identificar: ${fmtNum(state.masterConteo.sin)}</div>` : ''}
   <table><thead><tr><th style="width:70%">Track - Artista</th><th>Tempo ID</th></tr></thead>
   <tbody>${rows.length ? rows.map(r=>`
     <tr class="${r.deleted_at?'is-deleted':''}">
@@ -1117,8 +1118,7 @@ function renderMaster(){
       <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—">` : (r.tempo_id||'—')}</td>
     </tr>`).join('') : `<tr><td colspan="2"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
   </tbody></table>
-  ${renderPager('master', state.masterTotal, state.masterPage, state.masterConteo
-      ? `<span class="conteo-id">Identificadas: ${fmtNum(state.masterConteo.identificadas)} · Sin identificar: ${fmtNum(state.masterConteo.sin)}</span>` : '')}`;
+  ${renderPager('master', state.masterTotal, state.masterPage)}`;
 }
 
 function renderTerritory(){

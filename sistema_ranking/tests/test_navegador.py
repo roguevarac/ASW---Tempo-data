@@ -99,17 +99,19 @@ with sync_playwright() as p:
     # ---- tabla principal: se ven las obras y se edita un tempo_id
     pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
     check("tabla principal muestra las obras cargadas", "Tema Navegador - Artista Navegador" in pag.content())
-    check("contador abajo: identificadas (con Tempo ID) y sin identificar", "Identificadas: 1 · Sin identificar: 1" in pag.inner_text(".pager"),
-          pag.inner_text(".pager"))
+    check("contador arriba de la tabla: identificadas (con Tempo ID) y sin identificar",
+          "Identificadas: 1 · Sin identificar: 1" in pag.inner_text(".conteo-id")
+          and pag.evaluate("document.querySelector('.conteo-id').getBoundingClientRect().bottom <= document.querySelector('.tab-content table, table').getBoundingClientRect().top"),
+          pag.inner_text(".conteo-id"))
 
     campo = pag.locator('[data-field-master="tempo_id"][value=""]').first
     campo.fill("777002"); campo.press("Tab"); pag.wait_for_timeout(1500)
     check("editar tempo_id desde la tabla (fn_set_tempo_id)", sqlq("select tempo_id from tracks_master where track_name_clean='Segundo Tema'") == "777002")
-    check("el contador se actualiza al registrar un Tempo ID", "Identificadas: 2 · Sin identificar: 0" in pag.inner_text(".pager"),
-          pag.inner_text(".pager"))
+    check("el contador se actualiza al registrar un Tempo ID", "Identificadas: 2 · Sin identificar: 0" in pag.inner_text(".conteo-id"),
+          pag.inner_text(".conteo-id"))
     pag.fill("#searchMaster", "Segundo"); pag.wait_for_timeout(1200)
-    check("el contador respeta la búsqueda (suma el total de la tabla)", "Identificadas: 1 · Sin identificar: 0" in pag.inner_text(".pager")
-          and "de 1" in pag.inner_text(".pager"), pag.inner_text(".pager"))
+    check("el contador respeta la búsqueda (suma el total de la tabla)", "Identificadas: 1 · Sin identificar: 0" in pag.inner_text(".conteo-id")
+          and "de 1" in pag.inner_text(".pager"), pag.inner_text(".conteo-id"))
     pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
 
     pag.click('[data-tab="upload"]')
@@ -177,28 +179,46 @@ with sync_playwright() as p:
           and pag.inner_text(".metric.err .n").strip() == "0", pag.inner_text(".summary-row"))
     pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
 
-    # ---- descarga de la tabla principal: elige "solo las nuevas" o "todas" y queda registrada
+    # ---- descarga de la tabla principal: elige "todas" o "identificadas desde la última descarga" y queda registrada
     total_obras = int(sqlq("select count(*) from tracks_master where deleted_at is null"))
-    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="nuevas"]')
-    check("Descargar CSV pregunta nuevas o todas, con la cantidad de cada una",
-          f"Solo las nuevas · {total_obras} obras" in pag.inner_text(".modal") and f"Todas · {total_obras} obras" in pag.inner_text(".modal"),
-          pag.inner_text(".modal"))
+    ident_csv = int(sqlq("select count(*) from tracks_master where deleted_at is null and coalesce(trim(tempo_id), '') <> ''"))
+    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="identificadas"]')
+    check("Descargar CSV ofrece todas o identificadas desde la última descarga, con la cantidad de cada una",
+          f"Todas · {total_obras} obras" in pag.inner_text(".modal")
+          and f"Identificadas desde la última descarga · {ident_csv} obra" in pag.inner_text(".modal")
+          and "nuevas" not in pag.inner_text(".modal").lower(), pag.inner_text(".modal"))
     with pag.expect_download() as d:
-        pag.click('[data-envio-modo="nuevas"]')
+        pag.click('[data-envio-modo="identificadas"]')
     contenido = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
-    check("descarga CSV de la tabla principal (solo nuevas = todas la primera vez)",
+    check("descarga CSV de las identificadas (la primera vez, todas las que tienen Tempo ID)",
           contenido.startswith("track_artist_concat,tempo_id") and "777001" in contenido
-          and len(contenido.strip().splitlines()) == total_obras + 1 and d.value.suggested_filename == "tabla_principal_nuevas.csv",
+          and len(contenido.strip().splitlines()) == ident_csv + 1 and d.value.suggested_filename == "tabla_principal_identificadas.csv",
           (d.value.suggested_filename, contenido[:300]))
     pag.wait_for_timeout(1000)
-    check("la descarga del CSV queda en el historial y marca las obras",
-          sqlq("select count(*) from csv_uploads where format='csv_principal' and file_path like 'csv_principal/%'") == "1"
-          and pag.locator(".seg", has_text="CSV: nunca").count() == 0, sqlq("select count(*) from csv_uploads where format='csv_principal'"))
-    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="nuevas"]')
-    check("después ya no hay nuevas para el CSV (la opción queda apagada) y muestra la última descarga",
-          pag.is_disabled('[data-envio-modo="nuevas"]') and "Solo las nuevas · 0 obras" in pag.inner_text(".modal")
-          and "solo nuevas" in pag.inner_text(".modal"), pag.inner_text(".modal"))
+    check("la descarga del CSV queda en el historial",
+          sqlq("select count(*) from csv_uploads where format='csv_principal' and file_path like 'csv_principal/%'") == "1",
+          sqlq("select count(*) from csv_uploads where format='csv_principal'"))
+    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="identificadas"]')
+    check("después no hay identificadas nuevas para el CSV (la opción queda apagada) y muestra la última descarga",
+          pag.is_disabled('[data-envio-modo="identificadas"]') and "Identificadas desde la última descarga · 0 obras" in pag.inner_text(".modal")
+          and "identificadas desde la anterior" in pag.inner_text(".modal"), pag.inner_text(".modal"))
     pag.click("#closeEnvio")
+    sqlq("insert into tracks_master (track_name_raw, artist_name_raw, tempo_id) values ('Tema Identificado Despues', 'Artista X', '777050')")
+    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="identificadas"]')
+    pag.wait_for_function("() => !document.querySelector('[data-envio-modo=\"identificadas\"]').disabled")
+    with pag.expect_download() as d:
+        pag.click('[data-envio-modo="identificadas"]')
+    contenido = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
+    check("una obra identificada después de la última descarga sale sola en 'identificadas'",
+          contenido.strip().splitlines()[1:] == ["Tema Identificado Despues - Artista X,777050"], contenido)
+    pag.wait_for_timeout(800)
+    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="todas"]')
+    with pag.expect_download() as d:
+        pag.click('[data-envio-modo="todas"]')
+    contenido = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
+    check("CSV 'todas': todas las obras, con y sin Tempo ID", d.value.suggested_filename == "tabla_principal.csv"
+          and len(contenido.strip().splitlines()) == total_obras + 2, (d.value.suggested_filename, contenido[:300]))
+    pag.wait_for_timeout(800)
 
     # ---- tabla por territorio + histórico
     sqlq("select fn_upsert_bo_report_row('777001','AR','00123','C','ok','',50)")
@@ -208,18 +228,18 @@ with sync_playwright() as p:
     check("histórico de cambios abre", pag.is_visible("#closeHistory"))
     pag.click("#closeHistory")
 
-    # ---- reporte BO: solo las nuevas (contador + descarga + copia en el bucket + seguimiento)
+    # ---- reporte BO: identificadas desde la última descarga (contador + descarga + copia en el bucket + seguimiento)
     pag.click('[data-tab="master"]'); pag.wait_for_timeout(800)
     con_tempo = int(sqlq("select count(*) from tracks_master where deleted_at is null and tempo_id ~ '^[0-9]+$'"))
     check("la barra de la tabla principal no tiene un desplegable de seguimiento (se elige al descargar)",
           pag.locator("#segFilter").count() == 0)
-    pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="nuevas"]')
+    pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="identificadas"]')
     with pag.expect_download() as d:
-        pag.click('[data-envio-modo="nuevas"]')
+        pag.click('[data-envio-modo="identificadas"]')
     bo = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
     carga = sqlq("select counter from bo_export_counter")
-    check("reporte BO (nuevas) con número de carga y solo obras con Tempo ID",
-          d.value.suggested_filename == f"reporte_bo_carga{carga}_nuevas.csv" and "777001;" in bo
+    check("reporte BO (identificadas) con número de carga y solo obras con Tempo ID",
+          d.value.suggested_filename == f"reporte_bo_carga{carga}_identificadas.csv" and "777001;" in bo
           and len(bo.strip().splitlines()) == con_tempo and all(l.endswith(f";BOcarga{carga}") for l in bo.splitlines()),
           (d.value.suggested_filename, bo[:200]))
     pag.wait_for_timeout(1000)
@@ -229,7 +249,7 @@ with sync_playwright() as p:
           sqlq("select count(*) from envio_obras eo join envios e on e.id = eo.envio_id where e.carga = " + carga) == str(con_tempo)
           and "Seguimiento" not in pag.inner_text("thead"), pag.inner_text("thead"))
     pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="todas"]')
-    check("reporte BO: sin nuevas, 'solo las nuevas' queda apagada", pag.is_disabled('[data-envio-modo="nuevas"]'), pag.inner_text(".modal"))
+    check("reporte BO: sin identificadas nuevas, la opción queda apagada", pag.is_disabled('[data-envio-modo="identificadas"]'), pag.inner_text(".modal"))
     with pag.expect_download() as d:
         pag.click('[data-envio-modo="todas"]')
     bo2 = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
@@ -243,7 +263,7 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Solo las nuevas", "Estado de trabajo automático",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
                                           "Respaldo en OneDrive", "no altera la información",
                                           "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))

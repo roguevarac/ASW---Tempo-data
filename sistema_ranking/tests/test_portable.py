@@ -266,7 +266,7 @@ try:
     esperar(p, pexpect.EOF)
     log = texto("migrar.ps1.log")
     check("migrar: termina con 'Migracion completa'", "Migracion completa" in log, log[-2500:])
-    for t in sql(ORIGEN, "select string_agg(tablename, ' ') from pg_tables where schemaname='public' and tablename not in ('envios', 'envio_obras')").split():
+    for t in sql(ORIGEN, "select string_agg(tablename, ' ') from pg_tables where schemaname='public' and tablename not in ('envios', 'envio_obras', 'envio_identificadas')").split():
         q = f"select count(*) || ':' || coalesce(md5(string_agg(x::text, '|' order by x::text)), '') from public.{t} x"
         check(f"migrar: tabla {t} idéntica", sql(ORIGEN, q) == sql(url_nueva(), q))
     check("migrar: los usuarios de Supabase reemplazan al creado en la instalación",

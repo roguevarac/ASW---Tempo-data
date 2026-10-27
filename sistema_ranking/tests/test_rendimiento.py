@@ -32,7 +32,7 @@ def sql(q):
 
 
 def vaciar():
-    sql("TRUNCATE public.envio_obras, public.envios, public.territory_tracks, public.territory_control, public.territory_bo_report, "
+    sql("TRUNCATE public.envio_identificadas, public.envio_obras, public.envios, public.territory_tracks, public.territory_control, public.territory_bo_report, "
         "public.territory_tempo_report, public.tracks_master, public.audit_logs, public.csv_uploads; DELETE FROM storage.objects")
 
 
@@ -123,7 +123,7 @@ with sync_playwright() as p:
     ident = sql("select count(*) filter (where tempo_id is not null) || '|' || count(*) filter (where tempo_id is null) from tracks_master")
     check("contador de identificadas y sin identificar, iguales a la base",
           f"Identificadas: {int(ident.split('|')[0]):,} · Sin identificar: {int(ident.split('|')[1]):,}".replace(",", ".")
-          in pag.inner_text(".pager"), (ident, pag.inner_text(".pager")))
+          in pag.inner_text(".conteo-id"), (ident, pag.inner_text(".conteo-id")))
     medir("página siguiente", lambda: pag.click('.pager [data-dir="1"]'),
           "() => document.querySelector('.pager .rango').innerText.startsWith('101–200')")
     esperado = sql("select count(*) from tracks_master where lower(track_artist_concat || ' ' || coalesce(tempo_id, '')) like '%tema 1234%'")

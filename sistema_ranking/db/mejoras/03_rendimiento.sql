@@ -158,18 +158,18 @@ $function$;
 
 -- Cantidad de obras de cada opción de descarga (reporte BO o CSV) con los filtros de la tabla principal: las mismas
 -- que tomaría fn_preparar_envio.
+DROP FUNCTION IF EXISTS public.fn_envio_conteo(text, date, date, pais_code_enum);   -- antes devolvía "nuevas"
 CREATE OR REPLACE FUNCTION public.fn_envio_conteo(p_tipo text, p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
     p_pais pais_code_enum DEFAULT NULL::pais_code_enum)
- RETURNS TABLE(todas bigint, nuevas bigint)
+ RETURNS TABLE(todas bigint, identificadas bigint)
  LANGUAGE sql
  STABLE
 AS $function$
     select count(*),
-           count(*) filter (where not exists (
-               select 1 from envio_obras eo join envios e on e.id = eo.envio_id
-               where e.tipo = p_tipo and eo.track_master_id = v.id))
+           count(*) filter (where fn_envio_identificada(p_tipo, v.tempo_id) and not exists (
+               select 1 from envio_identificadas ei where ei.tipo = p_tipo and ei.track_master_id = v.id))
     from fn_master_view(p_date_from, p_date_to, p_pais, false) v
-    where p_tipo <> 'reporte_bo' or trim(coalesce(v.tempo_id, '')) ~ '^[0-9]+$';
+    where p_tipo <> 'reporte_bo' or fn_envio_identificada(p_tipo, v.tempo_id);
 $function$;
 
 -- Semana del último chart cargado, por territorio y plataforma (un acceso al índice por combinación).

@@ -233,7 +233,7 @@ try:
     codigo = fin(p)
     log = texto("migrar.log")
     check("migrar: termina bien", codigo == 0 and "Migración completa" in log, log[-2500:])
-    for t in sql(ORIGEN, "select string_agg(tablename, ' ') from pg_tables where schemaname='public' and tablename not in ('envios', 'envio_obras')").split():
+    for t in sql(ORIGEN, "select string_agg(tablename, ' ') from pg_tables where schemaname='public' and tablename not in ('envios', 'envio_obras', 'envio_identificadas')").split():
         q = f"select count(*) || ':' || coalesce(md5(string_agg(x::text, '|' order by x::text)), '') from public.{t} x"
         check(f"migrar: tabla {t} idéntica", sql(ORIGEN, q) == base_nueva(q))
     r = login("admin@prueba.local", "clave-migrada-123")
@@ -584,7 +584,7 @@ try:
     (nueva / "front" / "index.html").write_text((nueva / "front" / "index.html").read_text() + "<!-- version nueva -->")
     usuarios_antes = base_nueva("select count(*) from auth.users")
     # Una base de antes de las mejoras propias (db/mejoras): la versión nueva se las agrega al arrancar.
-    base_nueva("drop table envio_obras, envios cascade; drop function fn_preparar_envio, fn_envio_obras, fn_envios_por_obra")
+    base_nueva("drop table envio_identificadas, envio_obras, envios cascade; drop function fn_preparar_envio, fn_envio_obras, fn_envios_por_obra")
     codigo = fin(ranking("instalar", carpeta=nueva))
     log = texto("instalar.log").split("1/4 Configuración")[-1]
     check("versión nueva en otra carpeta: conserva claves, datos y usuarios", codigo == 0 and "se mantiene" in log

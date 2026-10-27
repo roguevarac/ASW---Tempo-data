@@ -77,7 +77,7 @@ th{color:var(--text-muted);font-weight:500;font-size:12px;text-transform:upperca
     <li><a href="#carga">Carga CSV</a></li>
     <li><a href="#titulos">Normalización de títulos</a></li>
     <li><a href="#principal">Tabla principal</a></li>
-    <li><a href="#descargas">Reporte BO y CSV: nuevas o todas</a></li>
+    <li><a href="#descargas">Reporte BO y CSV: opciones de descarga</a></li>
     <li><a href="#territorio">Tabla por territorio</a></li>
     <li><a href="#historial">Historial de cargas</a></li>
     <li><a href="#onedrive">Guardado y respaldos</a></li>
@@ -149,12 +149,12 @@ caracteres y, al guardarla, se cierran las sesiones abiertas.</p>
   <li><b>Completar los Tempo ID</b>, de una de estas formas:
     <ul>
       <li>manualmente, en la columna Tempo ID de la tabla principal;</li>
-      <li>por archivo: en la tabla principal, <b>Descargar CSV</b> &gt; <b>Solo las nuevas</b>; completar la columna
+      <li>por archivo: en la tabla principal, <b>Descargar CSV</b> &gt; <b>Todas</b>; completar la columna
         <code>tempo_id</code> en Excel y cargar ese mismo archivo en Carga CSV, donde se identifica como "Tempo IDs".</li>
     </ul>
   </li>
-  <li><b>Generar el reporte BO</b> con <b>Descargar reporte BO</b> &gt; <b>Solo las nuevas</b>. Incluye únicamente las
-    obras que nunca formaron parte de un reporte BO, para no repetir consultas en poco tiempo. Ese archivo se carga en
+  <li><b>Generar el reporte BO</b> con <b>Descargar reporte BO</b> &gt; <b>Identificadas desde la última descarga</b>
+    (solo las obras que obtuvieron Tempo ID después del último reporte BO) o <b>Todas</b>. Ese archivo se carga en
     BO.</li>
   <li><b>Cargar las respuestas</b> en Carga CSV: el <b>Reporte BackOffice</b> (uno por territorio) y el <b>Reporte Tempo
     Control</b>.</li>
@@ -228,7 +228,7 @@ y BO los interpretan como separadores de columna.</p></div>
 <p>Una fila por canción, ordenadas desde la aparición más reciente en los charts. La tabla muestra 100 filas por
 página; debajo se indican las filas visibles y el total (por ejemplo, "1–100 de 12.345") y los botones para pasar de
 página. La búsqueda y los filtros se aplican sobre todas las canciones, no solo sobre la página visible.</p>
-<p>Abajo a la izquierda figuran las obras <b>identificadas</b> (con Tempo ID, incluidas las marcadas como UNCONTROLLED o
+<p>Arriba de la tabla figuran las obras <b>identificadas</b> (con Tempo ID, incluidas las marcadas como UNCONTROLLED o
 COMPILADO) y las obras <b>sin identificar</b>, con los mismos filtros y búsqueda de la tabla: ambas cantidades suman
 el total.</p>
 <h3>Búsqueda y filtros</h3>
@@ -256,32 +256,33 @@ de la misma canción (por ejemplo, escrita de otra forma en Spotify y en YouTube
   <li><b>Descargar CSV:</b> "Track - Artista" y Tempo ID, para completar los Tempo ID en Excel o consultarlos en Tempo.</li>
   <li><b>Descargar reporte BO:</b> archivo para cargar en BO.</li>
 </ul>
-<p>Ambos abren una ventana para elegir <b>solo las nuevas</b> (obras aún no incluidas) o <b>todas</b> (descarga
-general); ver la sección siguiente. Respetan los filtros de país y fechas, no la búsqueda.</p>
+<p>Ambos abren una ventana para elegir <b>todas</b> o las <b>identificadas desde la última descarga</b>; ver la
+sección siguiente. Respetan los filtros de país y fechas, no la búsqueda.</p>
 </section>
 
 <section id="descargas">
-<h2>Reporte BO y CSV: nuevas o todas</h2>
+<h2>Reporte BO y CSV: opciones de descarga</h2>
 <p><b>Descargar reporte BO</b> y <b>Descargar CSV</b> abren una ventana con dos opciones y la cantidad de obras de cada
-una. También se informa la última descarga de ese tipo: fecha, cantidad de obras y alcance (nuevas o todas).</p>
+una. También se informa la última descarga de ese tipo: fecha, cantidad de obras y opción elegida.</p>
 <table>
-  <tr><th>Opción</th><th>Incluye</th><th>Uso recomendado</th></tr>
-  <tr><td><b>Solo las nuevas</b></td><td>Obras que <b>nunca</b> se incluyeron en ese tipo de descarga (reporte BO o CSV,
-    según el botón).</td><td>Seguimiento semanal, para no repetir consultas.</td></tr>
-  <tr><td><b>Todas</b></td><td>Todas las obras, incluidas las ya enviadas.</td><td>Revisión completa, por ejemplo
-    trimestral.</td></tr>
+  <tr><th>Opción</th><th>Incluye</th></tr>
+  <tr><td><b>Todas</b></td><td>Reporte BO: todas las obras con Tempo ID. CSV: todas las obras de la tabla principal,
+    con y sin Tempo ID.</td></tr>
+  <tr><td><b>Identificadas desde la última descarga</b></td><td>Obras que obtuvieron Tempo ID después de la última
+    descarga de ese tipo (reporte BO o CSV, según el botón): las que no estaban identificadas en ninguna descarga
+    anterior.</td></tr>
 </table>
 <ul>
-  <li>Cada descarga queda registrada con sus obras, que a partir de ese momento dejan de contarse como "nuevas" para ese
-    botón. El reporte BO y el CSV se registran por separado.</li>
-  <li>El <b>reporte BO</b> incluye solo obras con Tempo ID numérico. Una obra sin Tempo ID se mantiene como "nueva" para
-    el reporte BO hasta que se le asigne uno y se incluya en un reporte.</li>
+  <li>Cada descarga queda registrada. Las obras identificadas que incluye dejan de contarse en la opción
+    <b>Identificadas desde la última descarga</b> de ese botón. El reporte BO y el CSV se registran por separado.</li>
+  <li>Para el <b>reporte BO</b> cuentan como identificadas las obras con Tempo ID numérico. Para el <b>CSV</b>, también
+    las marcadas como UNCONTROLLED o COMPILADO.</li>
   <li>El archivo del reporte BO no tiene encabezado. Cada línea tiene el formato <code>TempoID;Título;BOcargaN</code>,
     donde N es el número de carga, que aumenta en uno con cada reporte. El nombre del archivo lo refleja:
-    <code>reporte_bo_carga12.csv</code> (todas) o <code>reporte_bo_carga12_nuevas.csv</code> (solo nuevas).</li>
+    <code>reporte_bo_carga12.csv</code> (todas) o <code>reporte_bo_carga12_identificadas.csv</code>.</li>
 </ul>
-<div class="caja ojo"><p>Si no hay obras nuevas, la opción figura deshabilitada: no se genera un archivo vacío ni se
-utiliza un número de carga.</p></div>
+<div class="caja ojo"><p>Si no hay obras identificadas desde la última descarga, la opción figura deshabilitada: no se
+genera un archivo vacío ni se utiliza un número de carga.</p></div>
 </section>
 
 <section id="territorio">

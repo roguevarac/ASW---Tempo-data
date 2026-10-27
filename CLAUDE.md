@@ -128,7 +128,10 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     historial (respaldo previo, confirmación de una persona). Quedan los usuarios y `bo_export_counter`.
   - **Seguimiento de envíos** (`db/mejoras/01_seguimiento.sql`: tablas `envios` y `envio_obras`, `fn_preparar_envio`,
     `fn_envio_obras`, `fn_envios_por_obra`). El reporte BO y el CSV de la tabla principal se descargan como
-    "Solo las nuevas" (nunca salieron en ese tipo) o "Todas" (revisión trimestral). El usuario **no quiere ver la columna
+    "Todas" o "Identificadas desde la última descarga" (27/10/2026, reemplazó a "Solo las nuevas"): obras identificadas
+    que nunca figuraron identificadas en una descarga de ese tipo (tabla `envio_identificadas`; BO = Tempo ID numérico,
+    CSV = cualquier Tempo ID). `unificar_obras` pasa también esas marcas. Si una tabla apunta a `tracks_master`,
+    va en los TRUNCATE (ya está `envio_identificadas`). El usuario **no quiere ver la columna
     "Seguimiento"** (23/10/2026): el registro de envíos sigue y se usa en el cartel de cada descarga.
   - **Mejoras propias de la base:** van en `db/mejoras/*.sql`, idempotentes. `db/mejoras.sh` las aplica:
     - al instalar;
@@ -200,6 +203,7 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - El usuario quiere cargar también los UNCONTROLLED (26/10/2026): `db/mejoras/07_marcadores.sql` deja único solo el
       Tempo ID numérico (índice parcial `uq_tracks_master_tempo_id`) y quita `fk_territory_tempo_id`. Los marcadores
       nunca unifican obras ni pisan un número; con número y marcador para la misma obra, gana el número.
+  - **Contador "Identificadas · Sin identificar"** arriba de la tabla principal (`.conteo-id`), no en el paginador.
   - **Dos perfiles (27/10/2026, pedido del usuario):** "Usuario estándar" y "Administrador" (= acceso al Panel de
     control, hoy solo rocio.guevara@sonymusicpub.com). El front muestra el perfil según `panel.acceso`, no el
     `app_role`; no hay selector de rol en el Panel ni rol "auditor" (`db/mejoras/08_perfiles.sql` los pasa a
@@ -218,7 +222,7 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
       acciones: las dudas se resuelven en el manual.
     - Mensajes breves que indiquen qué hacer o qué representa la información.
     - Términos: "territorio/país", "Reporte BackOffice", "Reporte Tempo Control", "seleccionar", "cargar".
-  - **Descargas (reporte BO y CSV):** la elección "Solo las nuevas" / "Todas" va en el cartel que se abre al apretar cada
+  - **Descargas (reporte BO y CSV):** la elección "Todas" / "Identificadas desde la última descarga" va en el cartel que se abre al apretar cada
     botón. El usuario no quiere desplegables de seguimiento en la barra ni la columna "Seguimiento".
   - **Nombres de charts que se deben leer** (país, semana y plataforma salen del nombre; `test_navegador.py` los prueba):
     - `regional-ar-weekly-2021-01-07.csv`
