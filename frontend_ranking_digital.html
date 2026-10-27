@@ -208,7 +208,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const COUNTRIES = ['AR','CL','PE','UY','PY','CO','EC','MX'];
 const COUNTRY_ALIASES = { ar:'AR', arg:'AR', cl:'CL', chl:'CL', pe:'PE', per:'PE', uy:'UY', ury:'UY', py:'PY', pry:'PY', co:'CO', col:'CO', ec:'EC', ecu:'EC', mx:'MX', mex:'MX' };
-const ESTADO_TRABAJO_OPTIONS = ['REVISAR','OK BO-Tempo','duplicada','dif de split'];
+const ESTADO_TRABAJO_OPTIONS = ['RECLAMO ACTIVO','REVISAR NOT WORK','REVISAR %','OK BO-Tempo','duplicada','dif de split'];
 const ESTADOS = ['ok','duplicada','uncontrolled','porcentaje_incorrecto'];
 
 let state = {

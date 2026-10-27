@@ -31,7 +31,9 @@ A_PROPOSITO = {("extension", "pg_cron"), ("extension", "pg_net"), ("extension", 
                ("funcion", "public.fn_normalize_text"), ("funcion", "public.fn_upsert_ranking_row"),
                ("funcion", "public.fn_upsert_master_tempo_batch"),
                # Descarga de la tabla por territorio con el orden nuevo y Ticket/Fecha (db/mejoras/04).
-               ("funcion", "public.fn_territory_exportar")}
+               ("funcion", "public.fn_territory_exportar"),
+               # Estado de trabajo con RECLAMO ACTIVO, REVISAR NOT WORK y REVISAR % (db/mejoras/10_estado_trabajo.sql).
+               ("funcion", "public.trg_bo_report_auto_revisar")}
 k = lambda r: (r["tipo"], r["objeto"], r["definicion"])
 V = {k(r) for r in viejo if r["tipo"] not in IGNORAR}
 N = {k(r) for r in nuevo if r["tipo"] not in IGNORAR}

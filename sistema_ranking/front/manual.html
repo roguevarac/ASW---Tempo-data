@@ -159,7 +159,8 @@ caracteres y, al guardarla, se cierran las sesiones abiertas.</p>
     BO.</li>
   <li><b>Cargar las respuestas</b> en Carga CSV: el <b>Reporte BackOffice</b> (uno por territorio) y el <b>Reporte Tempo
     Control</b>.</li>
-  <li><b>Revisar la tabla por territorio:</b> filtrar <b>Estado de trabajo: REVISAR</b> y resolver cada obra.</li>
+  <li><b>Revisar la tabla por territorio:</b> filtrar <b>Estado de trabajo</b> por <b>RECLAMO ACTIVO</b>,
+    <b>REVISAR NOT WORK</b> y <b>REVISAR %</b>, y resolver cada obra.</li>
 </ol>
 </section>
 
@@ -325,17 +326,23 @@ filtros abarcan todos los registros.</p>
     BackOffice, del Reporte Tempo Control y del estado de trabajo.</td></tr>
 </table>
 <h3>Estado de trabajo automático</h3>
-<p>Cuando la obra tiene % Mech de Tempo y de BO en ese territorio, el sistema los compara:</p>
+<p>El sistema asigna el estado con los datos del Reporte BackOffice y del Reporte Tempo Control de la obra en ese
+territorio. Si se cumple más de un caso, se muestra el primero de esta lista:</p>
 <ul>
+  <li><b>RECLAMO ACTIVO:</b> el Reporte BackOffice informa un reclamo en la columna Reclamos. Los valores vacíos, "No",
+    "None", "0" o de reclamo resuelto/cerrado no cuentan como reclamo.</li>
+  <li><b>REVISAR NOT WORK:</b> el Estado de BO no es <b>WORK</b>. Una obra que figura en los rankings tiene usos, por
+    lo que debería estar registrada como WORK.</li>
+  <li><b>REVISAR %:</b> el % Mech de BO y el de Tempo no coinciden.</li>
   <li><b>OK BO-Tempo:</b> los porcentajes coinciden (diferencia igual o menor a 0,1).</li>
   <li><b>OK - Obra AR / OK - Obra MX:</b> BO informa 0% y Tempo informa un porcentaje, pero la obra se originó en la
     oficina de Argentina o de México. Es un caso esperado.</li>
-  <li><b>REVISAR:</b> los porcentajes no coinciden y la obra requiere revisión.</li>
-  <li>Sin valor: falta el Reporte Tempo Control o el Reporte BackOffice de la obra en ese territorio.</li>
+  <li>Sin valor: faltan los datos para comparar (Reporte Tempo Control o Reporte BackOffice de la obra en ese
+    territorio) y no hay reclamo ni otro estado de BO.</li>
 </ul>
-<p>El estado se recalcula con cada carga de un Reporte BackOffice o Tempo Control. Los estados automáticos (REVISAR,
-OK BO-Tempo y OK - Obra AR / MX) los define siempre el sistema. Para registrar otro caso, seleccioná
-<b>duplicada</b> o <b>dif de split</b>: esos estados se mantienen aunque se carguen reportes nuevos.</p>
+<p>El estado se recalcula con cada carga de un Reporte BackOffice o Tempo Control. Los estados automáticos los define
+siempre el sistema. Para registrar otro caso, seleccioná <b>duplicada</b> o <b>dif de split</b>: esos estados se
+mantienen aunque se carguen reportes nuevos.</p>
 <h3>Filtros y descarga</h3>
 <ul>
   <li><b>País</b> y <b>Desde / Hasta</b> (semanas del chart).</li>

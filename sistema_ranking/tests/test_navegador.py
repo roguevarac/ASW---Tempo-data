@@ -320,7 +320,7 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
                                           "Respaldo en OneDrive", "no altera la información",
                                           "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))
