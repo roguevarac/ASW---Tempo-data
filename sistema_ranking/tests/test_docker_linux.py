@@ -442,12 +442,13 @@ try:
     # ================================================================ acceso desde otras computadoras (compartir)
     # La herramienta de Microsoft se reemplaza por la simulada (tests/devtunnel_simulado.sh), ya "descargada" en el
     # volumen del servicio: el resto (configuración, perfil de compose, red compartida con la API, Panel) es el real.
+    subprocess.run(["docker", "volume", "rm", "-f", f"{PROYECTO_COMPOSE}_tunel"], capture_output=True)   # sin sesión previa
     subprocess.run(["docker", "run", "--rm", "--user", "root", "-v", f"{PROYECTO_COMPOSE}_tunel:/tunel",
                     "-v", f"{RAIZ / 'tests' / 'devtunnel_simulado.sh'}:/simulado.sh:ro", IMAGEN,
                     "sh", "-c", "cp /simulado.sh /tunel/devtunnel && chmod 755 /tunel/devtunnel"], check=True, capture_output=True)
     codigo = fin(ranking("compartir", "--automatico"))
     salida = texto("compartir.log")
-    enlace = re.search(r"https://auditor-rankings-[a-z0-9]{6}-8000\.brs\.devtunnels\.ms/", salida)
+    enlace = re.search(r"https://auditor-rankings-[a-z0-9]+-8000\.brs\.devtunnels\.ms/", salida)
     check("compartir: inicia sesión, abre el túnel y muestra el enlace para compartir",
           codigo == 0 and enlace and valor("COMPARTIR") == "1" and valor("TUNEL_ID") and "devicelogin" in salida, salida[-1500:])
     alcanza = subprocess.run(["docker", "run", "--rm", "-v", f"{PROYECTO_COMPOSE}_tunel:/tunel", "--entrypoint", "cat",

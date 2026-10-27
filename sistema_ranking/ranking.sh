@@ -858,7 +858,7 @@ cmd_compartir() {
     fi
     si "¿Continuar?" S || fallar "Cancelado."
     local tid; tid="$(valor TUNEL_ID)"
-    [ -n "$tid" ] || { tid="auditor-rankings-$(tr -dc 'a-z0-9' < /dev/urandom | head -c 6)"; poner TUNEL_ID "$tid"; }
+    [ -n "$tid" ] || { tid="auditor-rankings-$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n')"; poner TUNEL_ID "$tid"; }
     poner TUNEL_ACCESO "$acceso"
     arrancar > /dev/null
     titulo "1/3 Herramienta de túneles de Microsoft"
