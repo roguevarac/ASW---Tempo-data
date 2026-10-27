@@ -82,6 +82,7 @@ th{color:var(--text-muted);font-weight:500;font-size:12px;text-transform:upperca
     <li><a href="#historial">Historial de cargas</a></li>
     <li><a href="#onedrive">Guardado y respaldos</a></li>
     <li><a href="#panel">Panel de control</a></li>
+    <li><a href="#otras">Uso desde otras computadoras</a></li>
     <li><a href="#problemas">Mensajes frecuentes</a></li>
   </ol>
   <a class="volver" href="./">← Volver a la aplicación</a>
@@ -251,11 +252,11 @@ cantidad de registros.</p>
 <h3>Registro del Tempo ID</h3>
 <p>Ingresá el número en la celda y salí de ella (clic fuera o Tab): se guarda automáticamente. Las celdas vacías se
 marcan en rojo. El Tempo ID registrado se aplica también a todas las filas de esa obra en la tabla por territorio.</p>
-<p>Además del número, solo se admiten estos valores, que pueden repetirse en varias obras y se ofrecen como lista al
-escribir en la celda: <b>UNCONTROLLED</b>, <b>PENDING ARGENTINA</b>, <b>PENDING CHILE</b>, <b>PENDING URUGUAY</b>,
-<b>PENDING MIAMI</b>, <b>PENDING USA</b>, <b>PENDING MEXICO</b>, <b>PENDING COREA</b> y <b>PENDING ESPAÑA</b>. Se
-registran siempre en mayúsculas, aunque se escriban de otra forma o sin tilde. Cualquier otro valor no se guarda. El
-reporte BO incluye solo las obras con Tempo ID numérico.</p>
+<p>En la celda solo se pueden escribir números. Además del número se admiten estos valores, que se eligen de la lista
+que se despliega en la celda (flecha hacia abajo o clic en la celda vacía) y pueden repetirse en varias obras:
+<b>UNCONTROLLED</b>, <b>PENDING ARGENTINA</b>, <b>PENDING CHILE</b>, <b>PENDING URUGUAY</b>, <b>PENDING MIAMI</b>,
+<b>PENDING USA</b>, <b>PENDING MEXICO</b>, <b>PENDING COREA</b> y <b>PENDING ESPAÑA</b>. Si hace falta otro valor, se
+agrega al sistema. El reporte BO incluye solo las obras con Tempo ID numérico.</p>
 <p>Un Tempo ID corresponde a una sola obra. Si ya está asignado a otra, el sistema indica a cuál y consulta si se trata
 de la misma canción (por ejemplo, escrita de otra forma en Spotify y en YouTube):</p>
 <ul>
@@ -458,6 +459,34 @@ misma forma.</p>
 <div class="caja"><p>El acceso al Panel de control y la restauración de un respaldo se realizan desde la consola de la
 computadora donde está instalado el sistema (<code>bash ranking.sh usuarios</code> y
 <code>bash ranking.sh restaurar</code>).</p></div>
+</section>
+
+<section id="otras">
+<h2>Uso desde otras computadoras</h2>
+<p>El sistema funciona en la computadora que hace de servidor. Cuando el acceso desde otras computadoras está
+habilitado, el <b>Panel de control</b> (Estado del sistema) muestra el enlace para compartir, con el botón
+<b>Copiar enlace</b>. Es un enlace HTTPS fijo: no cambia aunque el servidor se reinicie.</p>
+<h3>Alta de una persona</h3>
+<ol class="pasos">
+  <li>En el Panel de control, sección <b>Usuarios</b>, creá su usuario. El sistema muestra un código de activación.</li>
+  <li>Enviale el enlace y el código.</li>
+  <li>La persona abre el enlace en Edge. Si lo solicita, ingresa con su cuenta Microsoft de la empresa (la de Outlook y
+    Teams).</li>
+  <li>En la pantalla de ingreso del sistema elige <b>¿Olvidaste la contraseña?</b> e ingresa su email, el código y la
+    contraseña que elija. Desde entonces ingresa con su email y esa contraseña.</li>
+  <li>Para tenerlo como aplicación (ícono propio, sin pestañas): en Edge, menú <b>···</b> &gt; <b>Aplicaciones</b> &gt;
+    <b>Instalar este sitio como aplicación</b>.</li>
+</ol>
+<h3>Disponibilidad y seguridad</h3>
+<ul>
+  <li>Solo entran personas con cuenta Microsoft de la empresa y, además, con su usuario y contraseña del sistema. La
+    conexión viaja cifrada.</li>
+  <li>La computadora que hace de servidor tiene que estar encendida y conectada a internet. Mientras se comparte no se
+    suspende por inactividad, pero sí al apagarla, suspenderla a mano o cerrar la tapa.</li>
+  <li>Si el servidor no está disponible, la aplicación lo indica y entra sola cuando vuelve a estarlo.</li>
+  <li>Todas las personas trabajan sobre la misma información: lo que carga o modifica una persona lo ven las demás al
+    actualizar la tabla.</li>
+</ul>
 </section>
 
 <section id="problemas">

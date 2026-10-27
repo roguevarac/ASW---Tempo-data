@@ -439,6 +439,34 @@ try:
     base_nueva(f"delete from storage.objects where name = $${ruta_planilla}$$; "
                f"delete from csv_uploads where filename = $${planilla.name}$$")
 
+    # ================================================================ acceso desde otras computadoras (compartir)
+    # La herramienta de Microsoft se reemplaza por la simulada (tests/devtunnel_simulado.sh), ya "descargada" en el
+    # volumen del servicio: el resto (configuración, perfil de compose, red compartida con la API, Panel) es el real.
+    subprocess.run(["docker", "run", "--rm", "--user", "root", "-v", "ranking-digital_tunel:/tunel",
+                    "-v", f"{RAIZ / 'tests' / 'devtunnel_simulado.sh'}:/simulado.sh:ro", valor("IMAGEN_API") or "ranking-digital-api:local",
+                    "sh", "-c", "cp /simulado.sh /tunel/devtunnel && chmod 755 /tunel/devtunnel"], check=True, capture_output=True)
+    codigo = fin(ranking("compartir", "--automatico"))
+    salida = texto("compartir.log")
+    enlace = re.search(r"https://auditor-rankings-[a-z0-9]{6}-8000\.brs\.devtunnels\.ms/", salida)
+    check("compartir: inicia sesión, abre el túnel y muestra el enlace para compartir",
+          codigo == 0 and enlace and valor("COMPARTIR") == "1" and valor("TUNEL_ID") and "devicelogin" in salida, salida[-1500:])
+    alcanza = subprocess.run(["docker", "run", "--rm", "-v", "ranking-digital_tunel:/tunel", "--entrypoint", "cat",
+                              valor("IMAGEN_API") or "ranking-digital-api:local", "/tunel/.simulado/api_alcanzable"],
+                             capture_output=True, text=True).stdout.strip()
+    check("compartir: el túnel llega a la API por la red compartida (sin abrir puertos en la PC)", alcanza == "si", alcanza)
+    check("compartir: solo cuentas de la empresa, y queda en la actividad del Panel",
+          "--tenant" in dc("--profile", "compartir", "exec", "-T", "tunel", "cat", "/tunel/.simulado/acceso").stdout
+          and enlace and enlace.group(0) in base_nueva("select string_agg(mensaje, '|') from panel.eventos where servicio in ('tunel', 'ranking.sh')"))
+    codigo = fin(ranking("abrir", "--sin-navegador"))
+    check("compartir: al abrir de nuevo, el acceso sigue funcionando",
+          codigo == 0 and dc("--profile", "compartir", "ps", "--status", "running", "-q", "tunel").stdout.strip())
+    fin(ranking("verificar"))
+    check("verificar muestra el enlace compartido", enlace and f"Acceso desde otras computadoras: {enlace.group(0)}" in texto("verificar.log"),
+          texto("verificar.log")[-800:])
+    codigo = fin(ranking("compartir", "--apagar"))
+    check("compartir --apagar: deja de compartir", codigo == 0 and valor("COMPARTIR") == "0"
+          and not dc("--profile", "compartir", "ps", "-q", "tunel").stdout.strip(), texto("compartir.log")[-600:])
+
     # ================================================================ respaldo y restauración
     antes = {t: base_nueva(f"select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from {t} x")
              for t in ("public.tracks_master", "public.territory_tracks", "public.csv_uploads", "public.audit_logs", "auth.users", "storage.objects")}

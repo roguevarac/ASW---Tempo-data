@@ -172,7 +172,14 @@ with sync_playwright() as p:
     pag.wait_for_selector('[data-tab="panel"]')
     check("sin la casilla 'Ver eliminados' (tampoco para el administrador)", pag.locator("#toggleDeleted, #toggleDeletedT").count() == 0
           and "Ver eliminados" not in pag.inner_text("body"))
+    sqlq("select panel.latido('tunel', '{\"estado\": \"activo\", \"acceso\": \"empresa\", "
+         "\"url\": \"https://auditor-rankings-x-8000.brs.devtunnels.ms/\"}'::jsonb)")
     pag.click('[data-tab="panel"]'); pag.wait_for_selector(".servicio")
+    check("el Panel muestra el enlace para entrar desde otras computadoras, con botón para copiarlo",
+          pag.get_attribute("#enlaceCompartido", "href") == "https://auditor-rankings-x-8000.brs.devtunnels.ms/"
+          and pag.locator("#copiarEnlace").count() == 1 and "Solo cuentas Microsoft de la empresa" in pag.inner_text(".panel-body"),
+          pag.inner_text(".panel-body")[:600])
+    sqlq("delete from panel.servicios where servicio = 'tunel'")
     texto = pag.inner_text(".panel-body")
     check("Estado del sistema: servicios, recursos, contenido y respaldos",
           all(t in texto for t in ("Base de datos", "Funcionando", "Disco", "Memoria", "Obras sin Tempo ID", "Último respaldo")), texto[:400])

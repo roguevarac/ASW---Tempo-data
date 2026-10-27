@@ -18,6 +18,8 @@
 #   bash ranking.sh espejo          copia a OneDrive (espejo de auditoría) los archivos cargados que falten
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
 #   bash ranking.sh acceso-directo  crea la aplicación "Auditor de Rankings Digitales" en Windows (escritorio, menú Inicio, inicio)
+#   bash ranking.sh compartir       enlace HTTPS para entrar desde otras computadoras (con la cuenta de la empresa)
+#                                   [--cualquiera: sin cuenta de Microsoft · --apagar: deja de compartir]
 #   bash ranking.sh verificar       revisa que todo esté sano (sin cambiar nada)
 #   bash ranking.sh actualizar      respaldo + versión nueva desde GitHub + reinicio, sin perder datos
 #   (agregando --automatico, instalar no hace preguntas: lo usan los agentes como Antigravity)
@@ -55,11 +57,14 @@ si() {
 CLAVES_PROXY=(HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy)
 CLAVES_CONFIG=(POSTGRES_PASSWORD AUTHENTICATOR_PASSWORD JWT_SECRET PUERTO ESCUCHAR SESSION_HOURS MAX_UPLOAD_MB
                STATEMENT_TIMEOUT DB_POOL IMAGEN_POSTGRES IMAGEN_PYTHON ESPEJO_DIR RESPALDO_HORAS RESPALDO_CONSERVAR RESPALDO_DEMORA
-               "${CLAVES_PROXY[@]}")
+               COMPARTIR TUNEL_ID TUNEL_ACCESO "${CLAVES_PROXY[@]}")
 dc() {
     local sin=() k; for k in "${CLAVES_CONFIG[@]}"; do sin+=(-u "$k"); done
     mkdir -p "$RESPALDOS" 2> /dev/null   # el servicio "respaldo" escribe ahí (si no existe, Docker la crearía como root)
-    env "${sin[@]}" RESPALDOS_DIR="$RESPALDOS" docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" --env-file "$CONFIG" "$@"
+    # Con COMPARTIR=1 también corre el servicio "tunel" (acceso desde otras computadoras).
+    local perfil=(); [ "$(valor COMPARTIR)" = 1 ] && perfil=(--profile compartir)
+    env "${sin[@]}" RESPALDOS_DIR="$RESPALDOS" docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" --env-file "$CONFIG" \
+        "${perfil[@]+"${perfil[@]}"}" "$@"
 }
 
 # ---------------------------------------------------------------- configuración
@@ -762,8 +767,10 @@ cmd_acceso_directo() {
     shopt -u patsub_replacement 2> /dev/null || true
     local t d="${WSL_DISTRO_NAME//\'/\'\'}" pr="${DIR//\'/\'\'}"
     t="$(cat "$DIR/escritorio/lanzar.ps1")"; t="${t//__DISTRO__/$d}"; t="${t//__PROYECTO__/$pr}"; t="${t//__PUERTO__/$(valor PUERTO)}"
+    t="${t//__COMPARTIR__/$([ "$(valor COMPARTIR)" = 1 ] && echo '$true' || echo '$false')}"
     { printf '\xef\xbb\xbf'; printf '%s\n' "$t" | sed 's/$/\r/'; } > "$carpeta/lanzar.ps1"
     t="$(cat "$DIR/escritorio/iniciando.html")"; printf '%s\n' "${t//__PUERTO__/$(valor PUERTO)}" > "$carpeta/iniciando.html"
+    { printf '\xef\xbb\xbf'; sed 's/$/\r/' "$DIR/escritorio/despierta.ps1"; } > "$carpeta/despierta.ps1"
     rm -f "$carpeta/Ranking Digital.cmd"   # lanzador anterior (con ventana negra)
     lanzar_win="$carpeta_win\lanzar.ps1"; ico_win="$carpeta_win\ranking.ico"
     local por_defecto inicio=0; por_defecto="$(valor INICIO_AUTOMATICO)"
@@ -814,6 +821,77 @@ cmd_acceso_directo() {
     echo "Instalar Auditor de Rankings Digitales. 'Apagar Auditor de Rankings Digitales' (menú Inicio) apaga todo."
 }
 
+# Enlace actual del acceso desde otras computadoras (lo informa el servicio "tunel" al Panel de control).
+enlace_compartido() {
+    consulta "SELECT detalle->>'url' FROM panel.servicios WHERE servicio = 'tunel' AND detalle->>'estado' = 'activo'
+              AND ultimo_aviso > now() - interval '5 minutes'" 2> /dev/null | tr -d '[:space:]'
+}
+
+# Acceso desde otras computadoras: enlace HTTPS fijo (Microsoft Dev Tunnels; ver api/tunel.py). No abre puertos ni pide
+# permisos de administrador: la conexión sale de esta PC hacia Microsoft. Por defecto solo entran cuentas Microsoft de
+# la empresa (y después, el usuario y la contraseña del sistema). --cualquiera: sin cuenta de Microsoft (solo la
+# contraseña del sistema). --apagar: deja de compartir.
+cmd_compartir() {
+    verificar_docker; instalado
+    local acceso=empresa a
+    for a in "$@"; do case "$a" in
+        --apagar)
+            dc --profile compartir rm -sf tunel > /dev/null 2>&1
+            poner COMPARTIR 0
+            registrar_evento ok "Acceso desde otras computadoras apagado"
+            regenerar_accesos
+            ok "Listo: la aplicación ya no se puede abrir desde otras computadoras (en esta PC sigue igual)."
+            return ;;
+        --cualquiera) acceso=cualquiera ;;
+    esac; done
+    titulo "Acceso desde otras computadoras"
+    echo "Se crea un enlace HTTPS fijo (de Microsoft) para abrir la aplicación desde otras computadoras, también fuera de la"
+    echo "oficina. Esta PC sigue siendo el servidor: tiene que estar encendida y con el sistema funcionando."
+    if [ "$acceso" = empresa ]; then
+        echo "Solo entran personas con cuenta Microsoft de la empresa (la de Outlook/Teams) y, después, con su usuario del sistema."
+    else
+        aviso "Sin cuenta de Microsoft: cualquiera con el enlace llega a la pantalla de ingreso (protegida por usuario y contraseña)."
+    fi
+    si "¿Continuar?" S || fallar "Cancelado."
+    local tid; tid="$(valor TUNEL_ID)"
+    [ -n "$tid" ] || { tid="auditor-rankings-$(tr -dc 'a-z0-9' < /dev/urandom | head -c 6)"; poner TUNEL_ID "$tid"; }
+    poner TUNEL_ACCESO "$acceso"
+    arrancar > /dev/null
+    titulo "1/3 Herramienta de túneles de Microsoft"
+    dc --profile compartir run --rm --no-deps -T tunel python tunel.py --descargar \
+        || fallar "No se pudo descargar la herramienta de Microsoft (puede estar bloqueada por la red de la empresa)."
+    titulo "2/3 Inicio de sesión con la cuenta de la empresa"
+    local tty=(-T); [ -t 0 ] && tty=()
+    dc --profile compartir run --rm --no-deps "${tty[@]+"${tty[@]}"}" tunel python tunel.py --login \
+        || fallar "No se completó el inicio de sesión de Microsoft. Volvé a intentar: bash ranking.sh compartir"
+    titulo "3/3 Abriendo el acceso"
+    poner COMPARTIR 1
+    consulta "DELETE FROM panel.servicios WHERE servicio = 'tunel'" > /dev/null 2>&1
+    dc up -d --no-deps --force-recreate tunel > /dev/null 2>&1 || { dc up -d --no-deps tunel; fallar "No arrancó el servicio de acceso (el motivo está arriba)."; }
+    local url="" i
+    for i in $(seq 1 "${ESPERA_TUNEL:-90}"); do url="$(enlace_compartido)"; [ -n "$url" ] && break; sleep 1; done
+    if [ -z "$url" ]; then
+        dc logs --tail 20 tunel
+        fallar "El acceso todavía no quedó abierto (el motivo está arriba). Se reintenta solo; el enlace aparece en el Panel de control."
+    fi
+    registrar_evento ok "Acceso desde otras computadoras: $url"
+    regenerar_accesos
+    ok "Listo. Enlace para compartir:"
+    printf '\n    %s\n\n' "$url"
+    echo "Cada persona necesita un usuario del sistema (Panel de control > Usuarios > Crear usuario: se le entrega el enlace y el"
+    echo "código de activación). En su computadora: abrir el enlace en Edge, ingresar con la cuenta de la empresa si lo pide,"
+    echo "y en 'Auditor de Rankings Digitales' elegir '¿Olvidaste la contraseña?' con el código. Para instalarla como"
+    echo "aplicación: menú ··· > Aplicaciones > Instalar. El enlace también figura en el Panel de control."
+}
+
+# Los accesos de Windows se vuelven a generar (el lanzador mantiene la PC despierta mientras se comparte).
+regenerar_accesos() {
+    [ "$(valor ACCESO_DIRECTO)" = 1 ] && [ -n "${WSL_DISTRO_NAME:-}" ] && command -v powershell.exe > /dev/null 2>&1 || return 0
+    local antes_auto="${AUTOMATICO:-}"; AUTOMATICO=1
+    cmd_acceso_directo > /dev/null 2>&1 || aviso "No pude actualizar los accesos de Windows (bash ranking.sh acceso-directo)."
+    AUTOMATICO="$antes_auto"
+}
+
 version_programa() {
     if git -C "$DIR" rev-parse --is-inside-work-tree > /dev/null 2>&1; then
         git -C "$DIR" log -1 --format='%h %cd  %s' --date=format:'%Y-%m-%d %H:%M'
@@ -856,6 +934,11 @@ cmd_verificar() {
         elif [ -n "$(find "$ultimo_auto" -mmin +$((49 * 60)) 2> /dev/null)" ]; then
             aviso "  AVISO  El último respaldo automático tiene más de dos días: $(basename "$ultimo_auto" .dump) (bash ranking.sh logs)"
         else linea ok "Respaldo automático: $(basename "$ultimo_auto" .dump)"; fi
+        if [ "$(valor COMPARTIR)" = 1 ]; then
+            local enlace; enlace="$(enlace_compartido)"
+            if [ -n "$enlace" ]; then linea ok "Acceso desde otras computadoras: $enlace"
+            else aviso "  AVISO  El acceso desde otras computadoras no está activo (bash ranking.sh logs; si venció la sesión: bash ranking.sh compartir)"; fi
+        fi
         [ "${n:-0}" -gt 0 ] && aviso "  AVISO  $n charts en OneDrive (Spotify Charts / Youtube Charts) sin cargar: bash ranking.sh cargar-historicos"
     fi
     echo "  Versión del programa: $(version_programa)"
@@ -934,6 +1017,7 @@ case "${1:-}" in
     vaciar-historial) cmd_vaciar_historial ;;
     empezar-de-cero) cmd_empezar_de_cero ;;
     acceso-directo|icono) cmd_acceso_directo ;;
+    compartir) shift; cmd_compartir "$@" ;;
     verificar) verificar_docker; cmd_verificar ;;
     actualizar) cmd_actualizar ;;
     *) ayuda ;;

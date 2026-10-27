@@ -219,6 +219,41 @@ pide confirmación y hace un respaldo.
   copiar a OneDrive, porque ya está ahí.
 - El detalle completo, con los archivos con problemas, queda en `~/proyectos/ranking-respaldos/carga-historicos-*.log`.
 
+### Acceso desde otras computadoras (`bash ranking.sh compartir`)
+
+Para que otras personas usen el sistema desde su propia computadora, con esta PC como servidor:
+
+```bash
+bash ranking.sh compartir              # solo cuentas Microsoft de la empresa + usuario del sistema
+bash ranking.sh compartir --cualquiera # sin cuenta de Microsoft: cualquiera con el enlace llega al ingreso
+bash ranking.sh compartir --apagar     # deja de compartir
+```
+
+**Cómo funciona:**
+- Usa **Microsoft Dev Tunnels**: un enlace HTTPS fijo (`https://auditor-rankings-xxxxxx-8000.<región>.devtunnels.ms/`)
+  que llega a esta PC.
+- La conexión sale de la PC hacia Microsoft, como OneDrive o Teams. No abre puertos, no pide permisos de administrador
+  y la API sigue escuchando solo en 127.0.0.1.
+- La primera vez pide iniciar sesión con la cuenta de la empresa: muestra un código para
+  `https://microsoft.com/devicelogin`.
+- El servicio `tunel` de compose (perfil `compartir`, `api/tunel.py`) comparte la red de la API, baja la herramienta
+  `devtunnel` a su volumen y mantiene el túnel abierto: si se corta, lo reabre solo.
+- El enlace aparece en el Panel de control (Estado del sistema, con "Copiar enlace") y en `bash ranking.sh verificar`.
+
+**Seguridad:** por defecto el túnel solo deja pasar cuentas del tenant de Microsoft de la empresa; después está el
+ingreso del sistema (usuario, contraseña, sesiones y freno de intentos). La conexión viaja cifrada hasta la PC. Conviene avisar al área de sistemas que el Auditor se comparte de esta forma.
+
+**Disponibilidad:** la PC tiene que estar encendida, con el sistema funcionando y conectada a internet.
+- Con los accesos de Windows (`acceso-directo`), mientras se comparte la PC no se suspende por inactividad
+  (`despierta.ps1`). Sí se suspende al cerrar la tapa o a mano.
+- Si la red de la empresa bloquea `*.devtunnels.ms`, `compartir` lo informa. En ese caso, la alternativa es un servidor
+  (ver "Servidor Linux").
+
+**Usuarios:** cada persona necesita su usuario. Se crea desde el Panel de control > Usuarios: el sistema muestra un
+código de activación, y la persona elige su contraseña en "¿Olvidaste la contraseña?". Puede instalarla como
+aplicación desde Edge (··· > Aplicaciones > Instalar). Si el servidor está apagado, la aplicación muestra "no está
+disponible" y entra sola cuando vuelve.
+
 ### Red de la empresa (proxy y certificados)
 
 `ranking.sh` reconoce los errores típicos de una red corporativa y te dice cuál de estos pasos hace falta:

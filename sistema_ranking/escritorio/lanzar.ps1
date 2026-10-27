@@ -9,6 +9,7 @@ $ProgressPreference = 'SilentlyContinue'
 $Distro = '__DISTRO__'
 $Proyecto = '__PROYECTO__'
 $Puerto = __PUERTO__
+$Compartir = __COMPARTIR__   # se comparte con otras computadoras: la PC no se suspende por inactividad
 $Url = "http://localhost:$Puerto/"
 $Log = Join-Path $PSScriptRoot 'lanzador.log'
 
@@ -26,7 +27,18 @@ function Responde {
 function Mantenedores {
     return @(Get-CimInstance Win32_Process -Filter "Name = 'wsl.exe'" | Where-Object { $_.CommandLine -like '*abrir --mantener*' })
 }
+# Mientras se comparte, despierta.ps1 evita que la PC se suspenda por inactividad (termina sola al apagar el sistema).
+function Despiertas {
+    return @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like '*despierta.ps1*' })
+}
+function Mantener-Despierta {
+    if (-not $Compartir -or (Despiertas).Count -gt 0) { return }
+    $script = Join-Path $PSScriptRoot 'despierta.ps1'
+    Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden `
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', (Comillas $script))
+}
 function Encender {
+    Mantener-Despierta
     if ((Mantenedores).Count -gt 0) { return }
     Wsl @('-d', $Distro, '-u', 'root', '--', 'service', 'docker', 'start') -Esperar   # como root: no pide contrasena
     Wsl @('-d', $Distro, '--cd', $Proyecto, '--', 'bash', 'ranking.sh', 'abrir', '--mantener', '--sin-navegador')
@@ -50,6 +62,7 @@ function Abrir-Ventana($destino) {
 if ($Apagar) {
     Wsl @('-d', $Distro, '--cd', $Proyecto, '--', 'bash', 'ranking.sh', 'detener') -Esperar
     foreach ($m in Mantenedores) { Stop-Process -Id $m.ProcessId -Force }
+    foreach ($m in Despiertas) { Stop-Process -Id $m.ProcessId -Force }
     Anotar 'sistema apagado'
     exit 0
 }

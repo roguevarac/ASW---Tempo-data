@@ -1203,7 +1203,7 @@ function renderMaster(){
   <tbody>${rows.length ? rows.map(r=>`
     <tr class="${r.deleted_at?'is-deleted':''}">
       <td>${r.track_artist_concat}</td>
-      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—" list="marcadoresTempo">` : (r.tempo_id||'—')}</td>
+      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—" list="marcadoresTempo" inputmode="numeric" title="Número de Tempo ID, o elegí UNCONTROLLED / PENDING de la lista">` : (r.tempo_id||'—')}</td>
     </tr>`).join('') : `<tr><td colspan="2"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
   </tbody></table>
   ${renderPager('master', state.masterTotal, state.masterPage)}`;
@@ -1530,7 +1530,27 @@ const PANEL_SUBS = [['estado', 'Estado del sistema'], ['respaldos', 'Respaldos y
   ['actividad', 'Actividad'], ['integridad', 'Integridad de datos'], ['registro', 'Registro del servidor']];
 const SERVICIOS = {
   espejo: 'Espejo de OneDrive', respaldo: 'Respaldos', instalador: 'Actualización de la base',
+  tunel: 'Acceso desde otras computadoras',
 };
+
+// Acceso desde otras computadoras (bash ranking.sh compartir): el enlace para compartir y su estado.
+function servicioTunel(t){
+  if(!t) return ['Acceso desde otras computadoras', 'apagado', 'Sin configurar',
+                 'Para habilitarlo, en la terminal de Ubuntu: <code>bash ranking.sh compartir</code>'];
+  const d = t.detalle || {};
+  const quien = d.acceso === 'cualquiera' ? 'Cualquier persona con el enlace llega al ingreso'
+                                          : 'Solo cuentas Microsoft de la empresa, y después usuario y contraseña del sistema';
+  if(d.estado === 'activo' && t.segundos <= 180)
+    return ['Acceso desde otras computadoras', 'ok', 'Activo',
+            `<a href="${esc(d.url)}" target="_blank" rel="noopener" id="enlaceCompartido">${esc(d.url)}</a>
+             <button class="btn" id="copiarEnlace" data-url="${esc(d.url)}">Copiar enlace</button><br>${quien}`];
+  if(d.estado === 'sin_sesion')
+    return ['Acceso desde otras computadoras', 'error', 'Detenido',
+            'La sesión de Microsoft venció. En la terminal de Ubuntu: <code>bash ranking.sh compartir</code>'];
+  if(d.estado === 'iniciando' && t.segundos <= 180) return ['Acceso desde otras computadoras', 'aviso', 'Iniciando', ''];
+  return ['Acceso desde otras computadoras', 'error', 'Sin conexión',
+          esc(d.mensaje || 'El servicio no informa su estado. Se reintenta solo; si continúa: bash ranking.sh verificar')];
+}
 let relojPanel = null;
 
 function esc(t){
@@ -1640,6 +1660,7 @@ function renderPanelEstado(e){
       const clase = k === 'espejo' && sv[k] && sv[k].detalle.onedrive_disponible === false && cl === 'ok' ? 'aviso' : cl;
       return [SERVICIOS[k], clase, clase === 'aviso' ? 'Con avisos' : tx, det];
     }),
+    servicioTunel(sv.tunel),
     ['Actualización de la base', sv.instalador ? 'ok' : 'apagado', sv.instalador ? 'Aplicada' : 'Sin datos',
       sv.instalador ? `${fmtFecha(sv.instalador.ultimo_aviso)} · ${sv.instalador.detalle.mejoras || 0} mejoras propias` : ''],
   ];
@@ -1851,6 +1872,11 @@ function attachPanelEvents(){
   });
   const act = document.getElementById('panelActualizar');
   if(act) act.onclick = async () => { await loadPanel(); render(); };
+  const copiar = document.getElementById('copiarEnlace');
+  if(copiar) copiar.onclick = async () => {
+    try { await navigator.clipboard.writeText(copiar.dataset.url); copiar.textContent = 'Copiado'; }
+    catch(e){ prompt('Copiá el enlace:', copiar.dataset.url); }
+  };
   const resp = document.getElementById('panelRespaldar');
   if(resp) resp.onclick = async () => {
     resp.disabled = true;
@@ -1984,6 +2010,14 @@ function attachAppEvents(){
   if(cc) cc.onchange = (e) => { state.controlCountry = e.target.value; };
 
 
+  document.querySelectorAll('[data-field-master="tempo_id"]').forEach(el => {
+    // Solo se escriben números; UNCONTROLLED y PENDING se eligen de la lista (llegan completos, tal cual).
+    el.oninput = () => {
+      if(MARCADORES_TEMPO.includes(el.value)) return;
+      const numero = el.value.replace(/[^0-9]/g, '');
+      if(numero !== el.value) el.value = numero;
+    };
+  });
   document.querySelectorAll('[data-field-master]').forEach(el => {
     const handler = () => { if(el.value !== el.defaultValue) updateMasterField(el.dataset.id, el.dataset.fieldMaster, el.value); };
     if(el.tagName==='SELECT') el.onchange = handler; else el.onblur = handler;

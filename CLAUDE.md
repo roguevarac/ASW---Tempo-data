@@ -224,6 +224,15 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   - **Filtros por pestaña:** cada tabla tiene su búsqueda (`searchMaster`, `searchTerritory`) y sus fechas
     (`dateFrom/dateTo`, `dateFromT/dateToT`); cambiar de pestaña no los borra. La tabla por territorio tiene
     "Limpiar" (`#clearFiltersT`) para todos sus filtros. Buscar "-" = sin Tempo ID (`fn_coincide_busqueda`, 03).
+  - **Acceso desde otras computadoras (27/10/2026, pedido del usuario: "la PWA tiene que poder usarse desde la laptop
+    de cada uno"):** `bash ranking.sh compartir` → Microsoft Dev Tunnels (enlace HTTPS fijo, solo cuentas de la empresa
+    por defecto; `--cualquiera`, `--apagar`). Servicio `tunel` (perfil `compartir`, `network_mode: service:api`,
+    `api/tunel.py`): no abre puertos ni necesita admin; el enlace va al Panel (`panel.latido('tunel')`) y a `verificar`.
+    `escritorio/despierta.ps1` evita la suspensión por inactividad mientras se comparte. `apagado.html`/`sw.js`
+    distinguen el acceso remoto (no ofrece "Encender"). Pruebas con `tests/devtunnel_simulado.sh` (la red de esta
+    sesión no llega a Microsoft: el túnel real no se probó acá). Descartado: abrir la red local (WSL mirrored + firewall
+    piden admin, y sin HTTPS no se instala la PWA).
+  - **Tempo ID en la tabla principal:** solo se tipean números; UNCONTROLLED/PENDING se eligen de la lista (`oninput`).
   - **Contador "Identificadas · Sin identificar"** arriba de la tabla principal (`.conteo-id`), no en el paginador.
   - **Dos perfiles (27/10/2026, pedido del usuario):** "Usuario estándar" y "Administrador" (= acceso al Panel de
     control, hoy solo rocio.guevara@sonymusicpub.com). El front muestra el perfil según `panel.acceso`, no el

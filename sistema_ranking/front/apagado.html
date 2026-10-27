@@ -31,6 +31,9 @@
   <p id="encender" hidden><button type="button" id="botonEncender">Encender el servidor</button></p>
   <p id="ayuda" hidden>Si el sistema no inicia, abrí <b>Auditor de Rankings Digitales</b> desde el escritorio o el menú Inicio. Si
      continúa sin responder, ejecutá en la terminal de Ubuntu: <code>bash ranking.sh verificar</code>.</p>
+  <p id="remoto" hidden>El sistema funciona en la computadora que hace de servidor, y en este momento no está disponible
+     (apagada, suspendida o sin conexión). Esta página entra sola cuando vuelva a estar disponible; si continúa así,
+     consultá a la persona que administra el sistema.</p>
 </main>
 <script>
   // Se reintenta sola: apenas el servidor responde, entra al sistema.
@@ -43,12 +46,20 @@
     location.href = 'auditor-rankings://encender';   // abre el lanzador de Windows; esta página sigue esperando
   }
   document.getElementById('botonEncender').onclick = encender;
+  // Desde otra computadora (enlace de "ranking.sh compartir") el servidor no se puede encender desde acá.
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  if (!local) {
+    document.querySelector('h1').textContent = 'Auditor de Rankings Digitales no está disponible';
+    document.getElementById('remoto').hidden = false;
+  }
   async function probar() {
     let apagado = false;
     try {
       const r = await fetch('/health', { cache: 'no-store' });
       if (r.ok) { location.replace('/'); return; }
+      if (!local && r.status !== 503) apagado = true;   // el túnel responde 502/504 cuando el servidor está apagado
     } catch (e) { apagado = true; }   // sin respuesta: el servidor no está encendido (503 = la base está iniciando)
+    if (!local) { setTimeout(probar, 5000); return; }
     if (apagado && /Windows/.test(navigator.userAgent)) {
       document.getElementById('encender').hidden = false;
       // Una sola vez, con la página ya cargada y tras unos segundos sin respuesta (no durante un reinicio breve).

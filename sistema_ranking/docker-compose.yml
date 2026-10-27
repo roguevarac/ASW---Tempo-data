@@ -125,6 +125,29 @@ services:
       - ${ESPEJO_DIR:-espejo_apagado}:/espejo
     entrypoint: ["sh", "/db/respaldo_automatico.sh"]
 
+  # Acceso desde otras computadoras (bash ranking.sh compartir; ver api/tunel.py): enlace HTTPS de Microsoft Dev
+  # Tunnels. Comparte la red de la API (su localhost:8000 es la API), así que no abre puertos en la PC: la conexión sale
+  # hacia Microsoft. Solo arranca con el perfil "compartir" (COMPARTIR=1 en la configuración).
+  tunel:
+    image: ${IMAGEN_API:-ranking-digital-api:local}
+    profiles: ["compartir"]
+    restart: unless-stopped
+    logging: *registros
+    user: root
+    network_mode: "service:api"
+    depends_on:
+      api: { condition: service_started }
+    environment:
+      <<: [*proxy, *sin-proxy]
+      PGURL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/ranking
+      TUNEL_ID: ${TUNEL_ID:-}
+      TUNEL_ACCESO: ${TUNEL_ACCESO:-empresa}
+      HOME: /tunel
+      DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1"
+    volumes:
+      - tunel:/tunel
+    command: ["python", "tunel.py", "--servicio"]
+
   # Herramientas de administración (migración, usuarios, respaldo). No arranca sola: se usa con "docker compose run".
   herramientas:
     image: ${IMAGEN_API:-ranking-digital-api:local}
@@ -148,3 +171,4 @@ volumes:
   exportacion:
   espejo_apagado:
   respaldos_apagado:
+  tunel:

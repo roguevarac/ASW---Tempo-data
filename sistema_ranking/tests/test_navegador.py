@@ -108,12 +108,15 @@ with sync_playwright() as p:
     check("Tempo ID ofrece la lista de valores estándar",
           pag.evaluate("[...document.querySelectorAll('#marcadoresTempo option')].map(o => o.value).join('|')")
           == "UNCONTROLLED|PENDING ARGENTINA|PENDING CHILE|PENDING URUGUAY|PENDING MIAMI|PENDING USA|PENDING MEXICO|PENDING COREA|PENDING ESPAÑA")
-    avisos = []
-    pag.once("dialog", lambda d: (avisos.append(d.message), d.accept()))
-    campo.fill("compilado"); campo.press("Tab"); pag.wait_for_timeout(1200)
-    check("Tempo ID fuera de la lista: avisa y no se guarda", avisos and "no válido" in avisos[0]
-          and sqlq("select coalesce(tempo_id, '-') from tracks_master where track_name_clean='Segundo Tema'") == "-", avisos)
-    campo = pag.locator('[data-field-master="tempo_id"][value=""]').first
+    campo.click(); pag.keyboard.type("compilado"); campo.press("Tab"); pag.wait_for_timeout(1000)
+    check("Tempo ID: no se pueden escribir letras (solo números; los valores de la lista se eligen)",
+          campo.input_value() == "" and sqlq("select coalesce(tempo_id, '-') from tracks_master where track_name_clean='Segundo Tema'") == "-",
+          campo.input_value())
+    campo.click(); pag.keyboard.type("12a3"); 
+    check("Tempo ID: de lo que se escribe quedan solo los números", campo.input_value() == "123", campo.input_value())
+    campo.fill("PENDING CHILE")
+    check("Tempo ID: un valor elegido de la lista queda completo", campo.input_value() == "PENDING CHILE", campo.input_value())
+    campo.fill("")
     campo.fill("777002"); campo.press("Tab"); pag.wait_for_timeout(1500)
     check("editar tempo_id desde la tabla (fn_set_tempo_id)", sqlq("select tempo_id from tracks_master where track_name_clean='Segundo Tema'") == "777002")
     check("el contador se actualiza al registrar un Tempo ID", "Identificadas: 2 · Sin identificar: 0" in pag.inner_text(".conteo-id"),
