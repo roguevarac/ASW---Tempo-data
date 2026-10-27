@@ -454,6 +454,10 @@ try:
                               IMAGEN, "/tunel/.simulado/api_alcanzable"],
                              capture_output=True, text=True).stdout.strip()
     check("compartir: el túnel llega a la API por la red compartida (sin abrir puertos en la PC)", alcanza == "si", alcanza)
+    icu = subprocess.run(["docker", "run", "--rm", "-v", f"{PROYECTO_COMPOSE}_tunel:/tunel", "--entrypoint", "ls", IMAGEN, "/tunel/icu"],
+                         capture_output=True, text=True).stdout.split()
+    check("compartir: baja las librerías ICU que necesita la herramienta de Microsoft (la imagen no las trae)",
+          {"libicuuc.so.60", "libicui18n.so.60", "libicudata.so.60"} <= set(icu), icu)
     check("compartir: solo cuentas de la empresa, y queda en la actividad del Panel",
           "--tenant" in dc("--profile", "compartir", "exec", "-T", "tunel", "cat", "/tunel/.simulado/acceso").stdout
           and enlace and enlace.group(0) in base_nueva("select string_agg(mensaje, '|') from panel.eventos where servicio in ('tunel', 'ranking.sh')"))

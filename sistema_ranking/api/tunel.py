@@ -10,7 +10,7 @@ permisos de administrador. La conexión sale de esta PC hacia Microsoft (como On
 Corre en el servicio "tunel" de compose, dentro de la red de la API (network_mode: service:api): el puerto 8000 de la
 API es su localhost, así que la API sigue sin escuchar fuera de la PC. Informa al Panel de control (panel.latido).
 
-    python tunel.py --descargar   baja la herramienta de Microsoft (devtunnel) al volumen del servicio
+    python tunel.py --descargar   baja la herramienta de Microsoft (devtunnel) y las librerías ICU al volumen
     python tunel.py --login       inicia sesión con la cuenta de la empresa (código en microsoft.com/devicelogin)
     python tunel.py --servicio    crea el túnel si hace falta y lo mantiene abierto (reintenta solo)
 """
@@ -19,9 +19,12 @@ import json
 import logging
 import os
 import re
+import ctypes.util
+import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 import urllib.request
@@ -31,6 +34,13 @@ log = logging.getLogger("tunel")
 BIN = Path(os.environ.get("TUNEL_BIN", "/tunel/devtunnel"))
 DESCARGA = os.environ.get("TUNEL_DESCARGA", "https://aka.ms/TunnelsCliDownload/linux-x64")
 PUERTO = int(os.environ.get("TUNEL_PUERTO", "8000"))
+# devtunnel (.NET) necesita las librerías ICU, que la imagen no trae, y su configuración interna ignora el modo sin ICU
+# (DOTNET_SYSTEM_GLOBALIZATION_INVARIANT). Se toman, en este orden: las del sistema; las ya bajadas al volumen; las del
+# paquete npm de PostgreSQL embebido (el mismo origen que la versión portable de Windows: libicu*.so.60, sin
+# dependencias raras); y, si npm está bloqueado, apt-get (Debian).
+ICU_DIR = Path(os.environ.get("TUNEL_ICU_DIR", str(BIN.parent / "icu")))
+ICU_NPM = os.environ.get("TUNEL_ICU_NPM",
+                         "https://registry.npmjs.org/@embedded-postgres/linux-x64/-/linux-x64-17.10.0-beta.17.tgz")
 URL_TUNEL = re.compile(r"https://[A-Za-z0-9.-]*devtunnels\.ms[^\s,]*")
 SIN_SESION = re.compile(r"login|log in|sign in|unauthorized|not authenticated|expired token|401", re.I)
 
@@ -56,8 +66,62 @@ def descargar():
     log.info("Herramienta de túneles descargada.")
 
 
+def icu_lista():
+    """Las tres librerías con el nombre que busca .NET (libicuuc.so.60: solo la versión mayor)."""
+    return all(any(re.fullmatch(rf"lib{n}\.so\.[0-9]+", f.name) for f in ICU_DIR.glob(f"lib{n}.so.*"))
+               for n in ("icuuc", "icui18n", "icudata"))
+
+
+def preparar_icu():
+    """Deja las librerías ICU disponibles para devtunnel. Devuelve el origen (para el registro)."""
+    if os.environ.get("TUNEL_SIN_ICU") == "1" or ctypes.util.find_library("icuuc"):
+        return "sistema"
+    if icu_lista():
+        return "volumen"
+    ICU_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        tmp = ICU_DIR / "paquete.tgz"
+        with urllib.request.urlopen(ICU_NPM, timeout=300) as r, open(tmp, "wb") as f:
+            while bloque := r.read(1 << 20):
+                f.write(bloque)
+        with tarfile.open(tmp) as t:
+            miembros = [m for m in t.getmembers() if re.search(r"/lib/libicu(uc|i18n|data)\.so\.[0-9.]+$", m.name)]
+            for m in sorted(miembros, key=lambda m: m.issym()):   # primero los archivos, después los enlaces
+                destino = ICU_DIR / Path(m.name).name
+                if m.issym():
+                    destino.unlink(missing_ok=True)
+                    destino.symlink_to(Path(m.linkname).name)
+                elif m.isfile():
+                    with t.extractfile(m) as origen, open(destino, "wb") as f:
+                        shutil.copyfileobj(origen, f)
+        tmp.unlink(missing_ok=True)
+        for f in ICU_DIR.glob("libicu*.so.*.*"):   # npm no guarda enlaces: libicuuc.so.60 -> libicuuc.so.60.2
+            corto = ICU_DIR / re.sub(r"(\.so\.[0-9]+)\..*$", r"\1", f.name)
+            if not corto.exists():
+                corto.symlink_to(f.name)
+        if icu_lista():
+            log.info("Librerías ICU descargadas (npm).")
+            return "npm"
+    except Exception as e:
+        log.warning("No se pudieron bajar las librerías ICU de npm: %s", e)
+    r = subprocess.run("apt-get update -qq && apt-get install -y -qq --no-install-recommends "
+                       "$(apt-cache --names-only search '^libicu[0-9]+$' | cut -d' ' -f1 | sort -V | tail -n 1)",
+                       shell=True, capture_output=True, text=True, timeout=600)
+    if r.returncode == 0 and ctypes.util.find_library("icuuc"):
+        return "apt"
+    raise RuntimeError("No se pudieron conseguir las librerías ICU que necesita la herramienta de Microsoft "
+                       "(npm y apt bloqueados por la red).")
+
+
+def entorno_dt():
+    e = dict(os.environ)
+    if icu_lista():
+        e["LD_LIBRARY_PATH"] = f"{ICU_DIR}:{e['LD_LIBRARY_PATH']}" if e.get("LD_LIBRARY_PATH") else str(ICU_DIR)
+    return e
+
+
 def dt(*args, timeout=120):
-    r = subprocess.run([str(BIN), *args], capture_output=True, text=True, timeout=timeout)
+    r = subprocess.run([str(BIN), *args], capture_output=True, text=True, timeout=timeout, env=entorno_dt())
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
@@ -125,6 +189,7 @@ def servicio(pgurl):
         try:
             panel.estado("iniciando", acceso=acceso)
             descargar()
+            preparar_icu()
             if not con_sesion():
                 panel.estado("sin_sesion", acceso=acceso)
                 time.sleep(300)
@@ -136,7 +201,7 @@ def servicio(pgurl):
             time.sleep(60)
             continue
         p = subprocess.Popen([str(BIN), "host", tid], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                             bufsize=1)
+                             bufsize=1, env=entorno_dt())
         ultimas, url = collections.deque(maxlen=30), None
         vivo = threading.Event()
 
@@ -170,13 +235,18 @@ if __name__ == "__main__":
             descargar()
         except Exception as e:
             sys.exit(f"No se pudo descargar la herramienta de Microsoft ({DESCARGA}): {e}")
+        try:
+            print(f"Librerías ICU: {preparar_icu()}")
+        except Exception as e:
+            sys.exit(str(e))
     elif accion == "--login":
         descargar()
+        preparar_icu()
         if con_sesion():
             print("Ya hay una sesión de Microsoft iniciada.")
         else:
             print("Ingresá el código que aparece abajo en https://microsoft.com/devicelogin con tu cuenta de la empresa.")
-            sys.exit(subprocess.call([str(BIN), "user", "login", "-d"]))
+            sys.exit(subprocess.call([str(BIN), "user", "login", "-d"], env=entorno_dt()))
     elif accion == "--servicio":
         servicio(os.environ["PGURL"])
     else:

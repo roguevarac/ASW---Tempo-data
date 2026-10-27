@@ -72,6 +72,9 @@ r = subprocess.run([sys.executable, str(RAIZ / "api" / "tunel.py"), "--login"], 
 check("--login: indica dónde ingresar el código y deja la sesión iniciada",
       r.returncode == 0 and "microsoft.com/devicelogin" in r.stdout and (casa / ".simulado" / "sesion").exists(), r.stdout + r.stderr)
 r = subprocess.run([sys.executable, str(RAIZ / "api" / "tunel.py"), "--login"], env=entorno, capture_output=True, text=True)
+check("--login deja disponibles las librerías ICU de la herramienta de Microsoft",
+      subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, 'api'); import tunel; print(tunel.preparar_icu())"],
+                     env=entorno, cwd=RAIZ, capture_output=True, text=True).stdout.strip() in ("sistema", "volumen"))
 check("--login con la sesión ya iniciada no vuelve a pedirla", r.returncode == 0 and "Ya hay una sesión" in r.stdout, r.stdout)
 
 # --------------------------------------------------------------- túnel activo (solo cuentas de la empresa)
