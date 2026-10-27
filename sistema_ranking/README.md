@@ -230,22 +230,26 @@ bash ranking.sh compartir --apagar     # deja de compartir
 ```
 
 **Cómo funciona:**
-- Usa **Microsoft Dev Tunnels**: un enlace HTTPS fijo (`https://auditor-rankings-xxxxxx-8000.<región>.devtunnels.ms/`)
-  que llega a esta PC.
+- Usa **Microsoft Dev Tunnels**: un enlace HTTPS fijo (`https://auditor-rankings-xxxxxxxx-8000.<región>.devtunnels.ms/`)
+  que llega a `http://localhost:PUERTO` de esta PC.
 - La conexión sale de la PC hacia Microsoft, como OneDrive o Teams. No abre puertos, no pide permisos de administrador
   y la API sigue escuchando solo en 127.0.0.1.
-- La primera vez pide iniciar sesión con la cuenta de la empresa: muestra un código para
-  `https://microsoft.com/devicelogin`.
-- El servicio `tunel` de compose (perfil `compartir`, `api/tunel.py`) comparte la red de la API, baja la herramienta
-  `devtunnel` a su volumen y mantiene el túnel abierto: si se corta, lo reabre solo.
-- El enlace aparece en el Panel de control (Estado del sistema, con "Copiar enlace") y en `bash ranking.sh verificar`.
+- **Corre en Windows**, no en Docker: `devtunnel.exe` y `escritorio/tunel.ps1` quedan en
+  `%LOCALAPPDATA%\RankingDigital`. En Linux, la herramienta guarda la sesión de Microsoft en el llavero del sistema, y
+  dentro de Docker no hay llavero: la sesión se perdía en cada comando. En Windows queda en el administrador de
+  credenciales, usa el proxy de Windows y no necesita las librerías ICU.
+- La primera vez abre el navegador para iniciar sesión con la cuenta de la empresa.
+- `tunel.ps1` (oculto, lo inicia `lanzar.ps1` al encender la PC o abrir la aplicación) crea el túnel si hace falta, lo
+  mantiene abierto (si se corta, lo reabre), evita la suspensión por inactividad y deja su estado en
+  `tunel-estado.json` y `tunel.log`.
+- El mantenedor de Ubuntu pasa ese estado al Panel de control cada minuto (Estado del sistema, con "Copiar enlace").
+  También lo pasan `bash ranking.sh verificar` y `bash ranking.sh logs`.
 
 **Seguridad:** por defecto el túnel solo deja pasar cuentas del tenant de Microsoft de la empresa; después está el
 ingreso del sistema (usuario, contraseña, sesiones y freno de intentos). La conexión viaja cifrada hasta la PC. Conviene avisar al área de sistemas que el Auditor se comparte de esta forma.
 
 **Disponibilidad:** la PC tiene que estar encendida, con el sistema funcionando y conectada a internet.
-- Con los accesos de Windows (`acceso-directo`), mientras se comparte la PC no se suspende por inactividad
-  (`despierta.ps1`). Sí se suspende al cerrar la tapa o a mano.
+- Mientras se comparte, la PC no se suspende por inactividad (`tunel.ps1`). Sí se suspende al cerrar la tapa o a mano.
 - Si la red de la empresa bloquea `*.devtunnels.ms`, `compartir` lo informa. En ese caso, la alternativa es un servidor
   (ver "Servidor Linux").
 

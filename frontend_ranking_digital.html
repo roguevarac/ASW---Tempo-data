@@ -1540,14 +1540,14 @@ function servicioTunel(t){
   const d = t.detalle || {};
   const quien = d.acceso === 'cualquiera' ? 'Cualquier persona con el enlace llega al ingreso'
                                           : 'Solo cuentas Microsoft de la empresa, y después usuario y contraseña del sistema';
-  if(d.estado === 'activo' && t.segundos <= 180)
+  if(d.estado === 'activo' && t.segundos <= 300)
     return ['Acceso desde otras computadoras', 'ok', 'Activo',
             `<a href="${esc(d.url)}" target="_blank" rel="noopener" id="enlaceCompartido">${esc(d.url)}</a>
              <button class="btn" id="copiarEnlace" data-url="${esc(d.url)}">Copiar enlace</button><br>${quien}`];
   if(d.estado === 'sin_sesion')
     return ['Acceso desde otras computadoras', 'error', 'Detenido',
             'La sesión de Microsoft venció. En la terminal de Ubuntu: <code>bash ranking.sh compartir</code>'];
-  if(d.estado === 'iniciando' && t.segundos <= 180) return ['Acceso desde otras computadoras', 'aviso', 'Iniciando', ''];
+  if(d.estado === 'iniciando' && t.segundos <= 300) return ['Acceso desde otras computadoras', 'aviso', 'Iniciando', ''];
   return ['Acceso desde otras computadoras', 'error', 'Sin conexión',
           esc(d.mensaje || 'El servicio no informa su estado. Se reintenta solo; si continúa: bash ranking.sh verificar')];
 }

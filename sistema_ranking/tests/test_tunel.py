@@ -1,11 +1,12 @@
 """
-Acceso desde otras computadoras (api/tunel.py), con la herramienta de Microsoft simulada (tests/devtunnel_simulado.sh):
-crea el túnel con el mismo nombre, publica el puerto de la API, restringe el acceso a la empresa (o lo abre con
---cualquiera), toma el enlace correcto (no el de "inspect") y lo informa al Panel de control; si la sesión de
-Microsoft venció, lo avisa. También el inicio de sesión (--login).
+Acceso desde otras computadoras: escritorio/tunel.ps1 (lo corre Windows con devtunnel.exe), probado con PowerShell y
+la herramienta de Microsoft simulada (tests/devtunnel_simulado.sh). Crea el túnel con el mismo nombre, publica el
+puerto del sistema, restringe el acceso a la empresa (o lo abre con "cualquiera"), toma el enlace correcto (no el de
+"inspect") y deja el estado en tunel-estado.json; si la sesión de Microsoft venció, lo informa.
 
-Variables: PGURL (base con el esquema panel).
+Variables: PWSH (PowerShell; si no está, se busca en el PATH o en la caché de pruebas).
 """
+import json
 import os
 import pathlib
 import shutil
@@ -14,11 +15,11 @@ import sys
 import tempfile
 import time
 
-PGURL = os.environ["PGURL"]
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(RAIZ / "api"))
-import tunel  # noqa: E402
-
+PWSH = os.environ.get("PWSH") or shutil.which("pwsh") or "/var/tmp/rk_pruebas_cache/pwsh/pwsh"
+if not pathlib.Path(PWSH).exists():
+    print("Sin PowerShell: se saltea.")
+    sys.exit(0)
 fallas = []
 
 
@@ -28,78 +29,77 @@ def check(nombre, cond, extra=""):
         fallas.append(nombre)
 
 
-def sqlq(q):
-    return subprocess.run(["psql", PGURL, "-At", "-c", q], capture_output=True, text=True).stdout.strip()
+carpeta = pathlib.Path(tempfile.mkdtemp())
+shutil.copy(RAIZ / "tests" / "devtunnel_simulado.sh", carpeta / "devtunnel.exe")
+(carpeta / "devtunnel.exe").chmod(0o755)
+simulado = carpeta / ".simulado"
 
 
-check("elige el enlace del puerto de la API, no el de 'inspect'",
-      tunel.elegir_url("Connect via browser: https://abc-8000.brs.devtunnels.ms, https://abc.brs.devtunnels.ms") ==
-      "https://abc-8000.brs.devtunnels.ms/"
-      and tunel.elegir_url("Inspect network activity: https://abc-8000-inspect.brs.devtunnels.ms") is None
-      and tunel.elegir_url("Hosting port: 8000") is None)
-
-casa = pathlib.Path(tempfile.mkdtemp())
-binario = casa / "devtunnel"
-shutil.copy(RAIZ / "tests" / "devtunnel_simulado.sh", binario)
-binario.chmod(0o755)
-entorno = dict(os.environ, HOME=str(casa), TUNEL_BIN=str(binario), TUNEL_ID="auditor-rankings-prueba",
-               TUNEL_ACCESO="empresa", PGURL=PGURL)
+def generar(acceso):
+    t = (RAIZ / "escritorio" / "tunel.ps1").read_text(encoding="utf-8")
+    t = t.replace("__TUNEL_ID__", "auditor-rankings-prueba").replace("__ACCESO__", acceso).replace("__PUERTO__", "8000")
+    (carpeta / "tunel.ps1").write_bytes(b"\xef\xbb\xbf" + t.replace("\n", "\r\n").encode("utf-8"))
 
 
-def servicio(segundos, condicion):
-    sqlq("delete from panel.servicios where servicio = 'tunel'")
-    p = subprocess.Popen([sys.executable, str(RAIZ / "api" / "tunel.py"), "--servicio"], env=entorno,
-                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+def estado():
+    try:
+        return json.loads((carpeta / "tunel-estado.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def mantener(segundos, condicion):
+    (carpeta / "tunel-estado.json").unlink(missing_ok=True)
+    p = subprocess.Popen([PWSH, "-NoProfile", "-File", str(carpeta / "tunel.ps1")], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
     fin = time.time() + segundos
     while time.time() < fin and not condicion():
         time.sleep(0.5)
-    p.terminate()
-    salida = p.communicate(timeout=10)[0]
-    subprocess.run(["pkill", "-f", "sleep 100000"], capture_output=True)
-    return salida
+    p.kill()
+    p.wait(timeout=10)
+    for proc in pathlib.Path("/proc").glob("[0-9]*"):   # el "devtunnel host" simulado (un sleep), solo ese
+        try:
+            if (proc / "cmdline").read_bytes() == b"sleep\x00100000\x00":
+                os.kill(int(proc.name), 9)
+        except OSError:
+            pass
 
+
+generar("empresa")
+check("el script se genera sin marcadores sin completar", "__" not in (carpeta / "tunel.ps1").read_text(encoding="utf-8-sig"))
 
 # --------------------------------------------------------------- sin sesión de Microsoft
-salida = servicio(20, lambda: sqlq("select detalle->>'estado' from panel.servicios where servicio = 'tunel'") == "sin_sesion")
-check("sin sesión de Microsoft: el Panel lo informa y no abre el túnel",
-      sqlq("select detalle->>'estado' from panel.servicios where servicio = 'tunel'") == "sin_sesion"
-      and "host" not in (casa / ".simulado" / "comandos").read_text()
-      and "bash ranking.sh compartir" in sqlq("select mensaje from panel.eventos where servicio = 'tunel' order by id desc limit 1"),
-      salida[-500:])
+r = subprocess.run([PWSH, "-NoProfile", "-File", str(carpeta / "tunel.ps1"), "-Preparar"], capture_output=True, text=True)
+check("-Preparar sin sesión de Microsoft: lo informa y no crea nada",
+      r.returncode == 2 and "Sin sesion" in r.stdout and "create" not in (simulado / "comandos").read_text(), r.stdout + r.stderr)
+mantener(20, lambda: estado().get("estado") == "sin_sesion")
+check("sin sesión, el estado lo indica (lo ve el Panel de control)",
+      estado().get("estado") == "sin_sesion" and "bash ranking.sh compartir" in estado().get("mensaje", ""), estado())
 
-# --------------------------------------------------------------- inicio de sesión
-r = subprocess.run([sys.executable, str(RAIZ / "api" / "tunel.py"), "--login"], env=entorno, capture_output=True, text=True)
-check("--login: indica dónde ingresar el código y deja la sesión iniciada",
-      r.returncode == 0 and "microsoft.com/devicelogin" in r.stdout and (casa / ".simulado" / "sesion").exists(), r.stdout + r.stderr)
-r = subprocess.run([sys.executable, str(RAIZ / "api" / "tunel.py"), "--login"], env=entorno, capture_output=True, text=True)
-check("--login deja disponibles las librerías ICU de la herramienta de Microsoft",
-      subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, 'api'); import tunel; print(tunel.preparar_icu())"],
-                     env=entorno, cwd=RAIZ, capture_output=True, text=True).stdout.strip() in ("sistema", "volumen"))
-check("--login con la sesión ya iniciada no vuelve a pedirla", r.returncode == 0 and "Ya hay una sesión" in r.stdout, r.stdout)
-
-# --------------------------------------------------------------- túnel activo (solo cuentas de la empresa)
-activo = lambda: sqlq("select detalle->>'estado' from panel.servicios where servicio = 'tunel'") == "activo"
-salida = servicio(30, activo)
-url = sqlq("select detalle->>'url' from panel.servicios where servicio = 'tunel'")
-comandos = (casa / ".simulado" / "comandos").read_text()
-check("crea el túnel con su nombre, publica el puerto 8000 de la API y lo abre",
-      "create auditor-rankings-prueba --expiration 30d" in comandos and "port create auditor-rankings-prueba -p 8000 --protocol http" in comandos
-      and "host auditor-rankings-prueba" in comandos, comandos)
-check("el Panel recibe el enlace HTTPS del puerto de la API", url == "https://auditor-rankings-prueba-8000.brs.devtunnels.ms/", (url, salida[-500:]))
-check("por defecto solo entran cuentas de la empresa", (casa / ".simulado" / "acceso").read_text().strip() == "--tenant")
-check("queda registrado en la actividad del Panel",
-      f"Acceso desde otras computadoras activo: {url}" in sqlq("select string_agg(mensaje, '|') from panel.eventos where servicio = 'tunel'"))
-
-# --------------------------------------------------------------- de nuevo, con --cualquiera: mismo enlace, otro acceso
-entorno["TUNEL_ACCESO"] = "cualquiera"
-servicio(30, activo)
-comandos = (casa / ".simulado" / "comandos").read_text()
+# --------------------------------------------------------------- con sesión
+(simulado / "sesion").touch()
+r = subprocess.run([PWSH, "-NoProfile", "-File", str(carpeta / "tunel.ps1"), "-Preparar"], capture_output=True, text=True)
+comandos = (simulado / "comandos").read_text()
+check("-Preparar crea el túnel con su nombre, publica el puerto 8000 y deja entrar solo a la empresa",
+      r.returncode == 0 and "Tunel preparado" in r.stdout and "create auditor-rankings-prueba --expiration 30d" in comandos
+      and "port create auditor-rankings-prueba -p 8000 --protocol http" in comandos
+      and (simulado / "acceso").read_text().strip() == "--tenant", r.stdout + comandos)
+mantener(30, lambda: estado().get("estado") == "activo")
+e = estado()
+check("abre el túnel y deja el enlace HTTPS del puerto del sistema (no el de 'inspect')",
+      e.get("estado") == "activo" and e.get("url") == "https://auditor-rankings-prueba-8000.brs.devtunnels.ms/"
+      and e.get("acceso") == "empresa", e)
+check("queda un registro (tunel.log)", "Connect via browser" in (carpeta / "tunel.log").read_text(encoding="utf-8"))
+comandos = (simulado / "comandos").read_text()
 check("al volver a abrirse reusa el mismo túnel (el enlace no cambia)",
-      comandos.count("create auditor-rankings-prueba --expiration") == 1
-      and sqlq("select detalle->>'url' from panel.servicios where servicio = 'tunel'") == url, comandos)
-check("con --cualquiera, cualquiera con el enlace llega al ingreso", (casa / ".simulado" / "acceso").read_text().strip() == "--anonymous")
+      comandos.count("create auditor-rankings-prueba --expiration") == 1, comandos)
 
-sqlq("delete from panel.servicios where servicio = 'tunel'; delete from panel.eventos where servicio = 'tunel'")
-shutil.rmtree(casa, ignore_errors=True)
+# --------------------------------------------------------------- cualquiera con el enlace
+generar("cualquiera")
+mantener(30, lambda: estado().get("estado") == "activo")
+check("con 'cualquiera', cualquiera con el enlace llega al ingreso",
+      (simulado / "acceso").read_text().strip() == "--anonymous" and estado().get("acceso") == "cualquiera", estado())
+
+shutil.rmtree(carpeta, ignore_errors=True)
 print(f"\nFallas: {len(fallas)}")
 sys.exit(1 if fallas else 0)

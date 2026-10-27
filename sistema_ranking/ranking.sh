@@ -61,10 +61,7 @@ CLAVES_CONFIG=(POSTGRES_PASSWORD AUTHENTICATOR_PASSWORD JWT_SECRET PUERTO ESCUCH
 dc() {
     local sin=() k; for k in "${CLAVES_CONFIG[@]}"; do sin+=(-u "$k"); done
     mkdir -p "$RESPALDOS" 2> /dev/null   # el servicio "respaldo" escribe ahí (si no existe, Docker la crearía como root)
-    # Con COMPARTIR=1 también corre el servicio "tunel" (acceso desde otras computadoras).
-    local perfil=(); [ "$(valor COMPARTIR)" = 1 ] && perfil=(--profile compartir)
-    env "${sin[@]}" RESPALDOS_DIR="$RESPALDOS" docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" --env-file "$CONFIG" \
-        "${perfil[@]+"${perfil[@]}"}" "$@"
+    env "${sin[@]}" RESPALDOS_DIR="$RESPALDOS" docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" --env-file "$CONFIG" "$@"
 }
 
 # ---------------------------------------------------------------- configuración
@@ -429,7 +426,8 @@ cmd_abrir() {
         echo "Dejá esta ventana abierta (podés minimizarla): mientras esté abierta, el sistema sigue"
         echo "funcionando. Para volver a abrir la página: $(direccion)"
         echo "Para apagar todo, cerrá esta ventana."
-        while true; do sleep 3600; done
+        # Cada minuto pasa al Panel de control el estado del acceso desde otras computadoras (si se comparte).
+        while true; do relevar_tunel > /dev/null 2>&1; sleep 60; done
     fi
 }
 
@@ -483,8 +481,9 @@ cmd_estado() {
 
 cmd_logs() {
     verificar_docker; instalado
-    local servicios=(api db espejo respaldo); [ "$(valor COMPARTIR)" = 1 ] && servicios+=(tunel)
-    dc logs --tail "${1:-100}" "${servicios[@]}"
+    dc logs --tail "${1:-100}" api db espejo respaldo
+    local c; [ "$(valor COMPARTIR)" = 1 ] && c="$(carpeta_windows)" && [ -f "$c/tunel.log" ] \
+        && { echo "== Acceso desde otras computadoras (tunel.log)"; tail -n "${1:-100}" "$c/tunel.log" | tr -d '\r'; }
 }
 
 cmd_respaldo() {
@@ -774,7 +773,8 @@ cmd_acceso_directo() {
     t="${t//__COMPARTIR__/$([ "$(valor COMPARTIR)" = 1 ] && echo '$true' || echo '$false')}"
     { printf '\xef\xbb\xbf'; printf '%s\n' "$t" | sed 's/$/\r/'; } > "$carpeta/lanzar.ps1"
     t="$(cat "$DIR/escritorio/iniciando.html")"; printf '%s\n' "${t//__PUERTO__/$(valor PUERTO)}" > "$carpeta/iniciando.html"
-    { printf '\xef\xbb\xbf'; sed 's/$/\r/' "$DIR/escritorio/despierta.ps1"; } > "$carpeta/despierta.ps1"
+    [ "$(valor COMPARTIR)" = 1 ] && [ -n "$(valor TUNEL_ID)" ] && escribir_tunel "$carpeta"
+    rm -f "$carpeta/despierta.ps1"   # versión anterior del acceso compartido
     rm -f "$carpeta/Ranking Digital.cmd"   # lanzador anterior (con ventana negra)
     lanzar_win="$carpeta_win\lanzar.ps1"; ico_win="$carpeta_win\ranking.ico"
     local por_defecto inicio=0; por_defecto="$(valor INICIO_AUTOMATICO)"
@@ -825,23 +825,82 @@ cmd_acceso_directo() {
     echo "Instalar Auditor de Rankings Digitales. 'Apagar Auditor de Rankings Digitales' (menú Inicio) apaga todo."
 }
 
-# Enlace actual del acceso desde otras computadoras (lo informa el servicio "tunel" al Panel de control).
-enlace_compartido() {
-    consulta "SELECT detalle->>'url' FROM panel.servicios WHERE servicio = 'tunel' AND detalle->>'estado' = 'activo'
-              AND ultimo_aviso > now() - interval '5 minutes'" 2> /dev/null | tr -d '[:space:]'
+# ---------------------------------------------------------------- acceso desde otras computadoras
+# Corre en Windows (escritorio/tunel.ps1 con devtunnel.exe): ahí la sesión de Microsoft queda guardada en el
+# administrador de credenciales; en Linux/Docker, sin llavero del sistema, se perdía en cada arranque.
+
+# Carpeta de Windows de la aplicación (%LOCALAPPDATA%\RankingDigital), vista desde Ubuntu.
+carpeta_windows() {
+    local c; c="$(valor CARPETA_WINDOWS)"
+    if [ -z "$c" ] || [ ! -d "$c" ]; then
+        command -v powershell.exe > /dev/null 2>&1 || return 1
+        local w; w="$(cd /mnt/c 2> /dev/null || true; powershell.exe -NoProfile -Command '$env:LOCALAPPDATA' 2> /dev/null | tr -d '\r')"
+        [ -n "$w" ] || return 1
+        c="$(wslpath -u "$w\\RankingDigital")"
+        mkdir -p "$c" || return 1
+        poner CARPETA_WINDOWS "'$c'"
+    fi
+    printf '%s' "$c"
 }
 
-# Acceso desde otras computadoras: enlace HTTPS fijo (Microsoft Dev Tunnels; ver api/tunel.py). No abre puertos ni pide
-# permisos de administrador: la conexión sale de esta PC hacia Microsoft. Por defecto solo entran cuentas Microsoft de
-# la empresa (y después, el usuario y la contraseña del sistema). --cualquiera: sin cuenta de Microsoft (solo la
-# contraseña del sistema). --apagar: deja de compartir.
+ps_win() { (cd /mnt/c 2> /dev/null || true; powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$1"); }
+
+# tunel.ps1 con los datos de esta PC (PowerShell 5.1: con BOM y fin de línea de Windows).
+escribir_tunel() {
+    local t; t="$(cat "$DIR/escritorio/tunel.ps1")"
+    shopt -u patsub_replacement 2> /dev/null || true
+    t="${t//__TUNEL_ID__/$(valor TUNEL_ID)}"; t="${t//__ACCESO__/$(valor TUNEL_ACCESO)}"; t="${t//__PUERTO__/$(valor PUERTO)}"
+    { printf '\xef\xbb\xbf'; printf '%s\n' "$t" | sed 's/$/\r/'; } > "$1/tunel.ps1"
+}
+
+detener_tunel_windows() {
+    ps_win "Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe'\" | Where-Object { \$_.ProcessId -ne \$PID -and \$_.CommandLine -like '*tunel.ps1*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }
+            Get-Process -Name devtunnel -ErrorAction SilentlyContinue | Stop-Process -Force" > /dev/null 2>&1
+}
+
+iniciar_tunel_windows() {
+    local s; s="$(wslpath -w "$1/tunel.ps1")"; s="${s//\'/\'\'}"
+    ps_win "Start-Process -FilePath powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', '\"$s\"')"
+}
+
+# Pasa al Panel de control el estado que deja tunel.ps1 (tunel-estado.json). Si devtunnel.exe no está corriendo, el
+# acceso figura detenido. Lo llaman el mantenedor (cada minuto), verificar y compartir.
+relevar_tunel() {
+    [ "$(valor COMPARTIR)" = 1 ] || return 0
+    local c f json vivo=true
+    c="$(carpeta_windows)" || return 0
+    f="$c/tunel-estado.json"
+    if [ -f "$f" ]; then json="$(tr -d '\r' < "$f" | sed 's/^\xef\xbb\xbf//')"
+    else json='{"estado": "detenido", "mensaje": "El acceso se inicia con la aplicación de Windows (o con bash ranking.sh compartir)."}'; fi
+    if command -v tasklist.exe > /dev/null 2>&1 && ! tasklist.exe /FI "IMAGENAME eq devtunnel.exe" /NH 2> /dev/null | grep -qi devtunnel; then vivo=false; fi
+    case "$json" in *'$tunel$'*) return 0 ;; esac
+    consulta "SELECT panel.latido('tunel', CASE WHEN $vivo OR j->>'estado' <> 'activo' THEN j
+              ELSE j || '{\"estado\": \"detenido\", \"mensaje\": \"El acceso desde otras computadoras no está funcionando. Se reinicia al abrir la aplicación de Windows o con bash ranking.sh compartir.\"}'::jsonb END)
+              FROM (SELECT \$tunel\$$json\$tunel\$::jsonb AS j) x" > /dev/null 2>&1
+}
+
+# Enlace actual (después de relevar el estado).
+enlace_compartido() {
+    relevar_tunel
+    consulta "SELECT detalle->>'url' FROM panel.servicios WHERE servicio = 'tunel' AND detalle->>'estado' = 'activo'" 2> /dev/null | tr -d '[:space:]'
+}
+
+# Acceso desde otras computadoras: enlace HTTPS fijo de Microsoft Dev Tunnels, que llega a este sistema. No abre
+# puertos ni pide permisos de administrador: la conexión sale de esta PC hacia Microsoft. Por defecto solo entran
+# cuentas Microsoft de la empresa (y después, el usuario y la contraseña del sistema). --cualquiera: sin cuenta de
+# Microsoft (solo la contraseña del sistema). --apagar: deja de compartir.
 cmd_compartir() {
     verificar_docker; instalado
-    local acceso=empresa a
+    command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ] \
+        || fallar "El acceso desde otras computadoras se configura desde Ubuntu en Windows (WSL)."
+    local acceso=empresa a c
+    c="$(carpeta_windows)" || fallar "No pude leer la carpeta de Windows del usuario."
     for a in "$@"; do case "$a" in
         --apagar)
-            dc --profile compartir rm -sf tunel > /dev/null 2>&1
+            detener_tunel_windows
             poner COMPARTIR 0
+            rm -f "$c/tunel-estado.json"
+            consulta "DELETE FROM panel.servicios WHERE servicio = 'tunel'" > /dev/null 2>&1
             registrar_evento ok "Acceso desde otras computadoras apagado"
             regenerar_accesos
             ok "Listo: la aplicación ya no se puede abrir desde otras computadoras (en esta PC sigue igual)."
@@ -861,33 +920,49 @@ cmd_compartir() {
     [ -n "$tid" ] || { tid="auditor-rankings-$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n')"; poner TUNEL_ID "$tid"; }
     poner TUNEL_ACCESO "$acceso"
     arrancar > /dev/null
-    titulo "1/3 Herramienta de túneles de Microsoft"
-    dc --profile compartir run --rm --no-deps -T tunel python tunel.py --descargar \
-        || fallar "No se pudo descargar la herramienta de Microsoft (puede estar bloqueada por la red de la empresa)."
+    local dt="$c/devtunnel.exe" cw; cw="$(wslpath -w "$c")"; cw="${cw//\'/\'\'}"
+
+    titulo "1/3 Herramienta de túneles de Microsoft (para Windows)"
+    if [ ! -f "$dt" ]; then
+        ps_win "\$ProgressPreference = 'SilentlyContinue'
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                [Net.WebRequest]::DefaultWebProxy.Credentials = [Net.CredentialCache]::DefaultNetworkCredentials
+                Invoke-WebRequest -UseBasicParsing -Uri 'https://aka.ms/TunnelsCliDownload/win-x64' -OutFile '$cw\\devtunnel.descarga'
+                Move-Item -Force '$cw\\devtunnel.descarga' '$cw\\devtunnel.exe'" \
+            && [ -f "$dt" ] || fallar "No se pudo descargar devtunnel.exe (puede estar bloqueado por la red de la empresa)."
+    fi
+    ok "devtunnel.exe listo en $(wslpath -w "$c")"
+
     titulo "2/3 Inicio de sesión con la cuenta de la empresa"
-    local tty=(-T); [ -t 0 ] && tty=()
-    dc --profile compartir run --rm --no-deps "${tty[@]+"${tty[@]}"}" tunel python tunel.py --login \
-        || fallar "No se completó el inicio de sesión de Microsoft. Volvé a intentar: bash ranking.sh compartir"
+    if ! "$dt" user show 2>&1 | tr -d '\r' | grep -qi 'logged in as'; then
+        echo "Se abre el navegador: ingresá con tu cuenta de la empresa (la de Outlook/Teams)."
+        "$dt" user login || "$dt" user login -d || fallar "No se completó el inicio de sesión de Microsoft."
+    fi
+    local sesion; sesion="$("$dt" user show 2>&1 | tr -d '\r' | grep -i 'logged in as')"
+    [ -n "$sesion" ] || fallar "La sesión de Microsoft no quedó guardada en Windows. Volvé a intentar: bash ranking.sh compartir"
+    ok "$sesion"
+
     titulo "3/3 Abriendo el acceso"
+    escribir_tunel "$c"
+    local preparado; preparado="$(ps_win "& '$cw\\tunel.ps1' -Preparar" 2>&1 | tr -d '\r')"
+    echo "$preparado" | grep -q 'Tunel preparado' || { echo "$preparado"; tail -n 20 "$c/tunel.log" 2> /dev/null
+        fallar "Microsoft no permitió crear el acceso (el motivo está arriba)."; }
+    detener_tunel_windows
+    rm -f "$c/tunel-estado.json"
     poner COMPARTIR 1
-    consulta "DELETE FROM panel.servicios WHERE servicio = 'tunel'" > /dev/null 2>&1
-    dc up -d --no-deps --force-recreate tunel > /dev/null 2>&1 || { dc up -d --no-deps tunel; fallar "No arrancó el servicio de acceso (el motivo está arriba)."; }
+    iniciar_tunel_windows "$c"
     local url="" i estado=""
-    for i in $(seq 1 "${ESPERA_TUNEL:-180}"); do
-        url="$(enlace_compartido)"; [ -n "$url" ] && break
-        estado="$(consulta "SELECT detalle->>'estado' FROM panel.servicios WHERE servicio = 'tunel'" 2> /dev/null | tr -d '[:space:]')"
-        case "$estado" in sin_sesion|error) break ;; esac
+    for i in $(seq 1 "${ESPERA_TUNEL:-120}"); do
+        estado="$(sed -n 's/.*"estado":"\([a-z_]*\)".*/\1/p' "$c/tunel-estado.json" 2> /dev/null)"
+        case "$estado" in activo|sin_sesion|error) break ;; esac
         [ $((i % 15)) = 0 ] && echo "  esperando a Microsoft... ($i s)"
         sleep 1
     done
+    url="$(enlace_compartido)"
     if [ -z "$url" ]; then
-        echo "Registro del servicio de acceso:"
-        dc logs --no-log-prefix --tail 40 tunel
-        case "$estado" in
-            sin_sesion) fallar "La herramienta de Microsoft no encuentra la sesión iniciada. Pasame el registro de arriba." ;;
-            error) fallar "Microsoft rechazó la creación del acceso (el motivo está en el registro de arriba)." ;;
-            *) fallar "El acceso todavía no quedó abierto. Se reintenta solo; el enlace aparece en el Panel de control." ;;
-        esac
+        echo "Registro del acceso (tunel.log):"
+        tail -n 30 "$c/tunel.log" 2> /dev/null | tr -d '\r'
+        fallar "El acceso todavía no quedó abierto (estado: ${estado:-sin datos}). Pasame el registro de arriba."
     fi
     registrar_evento ok "Acceso desde otras computadoras: $url"
     regenerar_accesos
@@ -897,9 +972,10 @@ cmd_compartir() {
     echo "código de activación). En su computadora: abrir el enlace en Edge, ingresar con la cuenta de la empresa si lo pide,"
     echo "y en 'Auditor de Rankings Digitales' elegir '¿Olvidaste la contraseña?' con el código. Para instalarla como"
     echo "aplicación: menú ··· > Aplicaciones > Instalar. El enlace también figura en el Panel de control."
+    echo "El acceso se vuelve a abrir solo al encender la PC o abrir la aplicación de Windows."
 }
 
-# Los accesos de Windows se vuelven a generar (el lanzador mantiene la PC despierta mientras se comparte).
+# Los accesos de Windows se vuelven a generar (el lanzador inicia el acceso al encender la PC si se comparte).
 regenerar_accesos() {
     [ "$(valor ACCESO_DIRECTO)" = 1 ] && [ -n "${WSL_DISTRO_NAME:-}" ] && command -v powershell.exe > /dev/null 2>&1 || return 0
     local antes_auto="${AUTOMATICO:-}"; AUTOMATICO=1
@@ -952,7 +1028,7 @@ cmd_verificar() {
         if [ "$(valor COMPARTIR)" = 1 ]; then
             local enlace; enlace="$(enlace_compartido)"
             if [ -n "$enlace" ]; then linea ok "Acceso desde otras computadoras: $enlace"
-            else aviso "  AVISO  El acceso desde otras computadoras no está activo (bash ranking.sh logs; si venció la sesión: bash ranking.sh compartir)"; fi
+            else aviso "  AVISO  El acceso desde otras computadoras no está activo (se abre con la aplicación de Windows; si venció la sesión: bash ranking.sh compartir)"; fi
         fi
         [ "${n:-0}" -gt 0 ] && aviso "  AVISO  $n charts en OneDrive (Spotify Charts / Youtube Charts) sin cargar: bash ranking.sh cargar-historicos"
     fi

@@ -12,6 +12,7 @@ Diferencias con la PC, solo de esta prueba: sin powershell.exe (las carpetas se 
 Variables: PGHOST_URL, ORIGEN_DB, STORAGE_ORIGEN (como test_migracion.py: la base de origen con datos),
 """
 import hashlib
+import json
 import os
 import pathlib
 import re
@@ -440,37 +441,24 @@ try:
                f"delete from csv_uploads where filename = $${planilla.name}$$")
 
     # ================================================================ acceso desde otras computadoras (compartir)
-    # La herramienta de Microsoft se reemplaza por la simulada (tests/devtunnel_simulado.sh), ya "descargada" en el
-    # volumen del servicio: el resto (configuración, perfil de compose, red compartida con la API, Panel) es el real.
-    subprocess.run(["docker", "volume", "rm", "-f", f"{PROYECTO_COMPOSE}_tunel"], capture_output=True)   # sin sesión previa
-    subprocess.run(["docker", "run", "--rm", "--user", "root", "-v", f"{PROYECTO_COMPOSE}_tunel:/tunel",
-                    "-v", f"{RAIZ / 'tests' / 'devtunnel_simulado.sh'}:/simulado.sh:ro", IMAGEN,
-                    "sh", "-c", "cp /simulado.sh /tunel/devtunnel && chmod 755 /tunel/devtunnel"], check=True, capture_output=True)
+    # El túnel corre en Windows (escritorio/tunel.ps1, probado en test_tunel.py) y deja su estado en
+    # %LOCALAPPDATA%\RankingDigital\tunel-estado.json; Ubuntu lo pasa al Panel de control y a verificar.
     codigo = fin(ranking("compartir", "--automatico"))
-    salida = texto("compartir.log")
-    enlace = re.search(r"https://auditor-rankings-[a-z0-9]+-8000\.brs\.devtunnels\.ms/", salida)
-    check("compartir: inicia sesión, abre el túnel y muestra el enlace para compartir",
-          codigo == 0 and enlace and valor("COMPARTIR") == "1" and valor("TUNEL_ID") and "devicelogin" in salida, salida[-1500:])
-    alcanza = subprocess.run(["docker", "run", "--rm", "-v", f"{PROYECTO_COMPOSE}_tunel:/tunel", "--entrypoint", "cat",
-                              IMAGEN, "/tunel/.simulado/api_alcanzable"],
-                             capture_output=True, text=True).stdout.strip()
-    check("compartir: el túnel llega a la API por la red compartida (sin abrir puertos en la PC)", alcanza == "si", alcanza)
-    icu = subprocess.run(["docker", "run", "--rm", "-v", f"{PROYECTO_COMPOSE}_tunel:/tunel", "--entrypoint", "ls", IMAGEN, "/tunel/icu"],
-                         capture_output=True, text=True).stdout.split()
-    check("compartir: baja las librerías ICU que necesita la herramienta de Microsoft (la imagen no las trae)",
-          {"libicuuc.so.60", "libicui18n.so.60", "libicudata.so.60"} <= set(icu), icu)
-    check("compartir: solo cuentas de la empresa, y queda en la actividad del Panel",
-          "--tenant" in dc("--profile", "compartir", "exec", "-T", "tunel", "cat", "/tunel/.simulado/acceso").stdout
-          and enlace and enlace.group(0) in base_nueva("select string_agg(mensaje, '|') from panel.eventos where servicio in ('tunel', 'ranking.sh')"))
-    codigo = fin(ranking("abrir", "--sin-navegador"))
-    check("compartir: al abrir de nuevo, el acceso sigue funcionando",
-          codigo == 0 and dc("--profile", "compartir", "ps", "--status", "running", "-q", "tunel").stdout.strip())
+    check("compartir fuera de Windows (WSL) explica que se configura desde Ubuntu en Windows",
+          codigo != 0 and "WSL" in texto("compartir.log"), texto("compartir.log")[-400:])
+    carpeta_win = base / "windows-localappdata" / "RankingDigital"
+    carpeta_win.mkdir(parents=True)
+    enlace = "https://auditor-rankings-prueba-8000.brs.devtunnels.ms/"
+    (carpeta_win / "tunel-estado.json").write_text(json.dumps(
+        {"estado": "activo", "url": enlace, "acceso": "empresa", "mensaje": None, "fecha": "2026-10-27T12:00:00Z"}), encoding="utf-8")
+    original = config.read_text()
+    config.write_text(original + f"COMPARTIR=1\nCARPETA_WINDOWS='{carpeta_win}'\n")
     fin(ranking("verificar"))
-    check("verificar muestra el enlace compartido", enlace and f"Acceso desde otras computadoras: {enlace.group(0)}" in texto("verificar.log"),
-          texto("verificar.log")[-800:])
-    codigo = fin(ranking("compartir", "--apagar"))
-    check("compartir --apagar: deja de compartir", codigo == 0 and valor("COMPARTIR") == "0"
-          and not dc("--profile", "compartir", "ps", "-q", "tunel").stdout.strip(), texto("compartir.log")[-600:])
+    check("verificar muestra el enlace compartido y lo pasa al Panel de control",
+          f"Acceso desde otras computadoras: {enlace}" in texto("verificar.log")
+          and base_nueva("select detalle->>'url' from panel.servicios where servicio = 'tunel'") == enlace, texto("verificar.log")[-800:])
+    config.write_text(original)
+    base_nueva("delete from panel.servicios where servicio = 'tunel'")
 
     # ================================================================ respaldo y restauración
     antes = {t: base_nueva(f"select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from {t} x")

@@ -1,7 +1,7 @@
 #!/bin/sh
-# Simula la herramienta "devtunnel" de Microsoft para las pruebas (test_tunel.py y test_docker_linux.py): mismos
-# comandos y mensajes que usa api/tunel.py, sin conexión a Microsoft. Guarda su estado en $HOME/.simulado.
-E="$HOME/.simulado"; mkdir -p "$E"
+# Simula devtunnel.exe de Microsoft para las pruebas (test_tunel.py): mismos comandos y mensajes que usa
+# escritorio/tunel.ps1, sin conexión a Microsoft. Guarda su estado en .simulado, junto al programa.
+E="$(dirname "$0")/.simulado"; mkdir -p "$E"
 echo "$*" >> "$E/comandos"
 case "$1 $2" in
     "user show")
@@ -23,9 +23,6 @@ case "$1" in
     create) touch "$E/tunel-$2"; echo "Tunnel ID: $2.brs"; exit 0 ;;
     host)
         if [ ! -f "$E/sesion" ]; then echo "Unauthorized: please log in again."; exit 1; fi
-        # ¿Llega a la API por localhost:8000 (red compartida con el servicio api)?
-        python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)" > /dev/null 2>&1 \
-            && echo si > "$E/api_alcanzable" || echo no > "$E/api_alcanzable"
         echo "Hosting port: 8000"
         echo "Connect via browser: https://$2-8000.brs.devtunnels.ms, https://$2.brs.devtunnels.ms"
         echo "Inspect network activity: https://$2-8000-inspect.brs.devtunnels.ms"

@@ -226,12 +226,17 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     "Limpiar" (`#clearFiltersT`) para todos sus filtros. Buscar "-" = sin Tempo ID (`fn_coincide_busqueda`, 03).
   - **Acceso desde otras computadoras (27/10/2026, pedido del usuario: "la PWA tiene que poder usarse desde la laptop
     de cada uno"):** `bash ranking.sh compartir` → Microsoft Dev Tunnels (enlace HTTPS fijo, solo cuentas de la empresa
-    por defecto; `--cualquiera`, `--apagar`). Servicio `tunel` (perfil `compartir`, `network_mode: service:api`,
-    `api/tunel.py`): no abre puertos ni necesita admin; el enlace va al Panel (`panel.latido('tunel')`) y a `verificar`.
-    `escritorio/despierta.ps1` evita la suspensión por inactividad mientras se comparte. `apagado.html`/`sw.js`
-    distinguen el acceso remoto (no ofrece "Encender"). Pruebas con `tests/devtunnel_simulado.sh` (la red de esta
-    sesión no llega a Microsoft: el túnel real no se probó acá). Descartado: abrir la red local (WSL mirrored + firewall
-    piden admin, y sin HTTPS no se instala la PWA).
+    por defecto; `--cualquiera`, `--apagar`).
+    - **Corre en Windows** (`devtunnel.exe` + `escritorio/tunel.ps1` en `%LOCALAPPDATA%\RankingDigital`). Primero
+      corrió en un servicio Docker y falló en la PC real: primero por falta de ICU, y después porque en Linux la
+      sesión de Microsoft se guarda en el llavero del sistema, que no existe en el contenedor ("Logged in" y en el
+      comando siguiente "Not logged in"). No volver a Docker.
+    - `tunel.ps1` lo inicia `lanzar.ps1` (`$Compartir`); evita la suspensión y deja `tunel-estado.json`/`tunel.log`.
+    - `relevar_tunel` (mantenedor cada minuto, `verificar`, `compartir`) lo pasa a `panel.latido('tunel')`.
+    - `ranking.sh` ejecuta `devtunnel.exe` directo desde WSL (interop) para el login.
+    - Pruebas: `test_tunel.py` (pwsh + `tests/devtunnel_simulado.sh`) y el relevo en `test_docker_linux.py`. La red de
+      esta sesión no llega a Microsoft: el túnel real se prueba en la PC.
+    - Descartado: abrir la red local (WSL mirrored y el firewall piden admin, y sin HTTPS no se instala la PWA).
   - **Tempo ID en la tabla principal:** solo se tipean números; UNCONTROLLED/PENDING se eligen de la lista (`oninput`).
   - **Contador "Identificadas · Sin identificar"** arriba de la tabla principal (`.conteo-id`), no en el paginador.
   - **Dos perfiles (27/10/2026, pedido del usuario):** "Usuario estándar" y "Administrador" (= acceso al Panel de

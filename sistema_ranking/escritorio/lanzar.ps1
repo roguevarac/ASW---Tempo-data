@@ -9,7 +9,7 @@ $ProgressPreference = 'SilentlyContinue'
 $Distro = '__DISTRO__'
 $Proyecto = '__PROYECTO__'
 $Puerto = __PUERTO__
-$Compartir = __COMPARTIR__   # se comparte con otras computadoras: la PC no se suspende por inactividad
+$Compartir = __COMPARTIR__   # se comparte con otras computadoras (tunel.ps1: enlace de Microsoft y PC despierta)
 $Url = "http://localhost:$Puerto/"
 $Log = Join-Path $PSScriptRoot 'lanzador.log'
 
@@ -27,18 +27,20 @@ function Responde {
 function Mantenedores {
     return @(Get-CimInstance Win32_Process -Filter "Name = 'wsl.exe'" | Where-Object { $_.CommandLine -like '*abrir --mantener*' })
 }
-# Mientras se comparte, despierta.ps1 evita que la PC se suspenda por inactividad (termina sola al apagar el sistema).
-function Despiertas {
-    return @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like '*despierta.ps1*' })
+# Acceso desde otras computadoras: tunel.ps1 (oculto) mantiene abierto el enlace de Microsoft y la PC despierta.
+function Tuneles {
+    return @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like '*tunel.ps1*' })
 }
-function Mantener-Despierta {
-    if (-not $Compartir -or (Despiertas).Count -gt 0) { return }
-    $script = Join-Path $PSScriptRoot 'despierta.ps1'
+function Abrir-Tunel {
+    if (-not $Compartir -or (Tuneles).Count -gt 0) { return }
+    $script = Join-Path $PSScriptRoot 'tunel.ps1'
+    if (-not (Test-Path $script)) { return }
     Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden `
         -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', (Comillas $script))
+    Anotar 'acceso desde otras computadoras iniciado'
 }
 function Encender {
-    Mantener-Despierta
+    Abrir-Tunel
     if ((Mantenedores).Count -gt 0) { return }
     Wsl @('-d', $Distro, '-u', 'root', '--', 'service', 'docker', 'start') -Esperar   # como root: no pide contrasena
     Wsl @('-d', $Distro, '--cd', $Proyecto, '--', 'bash', 'ranking.sh', 'abrir', '--mantener', '--sin-navegador')
@@ -62,7 +64,8 @@ function Abrir-Ventana($destino) {
 if ($Apagar) {
     Wsl @('-d', $Distro, '--cd', $Proyecto, '--', 'bash', 'ranking.sh', 'detener') -Esperar
     foreach ($m in Mantenedores) { Stop-Process -Id $m.ProcessId -Force }
-    foreach ($m in Despiertas) { Stop-Process -Id $m.ProcessId -Force }
+    foreach ($m in Tuneles) { Stop-Process -Id $m.ProcessId -Force }
+    Get-Process -Name devtunnel -ErrorAction SilentlyContinue | Stop-Process -Force
     Anotar 'sistema apagado'
     exit 0
 }
