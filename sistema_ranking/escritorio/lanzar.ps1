@@ -65,7 +65,7 @@ if ($Apagar) {
     Wsl @('-d', $Distro, '--cd', $Proyecto, '--', 'bash', 'ranking.sh', 'detener') -Esperar
     foreach ($m in Mantenedores) { Stop-Process -Id $m.ProcessId -Force }
     foreach ($m in Tuneles) { Stop-Process -Id $m.ProcessId -Force }
-    Get-Process -Name devtunnel -ErrorAction SilentlyContinue | Stop-Process -Force
+    foreach ($d in @(Get-Process -Name devtunnel -ErrorAction SilentlyContinue)) { Stop-Process -Id $d.Id -Force }
     Anotar 'sistema apagado'
     exit 0
 }
