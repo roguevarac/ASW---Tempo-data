@@ -320,8 +320,8 @@ filtros abarcan todos los registros.</p>
   <tr><td>BO ID, C/A, % Mech BO</td><td>Código de la obra en BO, su C/A (song owner) y el porcentaje mecánico, del
     Reporte BackOffice.</td></tr>
   <tr><td>Estado, Reclamos</td><td>Datos de BO: estado de la obra y reclamos (counterclaims).</td></tr>
-  <tr><td>Estado de trabajo</td><td>Resultado de la comparación entre Tempo y BO (ver abajo). Puede modificarse
-    manualmente.</td></tr>
+  <tr><td>Estado de trabajo</td><td>Resultado de la comparación entre Tempo y BO (ver abajo), con una etiqueta por
+    estado: rojo para los problemas, verde para OK y azul para los estados marcados a mano.</td></tr>
   <tr><td>Ticket</td><td>Número del ticket enviado cuando la obra está mal registrada. Se escribe en la celda y se
     guarda al salir de ella o al presionar Enter.</td></tr>
   <tr><td>Fecha</td><td>Fecha del ticket. Se escribe como DDMMAAAA (por ejemplo, 26092026) y se muestra como
@@ -347,8 +347,9 @@ y REVISAR % aparece al filtrar por cada uno. En la descarga, los problemas van s
     territorio) y no hay reclamo ni otro estado de BO.</li>
 </ul>
 <p>El estado se recalcula con cada carga de un Reporte BackOffice o Tempo Control. Los estados automáticos los define
-siempre el sistema. Para registrar otro caso, seleccioná <b>duplicada</b> o <b>dif de split</b>: esos estados se
-mantienen aunque se carguen reportes nuevos.</p>
+siempre el sistema. Para registrar otro caso, presioná <b>Marcar</b> en la celda y seleccioná <b>duplicada</b> o
+<b>dif de split</b>: esos estados se mantienen aunque se carguen reportes nuevos. Para que el sistema vuelva a calcular
+el estado, presioná <b>Marcar</b> y seleccioná <b>Automático</b>.</p>
 <h3>Filtros y descarga</h3>
 <ul>
   <li><b>País</b> y <b>Desde / Hasta</b> (semanas del chart).</li>

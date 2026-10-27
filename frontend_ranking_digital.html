@@ -77,6 +77,7 @@ tbody tr.is-deleted{opacity:0.45;}
 .badge.unc{background:var(--blue-bg);color:var(--blue);}
 .badge.pct{background:var(--red-bg);color:var(--red);}
 .estados{display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
+.estados .marcar{margin-top:2px;padding:2px 8px;font-size:11px;}
 .badge.estado-tr{background:var(--red-bg);color:var(--red);}
 .rowbtn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:11.5px;padding:3px 6px;}
 .rowbtn:hover{color:var(--red);}
@@ -210,7 +211,27 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const COUNTRIES = ['AR','CL','PE','UY','PY','CO','EC','MX'];
 const COUNTRY_ALIASES = { ar:'AR', arg:'AR', cl:'CL', chl:'CL', pe:'PE', per:'PE', uy:'UY', ury:'UY', py:'PY', pry:'PY', co:'CO', col:'CO', ec:'EC', ecu:'EC', mx:'MX', mex:'MX' };
-const ESTADO_TRABAJO_OPTIONS = ['RECLAMO ACTIVO','REVISAR NOT WORK','REVISAR %','OK BO-Tempo','duplicada','dif de split'];
+// Estados que se marcan a mano (los demás los calcula el sistema y se muestran como etiquetas).
+const ESTADOS_MANUALES = ['duplicada','dif de split'];
+
+// Estado de trabajo: una etiqueta por problema (rojo), OK (verde) o manual (azul). Quien puede editar tiene un botón
+// para marcar un estado manual o volver al automático.
+function celdaEstadoTrabajo(r){
+  const v = r.estado_trabajo || '';
+  const etiquetas = v ? v.split(' / ').map(e => {
+    const clase = ESTADOS_MANUALES.includes(e) ? 'unc' : e.startsWith('OK') ? 'ok' : 'estado-tr';
+    return `<span class="badge ${clase}">${esc(e)}</span>`;
+  }).join('') : '—';
+  if(!(canWrite() && r.bo_report_id)) return `<div class="estados">${etiquetas}</div>`;
+  if(state.editEstado === r.bo_report_id){
+    const actual = ESTADOS_MANUALES.includes(v) ? v : '';
+    return `<select class="edit-field" data-field-bo="estado_trabajo" data-id="${r.bo_report_id}">
+      <option value=""${actual===''?' selected':''}>Automático</option>
+      ${ESTADOS_MANUALES.map(o=>`<option value="${o}"${actual===o?' selected':''}>${o}</option>`).join('')}
+    </select>`;
+  }
+  return `<div class="estados">${etiquetas}<button class="rowbtn marcar" data-edit-estado="${r.bo_report_id}" title="Marcar duplicada o dif de split">Marcar</button></div>`;
+}
 const ESTADOS = ['ok','duplicada','uncontrolled','porcentaje_incorrecto'];
 
 let state = {
@@ -219,7 +240,7 @@ let state = {
   dateFromT: '', dateToT: '',
   dateFrom: '', dateTo: '', masterCountry: '', history: null, historyLoading: false,
   master: [], territoryControl: [], uploads: [], loading: true,
-  uploadQueue: [], uploadIndex: -1, uploading: false,
+  uploadQueue: [], uploadIndex: -1, uploading: false, editEstado: null,
   historial: null, histTab: 'youtube', histPais: '', controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
   envioDialog: null,
   loginModo: 'ingresar', loginAviso: '',
@@ -464,6 +485,7 @@ async function updateSeguimiento(el){
 }
 
 async function updateBoReportField(id, field, value){
+  if(field === 'estado_trabajo') state.editEstado = null;
   const patch = {}; patch[field] = value === '' ? null : value;
   await sb.from('territory_bo_report').update(patch).eq('id', id);
   loadAll();
@@ -1281,18 +1303,7 @@ function renderTerritory(){
       <td class="num">${r.mech_bo!==null && r.mech_bo!==undefined?r.mech_bo+'%':'—'}</td>
       <td>${r.estado || '—'}</td>
       <td>${r.reclamos || '—'}</td>
-      <td>${(r.estado_trabajo||'').includes(' / ')
-            ? `<div class="estados">${r.estado_trabajo.split(' / ').map(e=>`<span class="badge estado-tr">${esc(e)}</span>`).join('')}
-                 ${(canWrite() && r.bo_report_id) ? `<select class="edit-field" data-field-bo="estado_trabajo" data-id="${r.bo_report_id}">
-                   <option value="${esc(r.estado_trabajo)}" selected>Cambiar a...</option>
-                   ${ESTADO_TRABAJO_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}
-                 </select>` : ''}</div>`
-          : (canWrite() && r.bo_report_id)
-            ? `<select class="edit-field" data-field-bo="estado_trabajo" data-id="${r.bo_report_id}">
-                 <option value=""${!r.estado_trabajo?' selected':''}>—</option>
-                 ${(r.estado_trabajo&&!ESTADO_TRABAJO_OPTIONS.includes(r.estado_trabajo)?[r.estado_trabajo]:[]).concat(ESTADO_TRABAJO_OPTIONS).map(o=>`<option value="${o}"${r.estado_trabajo===o?' selected':''}>${o}</option>`).join('')}
-               </select>`
-            : (r.estado_trabajo || '—')}</td>
+      <td>${celdaEstadoTrabajo(r)}</td>
       <td>${canWrite() ? `<input class="edit-field corto" data-field-seg="ticket" data-track="${r.track_master_id}" data-pais="${r.pais_code}" value="${esc(r.ticket || '')}" placeholder="—">` : esc(r.ticket || '—')}</td>
       <td>${canWrite() ? `<input class="edit-field corto" data-field-seg="fecha" data-track="${r.track_master_id}" data-pais="${r.pais_code}" value="${fechaTicket(r)}" placeholder="DDMMAAAA">` : (fechaTicket(r) || '—')}</td>
       <td><button class="rowbtn" data-history-track="${r.track_master_id}" data-history-pais="${r.pais_code}">Show prior</button></td>
@@ -2040,7 +2051,12 @@ function attachAppEvents(){
   document.querySelectorAll('[data-field-bo]').forEach(el => {
     const handler = () => updateBoReportField(el.dataset.id, el.dataset.fieldBo, el.value);
     if(el.tagName === 'SELECT') el.onchange = handler; else el.onblur = handler;
+    if(el.dataset.fieldBo === 'estado_trabajo'){
+      el.focus();
+      el.onblur = () => { if(state.editEstado){ state.editEstado = null; render(); } };
+    }
   });
+  document.querySelectorAll('[data-edit-estado]').forEach(b => b.onclick = () => { state.editEstado = b.dataset.editEstado; render(); });
 
   document.querySelectorAll('[data-del-master]').forEach(b => b.onclick = () => softDelete('master', b.dataset.delMaster));
   document.querySelectorAll('[data-restore-master]').forEach(b => b.onclick = () => restore('master', b.dataset.restoreMaster));

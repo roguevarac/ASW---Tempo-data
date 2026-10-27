@@ -284,6 +284,22 @@ with sync_playwright() as p:
     pag.locator('[data-history-track]').first.click(); pag.wait_for_selector("#closeHistory", timeout=5000)
     check("histórico de cambios abre", pag.is_visible("#closeHistory"))
     pag.click("#closeHistory")
+    celda = lambda: pag.locator("tbody tr", has=pag.locator("[data-edit-estado], [data-field-bo]")).first.locator("td").nth(11)
+    check("estado de trabajo: etiquetas y botón Marcar, sin desplegable a la vista",
+          celda().locator(".badge").count() >= 1 and celda().locator("select").count() == 0
+          and celda().locator("[data-edit-estado]").count() == 1, celda().inner_html())
+    celda().locator("[data-edit-estado]").click(); pag.wait_for_timeout(300)
+    check("Marcar ofrece solo Automático y los estados manuales",
+          celda().locator("option").all_inner_texts() == ["Automático", "duplicada", "dif de split"], celda().inner_html())
+    celda().locator("select").select_option("duplicada"); pag.wait_for_timeout(1200)
+    check("marcar 'duplicada' la guarda y se muestra como etiqueta",
+          sqlq("select estado_trabajo from territory_bo_report where pais_code = 'AR'") == "duplicada"
+          and celda().locator(".badge").inner_text() == "duplicada", celda().inner_html())
+    celda().locator("[data-edit-estado]").click(); pag.wait_for_timeout(300)
+    celda().locator("select").select_option(""); pag.wait_for_timeout(1200)
+    check("volver a Automático recalcula el estado",
+          sqlq("select estado_trabajo from territory_bo_report where pais_code = 'AR'") not in ("duplicada", None, ""),
+          sqlq("select estado_trabajo from territory_bo_report where pais_code = 'AR'"))
 
     # ---- reporte BO: identificadas desde la última descarga (contador + descarga + copia en el bucket + seguimiento)
     pag.click('[data-tab="master"]'); pag.wait_for_timeout(800)
