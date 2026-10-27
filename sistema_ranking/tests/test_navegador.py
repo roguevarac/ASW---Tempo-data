@@ -139,10 +139,23 @@ with sync_playwright() as p:
     check("con todos los países pide elegir uno para ver la fecha",
           ultima_carga() == "Seleccionar país para ver fecha de última carga", ultima_carga())
     check("el pie de página ya no menciona Supabase", "Supabase" not in pag.inner_text("footer"), pag.inner_text("footer"))
-    pag.select_option("#masterCountry", "AR"); pag.wait_for_timeout(1500)
+    def aceptar_filtro():
+        pag.wait_for_selector("#okFiltro", timeout=15000)
+        texto = pag.inner_text(".aviso-filtro")
+        pag.click("#okFiltro"); pag.wait_for_selector("#okFiltro", state="detached")
+        return texto
+    total_todas = int(sqlq("select count(*) from tracks_master where deleted_at is null"))
+    total_ar = int(sqlq("select count(distinct track_master_id) from territory_tracks where pais_code = 'AR' and deleted_at is null"))
+    pag.select_option("#masterCountry", "AR")
+    aviso = aceptar_filtro()
+    check("al filtrar aparece un aviso con el filtro, la cantidad de obras que se ven ahora y la de antes",
+          "Filtro aplicado" in aviso and "País: AR" in aviso and f"{total_ar} obra" in aviso and f"Antes: {total_todas} obra" in aviso, aviso)
+    check("el filtro queda a la vista arriba de la tabla y el desplegable resaltado",
+          f"Filtros aplicados: País: AR · {total_ar} obra" in pag.inner_text("#filtroActivo")
+          and "filtro-on" in pag.get_attribute("#masterCountry", "class"), pag.inner_text("body")[:300])
     check("país AR: fecha de Spotify de AR y YouTube sin cargas",
           ultima_carga() == "Último Spotify cargado (AR): 2026-10-08\nÚltimo YouTube cargado (AR): —", ultima_carga())
-    pag.select_option("#masterCountry", "UY"); pag.wait_for_timeout(1500)
+    pag.select_option("#masterCountry", "UY"); aceptar_filtro()
     check("país UY: fecha de YouTube de UY y Spotify sin cargas",
           ultima_carga() == "Último Spotify cargado (UY): —\nÚltimo YouTube cargado (UY): 2026-10-01", ultima_carga())
     pag.click('[data-tab="history"]'); pag.wait_for_timeout(500)
@@ -150,7 +163,10 @@ with sync_playwright() as p:
     pag.click('[data-tab="territory"]'); pag.wait_for_timeout(500)
     check("en la tabla por territorio, sin país elegido, pide elegir uno",
           ultima_carga() == "Seleccionar país para ver fecha de última carga", ultima_carga())
-    pag.click('[data-tab="master"]'); pag.select_option("#masterCountry", ""); pag.wait_for_timeout(1500)
+    pag.click('[data-tab="master"]'); pag.select_option("#masterCountry", "")
+    aviso = aceptar_filtro()
+    check("al quitar el filtro el aviso lo indica y desaparece la línea de filtros",
+          "Filtros quitados" in aviso and pag.locator("#filtroActivo").count() == 0, aviso)
 
     # ---- nombres de archivo de los charts: país, semana y plataforma salen del nombre
     nombres = {

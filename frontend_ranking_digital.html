@@ -132,6 +132,9 @@ select.edit-field{font-family:'IBM Plex Sans',sans-serif;}
 .hist-sec{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin:22px 0 6px;}
 tr.clic{cursor:pointer;}
 tr.clic:hover td{background:var(--panel-raised);}
+.filtro-activo{margin:-4px 0 10px;padding:8px 12px;border:1px solid var(--brass);border-radius:3px;background:var(--panel-raised);font-size:12.5px;}
+.filtro-on{border-color:var(--brass) !important;box-shadow:0 0 0 1px var(--brass);}
+.aviso-filtro .n{font-size:28px;font-weight:600;margin:6px 0 2px;}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:100;}
 .modal{background:var(--panel);border:1px solid var(--line);border-radius:4px;width:min(1500px,96vw);max-height:88vh;overflow:auto;padding:22px 24px;}
 .modal h2{font-size:15px;margin:0 0 4px;font-family:'Space Grotesk',sans-serif;}
@@ -317,6 +320,50 @@ async function loadTerritory(){
     estado_trabajo: op.filter(x => x.campo === 'estado_trabajo').map(x => x.valor),
   };
   state.territoryStale = false;
+}
+
+// Filtros aplicados en la pestaña activa, para mostrarlos ("País: AR · Desde: 01/01/2025").
+function fechaCorta(f){ const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(f || ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : f; }
+function filtrosActivos(){
+  const pais = state.activeTab === 'territory' ? state.territoryCountry : state.masterCountry;
+  const f = [];
+  if(pais) f.push(`País: ${pais}`);
+  if(state.dateFrom) f.push(`Desde: ${fechaCorta(state.dateFrom)}`);
+  if(state.dateTo) f.push(`Hasta: ${fechaCorta(state.dateTo)}`);
+  if(state.activeTab === 'territory'){
+    if(state.reclamosFilter) f.push(`Reclamos: ${state.reclamosFilter}`);
+    if(state.estadoTrabajoFilter) f.push(`Estado de trabajo: ${state.estadoTrabajoFilter}`);
+  }
+  return f;
+}
+function totalActivo(){ return state.activeTab === 'territory' ? state.territoryTotal : state.masterTotal; }
+
+// Aplica un cambio de filtro y muestra cuántas obras se ven ahora (antes y después), con un botón Aceptar.
+async function aplicarFiltro(cambio, recargar = loadAll){
+  const antes = totalActivo();
+  cambio();
+  await recargar();
+  state.avisoFiltro = { tabla: state.activeTab, antes, ahora: totalActivo(), filtros: filtrosActivos() };
+  render();
+  const ok = document.getElementById('okFiltro');
+  if(ok) ok.focus();
+}
+
+function renderAvisoFiltro(){
+  const a = state.avisoFiltro;
+  if(!a) return '';
+  const cosa = a.tabla === 'territory' ? (n) => `${fmtNum(n)} ${n === 1 ? 'registro' : 'registros'} (obra y territorio)`
+                                       : (n) => `${fmtNum(n)} ${n === 1 ? 'obra' : 'obras'}`;
+  return `
+  <div class="modal-bg" id="avisoFiltroBg">
+    <div class="modal small aviso-filtro">
+      <h2 class="display">${a.filtros.length ? 'Filtro aplicado' : 'Filtros quitados'}</h2>
+      <p class="sub">${a.filtros.length ? a.filtros.join(' · ') : 'Se muestran todos los registros.'}</p>
+      ${a.ahora ? `<div class="n mono">${cosa(a.ahora)}</div><p class="sub">Antes: ${cosa(a.antes)}.</p>`
+                : `<div class="n mono">Sin resultados</div><p class="sub">No hay registros con estos filtros. Antes: ${cosa(a.antes)}.</p>`}
+      <button class="btn primary" id="okFiltro">Aceptar</button>
+    </div>
+  </div>`;
 }
 
 // Recarga lo que depende de los filtros. La tabla por territorio se pide recién cuando se abre su pestaña.
@@ -1129,12 +1176,12 @@ function renderMaster(){
   <div class="toolbar">
     <div class="toolbar-left">
       <input class="search" placeholder="Buscar por track, artista o tempo_id" value="${state.search}" id="searchMaster">
-      <select id="masterCountry">
+      <select id="masterCountry" class="${state.masterCountry ? 'filtro-on' : ''}">
         <option value="">Todos los países</option>
         ${COUNTRIES.map(c=>`<option value="${c}" ${state.masterCountry===c?'selected':''}>${c}</option>`).join('')}
       </select>
-      <label class="check">Desde <input type="date" class="edit-field" style="width:auto" id="dateFrom" value="${state.dateFrom}"></label>
-      <label class="check">Hasta <input type="date" class="edit-field" style="width:auto" id="dateTo" value="${state.dateTo}"></label>
+      <label class="check">Desde <input type="date" class="edit-field ${state.dateFrom ? 'filtro-on' : ''}" style="width:auto" id="dateFrom" value="${state.dateFrom}"></label>
+      <label class="check">Hasta <input type="date" class="edit-field ${state.dateTo ? 'filtro-on' : ''}" style="width:auto" id="dateTo" value="${state.dateTo}"></label>
       ${(state.dateFrom||state.dateTo||state.masterCountry)?`<button class="btn" id="clearFilters">Limpiar</button>`:''}
     </div>
     <div style="display:flex;gap:10px;align-items:center;">
@@ -1142,6 +1189,7 @@ function renderMaster(){
       <button class="btn primary" id="exportMaster"><i>&#8595;</i> Descargar CSV</button>
     </div>
   </div>
+  ${filtrosActivos().length ? `<div class="filtro-activo" id="filtroActivo">Filtros aplicados: ${filtrosActivos().join(' · ')} · <b>${fmtNum(state.masterTotal)} ${state.masterTotal === 1 ? 'obra' : 'obras'}</b></div>` : ''}
   ${state.masterConteo ? `<div class="conteo-id">Identificadas: ${fmtNum(state.masterConteo.identificadas)} · Sin identificar: ${fmtNum(state.masterConteo.sin)}</div>` : ''}
   <datalist id="marcadoresTempo">${MARCADORES_TEMPO.map(m => `<option value="${m}">`).join('')}</datalist>
   <table><thead><tr><th style="width:70%">Track - Artista</th><th>Tempo ID</th></tr></thead>
@@ -1178,18 +1226,18 @@ function renderTerritory(){
   return `
   <div class="toolbar">
     <div class="toolbar-left">
-      <select id="countryFilter">
+      <select id="countryFilter" class="${state.territoryCountry ? 'filtro-on' : ''}">
         <option value="">Todos los países</option>
         ${COUNTRIES.map(c=>`<option value="${c}" ${state.territoryCountry===c?'selected':''}>${c}</option>`).join('')}
       </select>
-      <label class="check">Desde <input type="date" class="edit-field" style="width:auto" id="dateFromT" value="${state.dateFrom}"></label>
-      <label class="check">Hasta <input type="date" class="edit-field" style="width:auto" id="dateToT" value="${state.dateTo}"></label>
+      <label class="check">Desde <input type="date" class="edit-field ${state.dateFrom ? 'filtro-on' : ''}" style="width:auto" id="dateFromT" value="${state.dateFrom}"></label>
+      <label class="check">Hasta <input type="date" class="edit-field ${state.dateTo ? 'filtro-on' : ''}" style="width:auto" id="dateToT" value="${state.dateTo}"></label>
       ${(state.dateFrom||state.dateTo)?`<button class="btn" id="clearFiltersT">Limpiar fechas</button>`:''}
-      <select id="reclamosFilter">
+      <select id="reclamosFilter" class="${state.reclamosFilter ? 'filtro-on' : ''}">
         <option value="">Reclamos: todos</option>
         ${reclamosOptions.map(v=>`<option value="${v}" ${state.reclamosFilter===v?'selected':''}>${v}</option>`).join('')}
       </select>
-      <select id="estadoTrabajoFilter">
+      <select id="estadoTrabajoFilter" class="${state.estadoTrabajoFilter ? 'filtro-on' : ''}">
         <option value="">Estado de trabajo: todos</option>
         ${estadoTrabajoOptions.map(v=>`<option value="${v}" ${state.estadoTrabajoFilter===v?'selected':''}>${v}</option>`).join('')}
       </select>
@@ -1197,6 +1245,7 @@ function renderTerritory(){
     </div>
     <button class="btn primary" id="exportTerritory"><i>&#8595;</i> Descargar CSV${state.territoryCountry?` (${state.territoryCountry})`:''}</button>
   </div>
+  ${filtrosActivos().length ? `<div class="filtro-activo" id="filtroActivo">Filtros aplicados: ${filtrosActivos().join(' · ')} · <b>${fmtNum(state.territoryTotal)} ${state.territoryTotal === 1 ? 'registro' : 'registros'}</b></div>` : ''}
   <table><thead><tr>
     <th>País</th><th>Track - Artista</th><th>Created date</th><th>Tempo ID</th>
     <th class="num">% Perf Tempo</th><th class="num">% Mech Tempo</th><th>BO ID</th><th>C/A</th><th class="num">% Mech BO</th>
@@ -1837,7 +1886,7 @@ function render(){
     ${renderTopbar()}${renderTabs()}
     <div class="panel-body">${renderBody()}</div>
     <footer><span>Auditor de Rankings Digitales</span><span>${rows_count()}</span></footer>
-  </div>${renderHistoryModal()}${renderEnvioDialog()}`;
+  </div>${renderHistoryModal()}${renderEnvioDialog()}${renderAvisoFiltro()}`;
   attachAppEvents();
   if(state.activeTab === 'panel') attachPanelEvents();
 }
@@ -1891,26 +1940,35 @@ function attachAppEvents(){
   if(sT) sT.oninput = (e) => buscar(e.target.value, 'searchTerritory');
 
   const cf = document.getElementById('countryFilter');
-  if(cf) cf.onchange = (e) => { state.territoryCountry = state.lastCountry = e.target.value; loadAll(); };
+  if(cf) cf.onchange = (e) => aplicarFiltro(() => { state.territoryCountry = state.lastCountry = e.target.value; });
   const mc = document.getElementById('masterCountry');
-  if(mc) mc.onchange = (e) => { state.masterCountry = state.lastCountry = e.target.value; loadAll(); };
+  if(mc) mc.onchange = (e) => aplicarFiltro(() => { state.masterCountry = state.lastCountry = e.target.value; });
 
   ['dateFrom','dateFromT'].forEach(id => {
     const el = document.getElementById(id);
-    if(el) el.onchange = (e) => { state.dateFrom = e.target.value; loadAll(); };
+    if(el) el.onchange = (e) => aplicarFiltro(() => { state.dateFrom = e.target.value; });
   });
   ['dateTo','dateToT'].forEach(id => {
     const el = document.getElementById(id);
-    if(el) el.onchange = (e) => { state.dateTo = e.target.value; loadAll(); };
+    if(el) el.onchange = (e) => aplicarFiltro(() => { state.dateTo = e.target.value; });
   });
   ['clearFilters','clearFiltersT'].forEach(id => {
     const el = document.getElementById(id);
-    if(el) el.onclick = () => { state.dateFrom=''; state.dateTo=''; state.masterCountry=''; loadAll(); };
+    if(el) el.onclick = () => aplicarFiltro(() => { state.dateFrom=''; state.dateTo=''; state.masterCountry=''; });
   });
+  const soloTerritorio = async () => { state.territoryPage = 0; await loadTerritory(); };
   const rf = document.getElementById('reclamosFilter');
-  if(rf) rf.onchange = async (e) => { state.reclamosFilter = e.target.value; state.territoryPage = 0; await loadTerritory(); render(); };
+  if(rf) rf.onchange = (e) => aplicarFiltro(() => { state.reclamosFilter = e.target.value; }, soloTerritorio);
   const etf = document.getElementById('estadoTrabajoFilter');
-  if(etf) etf.onchange = async (e) => { state.estadoTrabajoFilter = e.target.value; state.territoryPage = 0; await loadTerritory(); render(); };
+  if(etf) etf.onchange = (e) => aplicarFiltro(() => { state.estadoTrabajoFilter = e.target.value; }, soloTerritorio);
+  const okF = document.getElementById('okFiltro');
+  const cerrarAviso = () => { state.avisoFiltro = null; render(); };
+  if(okF){
+    okF.onclick = cerrarAviso;
+    okF.onkeydown = (e) => { if(e.key === 'Escape') cerrarAviso(); };
+  }
+  const bgF = document.getElementById('avisoFiltroBg');
+  if(bgF) bgF.onclick = (e) => { if(e.target === bgF) cerrarAviso(); };
   const cc = document.getElementById('controlCountry');
   if(cc) cc.onchange = (e) => { state.controlCountry = e.target.value; };
 

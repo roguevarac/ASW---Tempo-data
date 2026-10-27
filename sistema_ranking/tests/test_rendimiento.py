@@ -136,13 +136,16 @@ with sync_playwright() as p:
     total_cl = sql("select count(*) from fn_territory_view(p_pais => 'CL')")
     medir("filtrar por territorio", lambda: pag.select_option("#countryFilter", "CL"),
           f"() => ({pie}).endsWith('{int(total_cl):,} registros de territorio'.replace(/,/g, '.'))", lambda: pag.inner_text("footer"))
+    pag.click("#okFiltro")
     check("el filtro por territorio muestra solo ese territorio",
           pag.evaluate("() => [...document.querySelectorAll('tbody tr')].every(tr => tr.cells[0].innerText === 'CL')"))
     pag.select_option("#countryFilter", "")
+    pag.wait_for_selector("#okFiltro", timeout=60000); pag.click("#okFiltro")
     pag.wait_for_function(f"() => ({pie}).includes('{total_t:,} registros'.replace(/,/g, '.'))", timeout=60000)
     medir("filtrar por reclamos", lambda: pag.select_option("#reclamosFilter", "Sí"),
           f"() => ({pie}).endsWith('{int(sql(chr(10).join(['select count(*) from fn_territory_view() where reclamos = ' + chr(39) + 'Sí' + chr(39)]))):,} registros de territorio'.replace(/,/g, '.'))",
           lambda: pag.inner_text("footer"))
+    pag.wait_for_selector("#okFiltro", timeout=60000); pag.click("#okFiltro")
     pag.click('[data-tab="master"]')
     medir("cartel de descarga del reporte BO con sus cantidades", lambda: pag.click("#exportBo"),
           "() => document.querySelector('[data-envio-modo=\"todas\"]') !== null")
