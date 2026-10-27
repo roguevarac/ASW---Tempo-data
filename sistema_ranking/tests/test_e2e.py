@@ -126,7 +126,15 @@ check("% Mech de BO distinto del de Tempo -> 'REVISAR %'", estado_ar() == "REVIS
 est.rpc("fn_upsert_bo_report_batch", {"p_rows": [{"tempo_id": tid, "bo_status": "SONG", "reclamos": "No", "mech_bo": "100"}], "p_pais_code": "AR"})
 check("estado de BO distinto de WORK -> 'REVISAR NOT WORK'", estado_ar() == "REVISAR NOT WORK", estado_ar())
 est.rpc("fn_upsert_bo_report_batch", {"p_rows": [{"tempo_id": tid, "bo_status": "SONG", "reclamos": "Active", "mech_bo": "50"}], "p_pais_code": "AR"})
-check("reclamo en BO -> 'RECLAMO ACTIVO' (gana sobre los demás)", estado_ar() == "RECLAMO ACTIVO", estado_ar())
+check("varios problemas -> se muestran todos ('RECLAMO ACTIVO / REVISAR NOT WORK / REVISAR %')",
+      estado_ar() == "RECLAMO ACTIVO / REVISAR NOT WORK / REVISAR %", estado_ar())
+for problema in ("RECLAMO ACTIVO", "REVISAR NOT WORK", "REVISAR %"):
+    check(f"el filtro '{problema}' encuentra la obra con varios problemas",
+          sqlq(f"select count(*) from fn_territory_pagina(p_pais => 'AR', p_estado_trabajo => '{problema}')") == "1")
+check("las opciones del filtro de estado de trabajo van separadas por problema",
+      sqlq("select count(*) from fn_territory_opciones() where campo = 'estado_trabajo' and valor like '% / %'") == "0")
+est.rpc("fn_upsert_bo_report_batch", {"p_rows": [{"tempo_id": tid, "bo_status": "SONG", "reclamos": "", "mech_bo": "50"}], "p_pais_code": "AR"})
+check("NOT WORK y % distintos -> 'REVISAR NOT WORK / REVISAR %'", estado_ar() == "REVISAR NOT WORK / REVISAR %", estado_ar())
 est.rpc("fn_upsert_bo_report_batch", {"p_rows": [{"tempo_id": tid, "bo_status": "WORK", "reclamos": "", "mech_bo": "100"}], "p_pais_code": "AR"})
 check("sin reclamo, WORK y % iguales -> vuelve a 'OK BO-Tempo'", estado_ar() == "OK BO-Tempo", estado_ar())
 

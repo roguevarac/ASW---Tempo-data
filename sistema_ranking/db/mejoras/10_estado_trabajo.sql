@@ -1,12 +1,13 @@
 -- =====================================================================
 -- Mejora propia (no viene de Supabase): estado de trabajo con más casos (pedido del usuario, 28/10/2026).
 --
--- Automáticos, en este orden (gana el primero que se cumple):
+-- Problemas (una obra puede tener varios; se muestran todos, separados por " / ", y el filtro la encuentra por
+-- cualquiera de ellos):
 --   RECLAMO ACTIVO    el Reporte BackOffice informa un reclamo (columna Reclamos con un valor que no sea "sin reclamo")
 --   REVISAR NOT WORK  el estado de BO no es WORK: una obra que figura en los rankings tiene usos, así que debería estar
 --                     registrada como WORK
 --   REVISAR %         el % Mech de BO y el de Tempo no coinciden (antes "REVISAR")
---   OK BO-Tempo / OK - Obra AR / OK - Obra MX   como antes
+-- Sin problemas: OK BO-Tempo / OK - Obra AR / OK - Obra MX, como antes.
 -- Los manuales (duplicada, dif de split) no se pisan. Las filas ya cargadas se recalculan.
 -- Idempotente: se aplica en cada arranque (db/mejoras.sh).
 -- =====================================================================
@@ -22,6 +23,16 @@ AS $function$
            !~ '^(no|none|ninguno|ninguna|na|nan|null|0|false|sinreclamo|sinreclamos|resolved|resuelto|cerrado|closed|inactive|inactivo)$';
 $function$;
 
+-- Si el estado lo puso el sistema (todos sus elementos son automáticos): se recalcula. Los manuales no se tocan.
+CREATE OR REPLACE FUNCTION public.fn_estado_automatico(p_estado text)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+    select p_estado is null or string_to_array(p_estado, ' / ') <@ array['REVISAR', 'REVISAR %', 'RECLAMO ACTIVO',
+           'REVISAR NOT WORK', 'OK BO-Tempo', 'OK - Obra AR', 'OK - Obra MX'];
+$function$;
+
 CREATE OR REPLACE FUNCTION public.trg_bo_report_auto_revisar()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -30,10 +41,9 @@ declare
     v_mech_tempo numeric;
     v_oficina    text;
     v_pct        text;
+    v_problemas  text[] := '{}';
 begin
-    if new.estado_trabajo is null
-       or new.estado_trabajo in ('REVISAR', 'REVISAR %', 'RECLAMO ACTIVO', 'REVISAR NOT WORK',
-                                 'OK BO-Tempo', 'OK - Obra AR', 'OK - Obra MX') then
+    if fn_estado_automatico(new.estado_trabajo) then
 
         select tr.mech_pc, upper(unaccent(trim(coalesce(tr.originating_office, ''))))
           into v_mech_tempo, v_oficina
@@ -56,11 +66,16 @@ begin
             end if;
         end if;
 
-        new.estado_trabajo := case
-            when fn_reclamo_activo(new.reclamos) then 'RECLAMO ACTIVO'
-            when nullif(trim(coalesce(new.bo_status, '')), '') is not null
-                 and upper(trim(new.bo_status)) <> 'WORK' then 'REVISAR NOT WORK'
-            else v_pct end;
+        if fn_reclamo_activo(new.reclamos) then
+            v_problemas := array_append(v_problemas, 'RECLAMO ACTIVO');
+        end if;
+        if nullif(trim(coalesce(new.bo_status, '')), '') is not null and upper(trim(new.bo_status)) <> 'WORK' then
+            v_problemas := array_append(v_problemas, 'REVISAR NOT WORK');
+        end if;
+        if v_pct = 'REVISAR %' then
+            v_problemas := array_append(v_problemas, 'REVISAR %');
+        end if;
+        new.estado_trabajo := case when cardinality(v_problemas) > 0 then array_to_string(v_problemas, ' / ') else v_pct end;
     end if;
     return new;
 end;
@@ -68,6 +83,4 @@ $function$;
 
 -- Filas ya cargadas: se recalculan los estados automáticos (también los "REVISAR" de antes).
 UPDATE public.territory_bo_report SET estado_trabajo = estado_trabajo
-WHERE deleted_at IS NULL
-  AND (estado_trabajo IS NULL OR estado_trabajo IN ('REVISAR', 'REVISAR %', 'RECLAMO ACTIVO', 'REVISAR NOT WORK',
-                                                      'OK BO-Tempo', 'OK - Obra AR', 'OK - Obra MX'));
+WHERE deleted_at IS NULL AND fn_estado_automatico(estado_trabajo);

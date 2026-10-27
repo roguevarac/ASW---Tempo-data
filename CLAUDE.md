@@ -239,9 +239,11 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - Descartado: abrir la red local (WSL mirrored y el firewall piden admin, y sin HTTPS no se instala la PWA).
   - **Tempo ID en la tabla principal:** solo se tipean números; UNCONTROLLED/PENDING se eligen de la lista (`oninput`).
   - **Estado de trabajo (28/10/2026, `db/mejoras/10_estado_trabajo.sql`, reemplaza `trg_bo_report_auto_revisar`):**
-    RECLAMO ACTIVO (`fn_reclamo_activo`: Reclamos con valor que no sea vacío/No/None/0/N/A/resuelto) > REVISAR NOT WORK
-    (`bo_status` informado y distinto de WORK) > REVISAR % (ex "REVISAR") > OK BO-Tempo / OK - Obra AR/MX. Manuales
-    (duplicada, dif de split) no se pisan.
+    problemas RECLAMO ACTIVO (`fn_reclamo_activo`: Reclamos con valor que no sea vacío/No/None/0/N/A/resuelto),
+    REVISAR NOT WORK (`bo_status` informado y distinto de WORK) y REVISAR % (ex "REVISAR"); sin problemas, OK BO-Tempo /
+    OK - Obra AR/MX. **Una obra con varios problemas los muestra todos** ("REVISAR NOT WORK / REVISAR %", pedido del
+    usuario): el filtro (`fn_territory_pagina`) y las opciones separan por " / ". `fn_estado_automatico` decide qué se
+    recalcula; los manuales (duplicada, dif de split) no se pisan.
   - **Contador "Identificadas · Sin identificar"** arriba de la tabla principal (`.conteo-id`), no en el paginador.
   - **Dos perfiles (27/10/2026, pedido del usuario):** "Usuario estándar" y "Administrador" (= acceso al Panel de
     control, hoy solo rocio.guevara@sonymusicpub.com). El front muestra el perfil según `panel.acceso`, no el

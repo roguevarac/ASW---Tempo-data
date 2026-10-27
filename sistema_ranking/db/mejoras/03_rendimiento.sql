@@ -167,7 +167,7 @@ AS $function$
                and tr.deleted_at is null
         where (p_include_deleted or (u.deleted_at is null and tm.deleted_at is null))
           and (p_reclamos is null or coalesce(br.reclamos, '—') = p_reclamos)
-          and (p_estado_trabajo is null or coalesce(br.estado_trabajo, '—') = p_estado_trabajo)
+          and (p_estado_trabajo is null or p_estado_trabajo = any(string_to_array(coalesce(br.estado_trabajo, '—'), ' / ')))
           and fn_coincide_busqueda(p_buscar, tm.tempo_id, tm.track_artist_concat)
     )
     select b.*, count(*) over () as total
@@ -185,7 +185,8 @@ AS $function$
     select 'reclamos', v from (select distinct coalesce(reclamos, '—') as v from territory_bo_report where deleted_at is null
                                union select '—') s
     union all
-    select 'estado_trabajo', v from (select distinct coalesce(estado_trabajo, '—') as v from territory_bo_report where deleted_at is null
+    select 'estado_trabajo', v from (select distinct e as v from territory_bo_report,   -- cada problema por separado
+                                     unnest(string_to_array(coalesce(estado_trabajo, '—'), ' / ')) e where deleted_at is null
                                      union select '—') s
     order by 1, 2;
 $function$;

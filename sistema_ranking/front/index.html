@@ -1284,7 +1284,7 @@ function renderTerritory(){
       <td>${(canWrite() && r.bo_report_id)
             ? `<select class="edit-field" data-field-bo="estado_trabajo" data-id="${r.bo_report_id}">
                  <option value=""${!r.estado_trabajo?' selected':''}>—</option>
-                 ${ESTADO_TRABAJO_OPTIONS.map(o=>`<option value="${o}"${r.estado_trabajo===o?' selected':''}>${o}</option>`).join('')}
+                 ${(r.estado_trabajo&&!ESTADO_TRABAJO_OPTIONS.includes(r.estado_trabajo)?[r.estado_trabajo]:[]).concat(ESTADO_TRABAJO_OPTIONS).map(o=>`<option value="${o}"${r.estado_trabajo===o?' selected':''}>${o}</option>`).join('')}
                </select>`
             : (r.estado_trabajo || '—')}</td>
       <td>${canWrite() ? `<input class="edit-field corto" data-field-seg="ticket" data-track="${r.track_master_id}" data-pais="${r.pais_code}" value="${esc(r.ticket || '')}" placeholder="—">` : esc(r.ticket || '—')}</td>
