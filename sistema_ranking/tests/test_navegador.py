@@ -300,7 +300,7 @@ with sync_playwright() as p:
           panel()[:600])
     pag.click('[data-hist-tab="tempo"]'); pag.wait_for_timeout(300)
     check("Reportes Tempo Control: obras con Tempo ID y la carga de Tempo IDs",
-          "Obras de la tabla principal con Tempo ID: 2" in panel() and "tempo_ids.csv" in panel() and "Tempo IDs" in panel(), panel()[:600])
+          "Obras de la tabla principal con Tempo ID: 3" in panel() and "tempo_ids.csv" in panel() and "Tempo IDs" in panel(), panel()[:600])  # 3: con "Tema Identificado Despues"
     todo = "".join(pag.click(f'[data-hist-tab="{k}"]') or panel() for k in ("youtube", "spotify", "bo", "tempo"))
     check("las descargas (reporte BO y CSV generados) no aparecen como cargas",
           "reporte_bo_carga" not in todo and "tabla_principal" not in todo)
