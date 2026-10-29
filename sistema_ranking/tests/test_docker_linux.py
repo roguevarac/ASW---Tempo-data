@@ -481,8 +481,8 @@ services:
 volumes:
   tunel:
 """)
-    r = subprocess.run(["docker", "compose", "-p", PROYECTO_COMPOSE, "-f", str(viejo), "--profile", "compartir", "create",
-                        "--no-deps", "tunel"], capture_output=True, text=True)
+    r = subprocess.run(["docker", "compose", "-p", PROYECTO_COMPOSE, "-f", str(viejo), "--profile", "compartir", "up",
+                        "--no-start", "--no-deps", "tunel"], capture_output=True, text=True)
     dc("up", "-d", "--no-deps", "--force-recreate", "api")
     check("(contenedor del acceso anterior, unido a una API que ya no existe)", r.returncode == 0 and contenedor_tunel(todos=True), r.stderr[-400:])
     enlace = "https://auditor-rankings.tail-prueba.ts.net/"
