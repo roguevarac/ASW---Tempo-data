@@ -446,8 +446,9 @@ try:
     def en_tunel(*a):
         return dc("--profile", "compartir", "exec", "-T", "tunel", *a)
 
-    def contenedor_tunel():
-        return subprocess.run(["docker", "ps", "-q", "-f", f"name=^{PROYECTO_COMPOSE}-tunel-1$"], capture_output=True, text=True).stdout.strip()
+    def contenedor_tunel(todos=False):
+        return subprocess.run(["docker", "ps", *(["-a"] if todos else []), "-q", "-f", f"name=^{PROYECTO_COMPOSE}-tunel-1$"],
+                              capture_output=True, text=True).stdout.strip()
 
     def ultimo(nombre, titulo):
         return texto(nombre).split(titulo)[-1]
@@ -463,6 +464,27 @@ try:
     check("(imagen de Tailscale simulado)", r.returncode == 0, r.stderr[-400:])
     with open(config, "a") as f:
         f.write("IMAGEN_TUNEL=rk-prueba-tunel:simulado\n")
+    # Como en la PC (29/10/2026): quedó el contenedor "tunel" de la versión de Microsoft en Docker (27/10), unido a la red
+    # de la API; al recrearse la API (actualizar) apunta a una que ya no existe y Docker no lo puede arrancar.
+    viejo = base / "compose-tunel-27-10.yml"
+    viejo.write_text(f"""name: {PROYECTO_COMPOSE}
+services:
+  api:
+    image: {IMAGEN}
+  tunel:
+    image: {IMAGEN}
+    profiles: ["compartir"]
+    network_mode: "service:api"
+    command: ["sleep", "infinity"]
+    volumes:
+      - tunel:/tunel
+volumes:
+  tunel:
+""")
+    r = subprocess.run(["docker", "compose", "-p", PROYECTO_COMPOSE, "-f", str(viejo), "--profile", "compartir", "create",
+                        "--no-deps", "tunel"], capture_output=True, text=True)
+    dc("up", "-d", "--no-deps", "--force-recreate", "api")
+    check("(contenedor del acceso anterior, unido a una API que ya no existe)", r.returncode == 0 and contenedor_tunel(todos=True), r.stderr[-400:])
     enlace = "https://auditor-rankings.tail-prueba.ts.net/"
     p = ranking("compartir", "--automatico", entorno=dict(ENTORNO, PRUEBAS_ENLACE="1"))
     p.expect("login.tailscale.com/a/prueba123", timeout=300)
@@ -473,7 +495,8 @@ try:
     log = ultimo("compartir.log", "== Acceso desde otras computadoras")
     pedido = en_tunel("cat", "/var/lib/tailscale/funnel_pedido").stdout
     entorno_tunel = en_tunel("cat", "/var/lib/tailscale/entorno").stdout
-    check("compartir: abre el inicio de sesión de Tailscale, después la habilitación del enlace público, y muestra el enlace fijo",
+    check("compartir: reemplaza el contenedor viejo, abre el inicio de sesión de Tailscale, después la habilitación del enlace "
+          "público, y muestra el enlace fijo",
           codigo == 0 and "Enlace para compartir:" in log and enlace in log and valor("COMPARTIR_ENLACE") == "1", log[-1500:])
     check("...publica el sistema de esta PC (http://127.0.0.1:PUERTO) en segundo plano",
           f"funnel --bg --yes http://127.0.0.1:{valor('PUERTO')}" in pedido, pedido)
@@ -497,7 +520,7 @@ try:
     check("compartir --apagar: deja de compartir, apaga el contenedor y lo saca del Panel de control",
           valor("COMPARTIR_ENLACE") == "0" and not contenedor_tunel()
           and base_nueva("select count(*) from panel.servicios where servicio = 'tunel'") == "0", texto("compartir.log")[-400:])
-    subprocess.run(["docker", "run", "--rm", "--entrypoint", "sh", "-v", f"{PROYECTO_COMPOSE}_tunel:/var/lib/tailscale",
+    subprocess.run(["docker", "run", "--rm", "--entrypoint", "sh", "-v", f"{PROYECTO_COMPOSE}_tailscale:/var/lib/tailscale",
                     "rk-prueba-tunel:simulado", "-c", "rm -f /var/lib/tailscale/sesion /var/lib/tailscale/funnel; touch /var/lib/tailscale/sin_red"],
                    capture_output=True)
     codigo = fin(ranking("compartir", "--automatico", entorno=dict(ENTORNO, ESPERA_RED_TUNEL="3")))
@@ -505,7 +528,7 @@ try:
     check("si la red de la empresa no llega a Tailscale: lo explica (qué pedirle a IT) y queda como estaba, sin compartir",
           codigo != 0 and "Forbidden" in log and "controlplane.tailscale.com" in log and valor("COMPARTIR_ENLACE") == "0"
           and not contenedor_tunel(), log[-900:])
-    subprocess.run(["docker", "volume", "rm", f"{PROYECTO_COMPOSE}_tunel"], capture_output=True)
+    subprocess.run(["docker", "volume", "rm", f"{PROYECTO_COMPOSE}_tailscale", f"{PROYECTO_COMPOSE}_tunel"], capture_output=True)
 
     # ================================================================ respaldo y restauración
     antes = {t: base_nueva(f"select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from {t} x")

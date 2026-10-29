@@ -228,7 +228,7 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     uno"):** `bash ranking.sh compartir` → **Tailscale Funnel** (29/10/2026), servicio `tunel` de compose.
     - Enlace fijo `https://auditor-rankings.<red>.ts.net/`; `--apagar` deja de compartir.
     - Funcionamiento: perfil `compartir`, que `dc()` agrega con `COMPARTIR_ENLACE=1` + `IMAGEN_TUNEL`. Clave nueva a propósito: el mantenedor viejo (en memoria hasta reiniciar) lee `COMPARTIR` y pisaría el estado. Red del equipo, hacia
-      `127.0.0.1:PUERTO`. La sesión queda en el volumen `tunel`, y usa el proxy de la configuración y `certificados/`.
+      `127.0.0.1:PUERTO`. La sesión queda en el volumen `tailscale`, y usa el proxy de la configuración y `certificados/`.
     - Quien abre el enlace no necesita cuenta: lo protege el ingreso del sistema.
     - `compartir`: elige la imagen (Docker Hub, ghcr.io, mirror.gcr.io; Docker Hub dio 429 en las pruebas), abre en el
       navegador el `AuthURL` y después el enlace de habilitación de Funnel (`login.tailscale.com/f/...`), y comprueba.
@@ -242,7 +242,10 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
       - desde Windows, a José (`@sonymusicpub.com`) el ingreso con cuenta Microsoft le dio `HTTP ERROR 431` en
         `tunnels.api.visualstudio.com`, y el modo anónimo tampoco lo dejó entrar.
 
-      `retirar_devtunnel`, en `arrancar`, borra el túnel viejo, los archivos de Windows y `TUNEL_ID`.
+      `retirar_devtunnel`, en `arrancar`, borra el túnel viejo, los archivos de Windows y `TUNEL_ID`. `limpiar_tunel_viejo`
+      (en `arrancar` si se comparte) borra un contenedor `tunel` de otra imagen: en la PC quedaba el de Microsoft en Docker
+      (27/10), unido a la red de una API ya recreada, y con `--no-recreate` Docker intentaba arrancarlo ("joining network
+      namespace of container: No such container"). El volumen viejo `tunel` queda sin uso (Tailscale usa `tailscale`).
     - Descartados también:
       - Cloudflare Tunnel: dominio propio y puerto 7844;
       - ngrok gratuito: advertencia y límites.

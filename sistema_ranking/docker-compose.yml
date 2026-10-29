@@ -127,8 +127,8 @@ services:
 
   # Acceso desde otras computadoras (bash ranking.sh compartir): Tailscale Funnel publica la API en un enlace HTTPS fijo
   # (https://auditor-rankings.<red>.ts.net/). La conexión sale de esta PC por el puerto 443, con el proxy de la
-  # configuración; no abre puertos. La sesión de Tailscale queda en el volumen "tunel" (un archivo: no hace falta el
-  # llavero del sistema, que no existe en Docker). Red del equipo: llega a la API en 127.0.0.1:PUERTO, como el navegador.
+  # configuración; no abre puertos. La sesión de Tailscale queda en el volumen "tailscale" (un archivo: no hace falta el
+  # llavero del sistema, que no existe en Docker). El volumen "tunel" es del acceso anterior (Microsoft) y ya no se usa. Red del equipo: llega a la API en 127.0.0.1:PUERTO, como el navegador.
   # Solo arranca con COMPARTIR_ENLACE=1 (ranking.sh agrega el perfil "compartir").
   tunel:
     image: ${IMAGEN_TUNEL:-tailscale/tailscale:v1.104.4}
@@ -149,7 +149,7 @@ services:
       # Certificados de la empresa (certificados/*.crt), por si el proxy inspecciona HTTPS.
       SSL_CERT_DIR: /etc/ssl/certs:/certificados
     volumes:
-      - tunel:/var/lib/tailscale
+      - tailscale:/var/lib/tailscale
       - ./certificados:/certificados:ro
 
   # Herramientas de administración (migración, usuarios, respaldo). No arranca sola: se usa con "docker compose run".
@@ -175,4 +175,4 @@ volumes:
   exportacion:
   espejo_apagado:
   respaldos_apagado:
-  tunel:
+  tailscale:

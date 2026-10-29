@@ -234,7 +234,7 @@ bash ranking.sh compartir --apagar  # deja de compartir
 - La conexión sale de la PC por el puerto 443, como cualquier página web, con el proxy de la configuración. No abre
   puertos, no pide permisos de administrador y la API sigue escuchando solo en 127.0.0.1.
 - Quien abre el enlace no necesita ninguna cuenta: llega a la pantalla de ingreso del sistema.
-- La sesión de Tailscale queda en el volumen `tunel`, que es un archivo. El contenedor arranca y se detiene con el
+- La sesión de Tailscale queda en el volumen `tailscale`, que es un archivo. El contenedor arranca y se detiene con el
   sistema (`abrir`, `detener`, el lanzador de Windows), y el enlace vuelve solo.
 - Si el proxy de la empresa inspecciona HTTPS, usa los certificados de `certificados/` (`bash ranking.sh certificados`).
 - El mantenedor de Ubuntu pasa el estado al Panel de control cada minuto: Estado del sistema, con "Copiar enlace" y

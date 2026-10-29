@@ -393,6 +393,7 @@ arrancar() {
     T0="$(date +%s%N)"
     verificar_docker; instalado
     retirar_devtunnel
+    [ "$(valor COMPARTIR_ENLACE)" = 1 ] && limpiar_tunel_viejo
     T1="$(date +%s%N)"
     echo "Arrancando Auditor de Rankings Digitales..."
     # --no-recreate: si ya está funcionando, no lo reinicia (las versiones nuevas las aplica actualizar). Solo si
@@ -897,6 +898,17 @@ retirar_devtunnel() {
     # hasta reiniciar la PC) la lee cada minuto y, si siguiera en 1, informaría al Panel el estado del acceso viejo.
     quitar TUNEL_ID TUNEL_ACCESO COMPARTIR
     aviso "Se retiró el acceso anterior desde otras computadoras (enlace de Microsoft). Para habilitar el nuevo: bash ranking.sh compartir"
+}
+
+# Un contenedor "tunel" de otra imagen se borra antes de arrancar (la sesión de Tailscale está en su volumen). Pasó en la
+# PC (29/10/2026): quedaba el de Microsoft en Docker (27/10), unido a la red de una API que ya no existía, y como abrir
+# no recrea contenedores, Docker intentaba arrancar ese ("joining network namespace of container: No such container").
+limpiar_tunel_viejo() {
+    local id imagen; imagen="$(valor IMAGEN_TUNEL)"
+    for id in $(docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME:-ranking-digital}" \
+                              --filter "label=com.docker.compose.service=tunel" 2> /dev/null); do
+        [ "$(docker inspect -f '{{.Config.Image}}' "$id" 2> /dev/null)" = "$imagen" ] || docker rm -f "$id" > /dev/null 2>&1
+    done
 }
 
 # Estado de Tailscale en el contenedor "tunel", en una línea: estado|enlace de inicio de sesión|nombre|vencimiento|problema
