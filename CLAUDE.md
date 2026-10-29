@@ -224,19 +224,34 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   - **Filtros por pestaña:** cada tabla tiene su búsqueda (`searchMaster`, `searchTerritory`) y sus fechas
     (`dateFrom/dateTo`, `dateFromT/dateToT`); cambiar de pestaña no los borra. La tabla por territorio tiene
     "Limpiar" (`#clearFiltersT`) para todos sus filtros. Buscar "-" = sin Tempo ID (`fn_coincide_busqueda`, 03).
-  - **Acceso desde otras computadoras (27/10/2026, pedido del usuario: "la PWA tiene que poder usarse desde la laptop
-    de cada uno"):** `bash ranking.sh compartir` → Microsoft Dev Tunnels (enlace HTTPS fijo, solo cuentas de la empresa
-    por defecto; `--cualquiera`, `--apagar`).
-    - **Corre en Windows** (`devtunnel.exe` + `escritorio/tunel.ps1` en `%LOCALAPPDATA%\RankingDigital`). Primero
-      corrió en un servicio Docker y falló en la PC real: primero por falta de ICU, y después porque en Linux la
-      sesión de Microsoft se guarda en el llavero del sistema, que no existe en el contenedor ("Logged in" y en el
-      comando siguiente "Not logged in"). No volver a Docker.
-    - `tunel.ps1` lo inicia `lanzar.ps1` (`$Compartir`); evita la suspensión y deja `tunel-estado.json`/`tunel.log`.
-    - `relevar_tunel` (mantenedor cada minuto, `verificar`, `compartir`) lo pasa a `panel.latido('tunel')`.
-    - `ranking.sh` ejecuta `devtunnel.exe` directo desde WSL (interop) para el login.
-    - Pruebas: `test_tunel.py` (pwsh + `tests/devtunnel_simulado.sh`) y el relevo en `test_docker_linux.py`. La red de
-      esta sesión no llega a Microsoft: el túnel real se prueba en la PC.
-    - Descartado: abrir la red local (WSL mirrored y el firewall piden admin, y sin HTTPS no se instala la PWA).
+  - **Acceso desde otras computadoras (pedido del usuario: "la PWA tiene que poder usarse desde la laptop de cada
+    uno"):** `bash ranking.sh compartir` → **Tailscale Funnel** (29/10/2026), servicio `tunel` de compose.
+    - Enlace fijo `https://auditor-rankings.<red>.ts.net/`; `--apagar` deja de compartir.
+    - Funcionamiento: perfil `compartir`, que `dc()` agrega con `COMPARTIR_ENLACE=1` + `IMAGEN_TUNEL`. Clave nueva a propósito: el mantenedor viejo (en memoria hasta reiniciar) lee `COMPARTIR` y pisaría el estado. Red del equipo, hacia
+      `127.0.0.1:PUERTO`. La sesión queda en el volumen `tunel`, y usa el proxy de la configuración y `certificados/`.
+    - Quien abre el enlace no necesita cuenta: lo protege el ingreso del sistema.
+    - `compartir`: elige la imagen (Docker Hub, ghcr.io, mirror.gcr.io; Docker Hub dio 429 en las pruebas), abre en el
+      navegador el `AuthURL` y después el enlace de habilitación de Funnel (`login.tailscale.com/f/...`), y comprueba.
+      Si algo falla y no se compartía antes, queda sin compartir (`fallar_compartir`).
+    - Sin red hacia Tailscale: muestra el `Health` y qué pedirle a IT; con `x509`, `certificados`.
+    - Estado en el Panel: `relevar_tunel` → `panel.latido_tunel` (`db/mejoras/11_acceso_compartido.sql`). Interpreta
+      `tailscale status --json --peers=false` y `tailscale funnel status --json` en la base: Ubuntu no trae jq.
+    - Windows: solo `sin-suspension.ps1`, que lanza `lanzar.ps1` si `$Compartir`.
+    - **Microsoft Dev Tunnels quedó descartado; no volver a él:**
+      - en Docker no guarda la sesión (no hay llavero);
+      - desde Windows, a José (`@sonymusicpub.com`) el ingreso con cuenta Microsoft le dio `HTTP ERROR 431` en
+        `tunnels.api.visualstudio.com`, y el modo anónimo tampoco lo dejó entrar.
+
+      `retirar_devtunnel`, en `arrancar`, borra el túnel viejo, los archivos de Windows y `TUNEL_ID`.
+    - Descartados también:
+      - Cloudflare Tunnel: dominio propio y puerto 7844;
+      - ngrok gratuito: advertencia y límites.
+    - Pruebas:
+      - `test_docker_linux.py` con `tests/tailscale_simulado/` (misma salida que tailscale 1.104);
+      - `test_panel.py` (estados);
+      - `test_acceso_directo.py` (`sin-suspension.ps1`).
+    - La red de esta sesión bloquea Tailscale (403) y el clasificador no deja abrir un Funnel desde acá: el enlace real
+      se prueba en la PC.
   - **Tempo ID en la tabla principal:** solo se tipean números; UNCONTROLLED/PENDING se eligen de la lista (`oninput`).
   - **Estado de trabajo (28/10/2026, `db/mejoras/10_estado_trabajo.sql`, reemplaza `trg_bo_report_auto_revisar`):**
     problemas RECLAMO ACTIVO (`fn_reclamo_activo`: Reclamos con valor que no sea vacío/No/None/0/N/A/resuelto),

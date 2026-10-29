@@ -18,8 +18,8 @@
 #   bash ranking.sh espejo          copia a OneDrive (espejo de auditoría) los archivos cargados que falten
 #   bash ranking.sh certificados    toma los certificados de la empresa desde Windows (proxy que inspecciona HTTPS)
 #   bash ranking.sh acceso-directo  crea la aplicación "Auditor de Rankings Digitales" en Windows (escritorio, menú Inicio, inicio)
-#   bash ranking.sh compartir       enlace HTTPS para entrar desde otras computadoras (con la cuenta de la empresa)
-#                                   [--cualquiera: sin cuenta de Microsoft · --apagar: deja de compartir]
+#   bash ranking.sh compartir       enlace HTTPS fijo para entrar desde otras computadoras (Tailscale)
+#                                   [--apagar: deja de compartir]
 #   bash ranking.sh verificar       revisa que todo esté sano (sin cambiar nada)
 #   bash ranking.sh actualizar      respaldo + versión nueva desde GitHub + reinicio, sin perder datos
 #   (agregando --automatico, instalar no hace preguntas: lo usan los agentes como Antigravity)
@@ -57,11 +57,14 @@ si() {
 CLAVES_PROXY=(HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy)
 CLAVES_CONFIG=(POSTGRES_PASSWORD AUTHENTICATOR_PASSWORD JWT_SECRET PUERTO ESCUCHAR SESSION_HOURS MAX_UPLOAD_MB
                STATEMENT_TIMEOUT DB_POOL IMAGEN_POSTGRES IMAGEN_PYTHON ESPEJO_DIR RESPALDO_HORAS RESPALDO_CONSERVAR RESPALDO_DEMORA
-               COMPARTIR TUNEL_ID TUNEL_ACCESO "${CLAVES_PROXY[@]}")
+               COMPARTIR COMPARTIR_ENLACE IMAGEN_TUNEL "${CLAVES_PROXY[@]}")
 dc() {
-    local sin=() k; for k in "${CLAVES_CONFIG[@]}"; do sin+=(-u "$k"); done
+    local sin=() k perfil=(); for k in "${CLAVES_CONFIG[@]}"; do sin+=(-u "$k"); done
+    # Con el acceso desde otras computadoras habilitado, el contenedor "tunel" arranca y se detiene con el sistema.
+    [ "$(valor COMPARTIR_ENLACE)" = 1 ] && [ -n "$(valor IMAGEN_TUNEL)" ] && perfil=(--profile compartir)
     mkdir -p "$RESPALDOS" 2> /dev/null   # el servicio "respaldo" escribe ahí (si no existe, Docker la crearía como root)
-    env "${sin[@]}" RESPALDOS_DIR="$RESPALDOS" docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" --env-file "$CONFIG" "$@"
+    env "${sin[@]}" RESPALDOS_DIR="$RESPALDOS" docker compose "${perfil[@]+"${perfil[@]}"}" --project-directory "$DIR" \
+        -f "$DIR/docker-compose.yml" --env-file "$CONFIG" "$@"
 }
 
 # ---------------------------------------------------------------- configuración
@@ -70,6 +73,13 @@ poner() {
     local tmp; tmp="$(mktemp "$CONFIG.XXXX")"
     awk -v k="$1" -v v="$2" 'BEGIN { hecho = 0 } index($0, k "=") == 1 { print k "=" v; hecho = 1; next } { print }
                              END { if (!hecho) print k "=" v }' "$CONFIG" > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$CONFIG"
+}
+quitar() {
+    local k tmp
+    for k in "$@"; do
+        tmp="$(mktemp "$CONFIG.XXXX")"
+        awk -v k="$k" 'index($0, k "=") != 1' "$CONFIG" > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$CONFIG"
+    done
 }
 # El proxy que tenga definido la terminal (ej. en ~/.bashrc) queda guardado en la configuración; una terminal sin
 # proxy (el lanzador de Windows) usa el guardado.
@@ -158,12 +168,17 @@ abrir_navegador() {
     elif command -v xdg-open > /dev/null 2>&1; then xdg-open "$1" > /dev/null 2>&1 || true; fi
 }
 # Baja la imagen oficial desde Docker Hub o, si está bloqueado o limitado, desde los espejos públicos de las mismas
-# imágenes oficiales (Google y Amazon). La que funcione queda en la configuración.
-elegir_imagen() {   # $1 = variable (IMAGEN_POSTGRES / IMAGEN_PYTHON), $2 = imagen oficial (postgres:17)
-    local actual log origen; actual="$(valor "$1")"
+# imágenes oficiales (Google y Amazon; la de Tailscale, también desde GitHub). La que funcione queda en la configuración.
+IMAGEN_TAILSCALE="tailscale/tailscale:v1.104.4"
+elegir_imagen() {   # $1 = variable (IMAGEN_POSTGRES / IMAGEN_PYTHON / IMAGEN_TUNEL), $2 = imagen oficial (postgres:17)
+    local actual log origen origenes; actual="$(valor "$1")"
     if [ -n "$actual" ] && docker image inspect "$actual" > /dev/null 2>&1; then ok "  $actual (ya bajada)"; return 0; fi
+    case "$2" in
+        */*) origenes=("${actual:-docker.io/$2}" "ghcr.io/$2" "mirror.gcr.io/$2") ;;
+        *)   origenes=("${actual:-docker.io/library/$2}" "mirror.gcr.io/library/$2" "public.ecr.aws/docker/library/$2") ;;
+    esac
     log="$(mktemp)"
-    for origen in "${actual:-docker.io/library/$2}" "mirror.gcr.io/library/$2" "public.ecr.aws/docker/library/$2"; do
+    for origen in "${origenes[@]}"; do
         echo "  bajando $origen ..."
         if docker pull -q "$origen" > "$log" 2>&1; then poner "$1" "$origen"; ok "  $origen"; rm -f "$log"; return 0; fi
         aviso "    no se pudo: $(tail -1 "$log" | cut -c1-160)"
@@ -377,6 +392,7 @@ cmd_migrar() {
 arrancar() {
     T0="$(date +%s%N)"
     verificar_docker; instalado
+    retirar_devtunnel
     T1="$(date +%s%N)"
     echo "Arrancando Auditor de Rankings Digitales..."
     # --no-recreate: si ya está funcionando, no lo reinicia (las versiones nuevas las aplica actualizar). Solo si
@@ -481,9 +497,8 @@ cmd_estado() {
 
 cmd_logs() {
     verificar_docker; instalado
-    dc logs --tail "${1:-100}" api db espejo respaldo
-    local c; [ "$(valor COMPARTIR)" = 1 ] && c="$(carpeta_windows)" && [ -f "$c/tunel.log" ] \
-        && { echo "== Acceso desde otras computadoras (tunel.log)"; tail -n "${1:-100}" "$c/tunel.log" | tr -d '\r'; }
+    local servicios=(api db espejo respaldo); [ "$(valor COMPARTIR_ENLACE)" = 1 ] && servicios+=(tunel)
+    dc logs --tail "${1:-100}" "${servicios[@]}"
 }
 
 cmd_respaldo() {
@@ -770,10 +785,10 @@ cmd_acceso_directo() {
     shopt -u patsub_replacement 2> /dev/null || true
     local t d="${WSL_DISTRO_NAME//\'/\'\'}" pr="${DIR//\'/\'\'}"
     t="$(cat "$DIR/escritorio/lanzar.ps1")"; t="${t//__DISTRO__/$d}"; t="${t//__PROYECTO__/$pr}"; t="${t//__PUERTO__/$(valor PUERTO)}"
-    t="${t//__COMPARTIR__/$([ "$(valor COMPARTIR)" = 1 ] && echo '$true' || echo '$false')}"
+    t="${t//__COMPARTIR__/$([ "$(valor COMPARTIR_ENLACE)" = 1 ] && echo '$true' || echo '$false')}"
     { printf '\xef\xbb\xbf'; printf '%s\n' "$t" | sed 's/$/\r/'; } > "$carpeta/lanzar.ps1"
     t="$(cat "$DIR/escritorio/iniciando.html")"; printf '%s\n' "${t//__PUERTO__/$(valor PUERTO)}" > "$carpeta/iniciando.html"
-    [ "$(valor COMPARTIR)" = 1 ] && [ -n "$(valor TUNEL_ID)" ] && escribir_tunel "$carpeta"
+    escribir_ps1 "$DIR/escritorio/sin-suspension.ps1" "$carpeta/sin-suspension.ps1"
     rm -f "$carpeta/despierta.ps1"   # versión anterior del acceso compartido
     rm -f "$carpeta/Ranking Digital.cmd"   # lanzador anterior (con ventana negra)
     lanzar_win="$carpeta_win\lanzar.ps1"; ico_win="$carpeta_win\ranking.ico"
@@ -826,8 +841,12 @@ cmd_acceso_directo() {
 }
 
 # ---------------------------------------------------------------- acceso desde otras computadoras
-# Corre en Windows (escritorio/tunel.ps1 con devtunnel.exe): ahí la sesión de Microsoft queda guardada en el
-# administrador de credenciales; en Linux/Docker, sin llavero del sistema, se perdía en cada arranque.
+# Tailscale Funnel en el contenedor "tunel" (docker-compose.yml): enlace HTTPS fijo hacia este sistema. Reemplazó a
+# Microsoft Dev Tunnels (29/10/2026): con las cuentas de la empresa, Microsoft rechazaba el ingreso de las otras
+# personas (HTTP 431) y su sesión no se podía guardar en Linux. Quien abre el enlace no necesita ninguna cuenta: llega
+# a la pantalla de ingreso del sistema, que es la que protege el acceso.
+
+en_windows() { command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ]; }
 
 # Carpeta de Windows de la aplicación (%LOCALAPPDATA%\RankingDigital), vista desde Ubuntu.
 carpeta_windows() {
@@ -845,38 +864,64 @@ carpeta_windows() {
 
 ps_win() { (cd /mnt/c 2> /dev/null || true; powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$1"); }
 
-# tunel.ps1 con los datos de esta PC (PowerShell 5.1: con BOM y fin de línea de Windows).
-escribir_tunel() {
-    local t; t="$(cat "$DIR/escritorio/tunel.ps1")"
-    shopt -u patsub_replacement 2> /dev/null || true
-    t="${t//__TUNEL_ID__/$(valor TUNEL_ID)}"; t="${t//__ACCESO__/$(valor TUNEL_ACCESO)}"; t="${t//__PUERTO__/$(valor PUERTO)}"
-    { printf '\xef\xbb\xbf'; printf '%s\n' "$t" | sed 's/$/\r/'; } > "$1/tunel.ps1"
+# Copia un script de escritorio/ para Windows (PowerShell 5.1: con BOM y fin de línea de Windows).
+escribir_ps1() { { printf '\xef\xbb\xbf'; sed 's/$/\r/' "$1"; } > "$2"; }
+
+# Mientras se comparte, Windows no suspende la PC por inactividad: sin-suspension.ps1, oculto (también lo inicia
+# lanzar.ps1 al encender la PC). No impide apagarla, suspenderla a mano ni cerrar la tapa.
+detener_sin_suspension() {
+    en_windows || return 0
+    ps_win "Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe'\" | Where-Object { \$_.ProcessId -ne \$PID -and \$_.CommandLine -like '*sin-suspension.ps1*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }" > /dev/null 2>&1
+}
+iniciar_sin_suspension() {
+    en_windows || return 0
+    local c s; c="$(carpeta_windows)" || return 0
+    escribir_ps1 "$DIR/escritorio/sin-suspension.ps1" "$c/sin-suspension.ps1"
+    detener_sin_suspension
+    s="$(wslpath -w "$c/sin-suspension.ps1")"; s="${s//\'/\'\'}"
+    ps_win "Start-Process -FilePath powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', '\"$s\"')" > /dev/null 2>&1
 }
 
-detener_tunel_windows() {
-    ps_win "Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe'\" | Where-Object { \$_.ProcessId -ne \$PID -and \$_.CommandLine -like '*tunel.ps1*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }
-            Get-Process -Name devtunnel -ErrorAction SilentlyContinue | Stop-Process -Force" > /dev/null 2>&1
+# Acceso anterior (Microsoft Dev Tunnels, hasta el 29/10/2026): se retira una sola vez. Se cierra en Windows, se borra el
+# túnel de Microsoft y la configuración vieja. El acceso nuevo se habilita con bash ranking.sh compartir.
+retirar_devtunnel() {
+    local tid c; tid="$(valor TUNEL_ID)"
+    [ -n "$tid" ] || return 0
+    if en_windows && c="$(carpeta_windows)"; then
+        ps_win "Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe'\" | Where-Object { \$_.ProcessId -ne \$PID -and \$_.CommandLine -like '*tunel.ps1*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }
+                Get-Process -Name devtunnel -ErrorAction SilentlyContinue | Stop-Process -Force" > /dev/null 2>&1
+        [ -f "$c/devtunnel.exe" ] && timeout 60 "$c/devtunnel.exe" delete "$tid" --force < /dev/null > /dev/null 2>&1
+        rm -f "$c/devtunnel.exe" "$c/tunel.ps1" "$c/tunel-estado.json" "$c/tunel.log"
+    fi
+    # La clave vieja COMPARTIR también se borra: el mantenedor que ya estaba abierto (con la versión anterior en memoria
+    # hasta reiniciar la PC) la lee cada minuto y, si siguiera en 1, informaría al Panel el estado del acceso viejo.
+    quitar TUNEL_ID TUNEL_ACCESO COMPARTIR
+    aviso "Se retiró el acceso anterior desde otras computadoras (enlace de Microsoft). Para habilitar el nuevo: bash ranking.sh compartir"
 }
 
-iniciar_tunel_windows() {
-    local s; s="$(wslpath -w "$1/tunel.ps1")"; s="${s//\'/\'\'}"
-    ps_win "Start-Process -FilePath powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', '\"$s\"')"
+# Estado de Tailscale en el contenedor "tunel", en una línea: estado|enlace de inicio de sesión|nombre|vencimiento|problema
+# (estado: Running, NeedsLogin... o sin_contenedor). La base interpreta el JSON: Ubuntu no trae jq.
+tailscale_dato() {
+    local j; j="$(dc exec -T tunel tailscale status --json --peers=false 2> /dev/null)"
+    case "$j" in '{'*) ;; *) echo "sin_contenedor||||"; return ;; esac
+    case "$j" in *'$ts$'*) echo "error||||"; return ;; esac
+    consulta "SELECT concat(j->>'BackendState', '|', j->>'AuthURL', '|', rtrim(j->'Self'->>'DNSName', '.'), '|',
+                            j->'Self'->>'KeyExpiry', '|', translate(j->'Health'->>0, E'|\n', '/ '))
+              FROM (SELECT \$ts\$$j\$ts\$::jsonb AS j) x" 2> /dev/null || echo "error||||"
 }
 
-# Pasa al Panel de control el estado que deja tunel.ps1 (tunel-estado.json). Si devtunnel.exe no está corriendo, el
-# acceso figura detenido. Lo llaman el mantenedor (cada minuto), verificar y compartir.
+# Pasa al Panel de control el estado del acceso (panel.latido_tunel interpreta lo que informa Tailscale). Lo llaman el
+# mantenedor (cada minuto), verificar y compartir. Sin compartir, el Panel lo muestra sin configurar.
 relevar_tunel() {
-    [ "$(valor COMPARTIR)" = 1 ] || return 0
-    local c f json vivo=true
-    c="$(carpeta_windows)" || return 0
-    f="$c/tunel-estado.json"
-    if [ -f "$f" ]; then json="$(tr -d '\r' < "$f" | sed 's/^\xef\xbb\xbf//')"
-    else json='{"estado": "detenido", "mensaje": "El acceso se inicia con la aplicación de Windows (o con bash ranking.sh compartir)."}'; fi
-    if command -v tasklist.exe > /dev/null 2>&1 && ! tasklist.exe /FI "IMAGENAME eq devtunnel.exe" /NH 2> /dev/null | grep -qi devtunnel; then vivo=false; fi
-    case "$json" in *'$tunel$'*) return 0 ;; esac
-    consulta "SELECT panel.latido('tunel', CASE WHEN $vivo OR j->>'estado' <> 'activo' THEN j
-              ELSE j || '{\"estado\": \"detenido\", \"mensaje\": \"El acceso desde otras computadoras no está funcionando. Se reinicia al abrir la aplicación de Windows o con bash ranking.sh compartir.\"}'::jsonb END)
-              FROM (SELECT \$tunel\$$json\$tunel\$::jsonb AS j) x" > /dev/null 2>&1
+    if [ "$(valor COMPARTIR_ENLACE)" != 1 ]; then
+        consulta "DELETE FROM panel.servicios WHERE servicio = 'tunel'" > /dev/null 2>&1; return 0
+    fi
+    local j
+    j="$(dc exec -T tunel sh -c 's="$(tailscale status --json --peers=false 2> /dev/null)"; f="$(tailscale funnel status --json 2> /dev/null)"
+                                   printf "{\"status\": %s, \"funnel\": %s}" "${s:-null}" "${f:-null}"' 2> /dev/null)"
+    case "$j" in '{"status"'*) ;; *) j=null ;; esac
+    case "$j" in *'$tunel$'*) j=null ;; esac
+    consulta "SELECT panel.latido_tunel(\$tunel\$$j\$tunel\$::jsonb)" > /dev/null 2>&1
 }
 
 # Enlace actual (después de relevar el estado).
@@ -885,97 +930,137 @@ enlace_compartido() {
     consulta "SELECT detalle->>'url' FROM panel.servicios WHERE servicio = 'tunel' AND detalle->>'estado' = 'activo'" 2> /dev/null | tr -d '[:space:]'
 }
 
-# Acceso desde otras computadoras: enlace HTTPS fijo de Microsoft Dev Tunnels, que llega a este sistema. No abre
-# puertos ni pide permisos de administrador: la conexión sale de esta PC hacia Microsoft. Por defecto solo entran
-# cuentas Microsoft de la empresa (y después, el usuario y la contraseña del sistema). --cualquiera: sin cuenta de
-# Microsoft (solo la contraseña del sistema). --apagar: deja de compartir.
-cmd_compartir() {
-    verificar_docker; instalado
-    command -v powershell.exe > /dev/null 2>&1 && [ -n "${WSL_DISTRO_NAME:-}" ] \
-        || fallar "El acceso desde otras computadoras se configura desde Ubuntu en Windows (WSL)."
-    local acceso=empresa a c
-    c="$(carpeta_windows)" || fallar "No pude leer la carpeta de Windows del usuario."
-    for a in "$@"; do case "$a" in
-        --apagar)
-            detener_tunel_windows
-            poner COMPARTIR 0
-            rm -f "$c/tunel-estado.json"
-            consulta "DELETE FROM panel.servicios WHERE servicio = 'tunel'" > /dev/null 2>&1
-            registrar_evento ok "Acceso desde otras computadoras apagado"
-            regenerar_accesos
-            ok "Listo: la aplicación ya no se puede abrir desde otras computadoras (en esta PC sigue igual)."
-            return ;;
-        --cualquiera) acceso=cualquiera ;;
-    esac; done
-    titulo "Acceso desde otras computadoras"
-    echo "Se crea un enlace HTTPS fijo (de Microsoft) para abrir la aplicación desde otras computadoras, también fuera de la"
-    echo "oficina. Esta PC sigue siendo el servidor: tiene que estar encendida y con el sistema funcionando."
-    if [ "$acceso" = empresa ]; then
-        echo "Solo entran personas con cuenta Microsoft de la empresa (la de Outlook/Teams) y, después, con su usuario del sistema."
-    else
-        aviso "Sin cuenta de Microsoft: cualquiera con el enlace llega a la pantalla de ingreso (protegida por usuario y contraseña)."
+# Si algo falla al habilitar el acceso, queda como estaba: si no se compartía, se apaga (la sesión de Tailscale queda
+# guardada para el próximo intento).
+fallar_compartir() {
+    dc exec -T tunel sh -c 'pkill -f "tailscale funnel" || true' > /dev/null 2>&1
+    if [ "${COMPARTIA_ANTES:-0}" != 1 ]; then
+        dc stop tunel > /dev/null 2>&1; dc rm -f tunel > /dev/null 2>&1
+        poner COMPARTIR_ENLACE 0
+        consulta "DELETE FROM panel.servicios WHERE servicio = 'tunel'" > /dev/null 2>&1
     fi
-    si "¿Continuar?" S || fallar "Cancelado."
-    local tid; tid="$(valor TUNEL_ID)"
-    [ -n "$tid" ] || { tid="auditor-rankings-$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n')"; poner TUNEL_ID "$tid"; }
-    poner TUNEL_ACCESO "$acceso"
-    arrancar > /dev/null
-    local dt="$c/devtunnel.exe" cw; cw="$(wslpath -w "$c")"; cw="${cw//\'/\'\'}"
-
-    titulo "1/3 Herramienta de túneles de Microsoft (para Windows)"
-    if [ ! -f "$dt" ]; then
-        ps_win "\$ProgressPreference = 'SilentlyContinue'
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                [Net.WebRequest]::DefaultWebProxy.Credentials = [Net.CredentialCache]::DefaultNetworkCredentials
-                Invoke-WebRequest -UseBasicParsing -Uri 'https://aka.ms/TunnelsCliDownload/win-x64' -OutFile '$cw\\devtunnel.descarga'
-                Move-Item -Force '$cw\\devtunnel.descarga' '$cw\\devtunnel.exe'" \
-            && [ -f "$dt" ] || fallar "No se pudo descargar devtunnel.exe (puede estar bloqueado por la red de la empresa)."
-    fi
-    ok "devtunnel.exe listo en $(wslpath -w "$c")"
-
-    titulo "2/3 Inicio de sesión con la cuenta de la empresa"
-    if ! "$dt" user show 2>&1 | tr -d '\r' | grep -qi 'logged in as'; then
-        echo "Se abre el navegador: ingresá con tu cuenta de la empresa (la de Outlook/Teams)."
-        "$dt" user login || "$dt" user login -d || fallar "No se completó el inicio de sesión de Microsoft."
-    fi
-    local sesion; sesion="$("$dt" user show 2>&1 | tr -d '\r' | grep -i 'logged in as')"
-    [ -n "$sesion" ] || fallar "La sesión de Microsoft no quedó guardada en Windows. Volvé a intentar: bash ranking.sh compartir"
-    ok "$sesion"
-
-    titulo "3/3 Abriendo el acceso"
-    escribir_tunel "$c"
-    local preparado; preparado="$(ps_win "& '$cw\\tunel.ps1' -Preparar" 2>&1 | tr -d '\r')"
-    echo "$preparado" | grep -q 'Tunel preparado' || { echo "$preparado"; tail -n 20 "$c/tunel.log" 2> /dev/null
-        fallar "Microsoft no permitió crear el acceso (el motivo está arriba)."; }
-    detener_tunel_windows
-    rm -f "$c/tunel-estado.json"
-    poner COMPARTIR 1
-    iniciar_tunel_windows "$c"
-    local url="" i estado=""
-    for i in $(seq 1 "${ESPERA_TUNEL:-120}"); do
-        estado="$(sed -n 's/.*"estado":"\([a-z_]*\)".*/\1/p' "$c/tunel-estado.json" 2> /dev/null)"
-        case "$estado" in activo|sin_sesion|error) break ;; esac
-        [ $((i % 15)) = 0 ] && echo "  esperando a Microsoft... ($i s)"
-        sleep 1
-    done
-    url="$(enlace_compartido)"
-    if [ -z "$url" ]; then
-        echo "Registro del acceso (tunel.log):"
-        tail -n 30 "$c/tunel.log" 2> /dev/null | tr -d '\r'
-        fallar "El acceso todavía no quedó abierto (estado: ${estado:-sin datos}). Pasame el registro de arriba."
-    fi
-    registrar_evento ok "Acceso desde otras computadoras: $url"
-    regenerar_accesos
-    ok "Listo. Enlace para compartir:"
-    printf '\n    %s\n\n' "$url"
-    echo "Cada persona necesita un usuario del sistema (Panel de control > Usuarios > Crear usuario: se le entrega el enlace y el"
-    echo "código de activación). En su computadora: abrir el enlace en Edge, ingresar con la cuenta de la empresa si lo pide,"
-    echo "y en 'Auditor de Rankings Digitales' elegir '¿Olvidaste la contraseña?' con el código. Para instalarla como"
-    echo "aplicación: menú ··· > Aplicaciones > Instalar. El enlace también figura en el Panel de control."
-    echo "El acceso se vuelve a abrir solo al encender la PC o abrir la aplicación de Windows."
+    fallar "$@"
 }
 
-# Los accesos de Windows se vuelven a generar (el lanzador inicia el acceso al encender la PC si se comparte).
+tunel_sin_conexion() {
+    case "$1" in
+        *x509*|*certificate*)
+            fallar_compartir "No se pudo conectar con Tailscale: el proxy de la empresa inspecciona HTTPS.
+  ($1)
+Corré bash ranking.sh certificados y después volvé a correr bash ranking.sh compartir." ;;
+        *)
+            fallar_compartir "No se pudo conectar con Tailscale:
+  ($1)
+La red de la empresa o su proxy bloquean Tailscale. Hay que pedirle a IT que habilite la salida HTTPS (puerto 443) a
+controlplane.tailscale.com, login.tailscale.com, log.tailscale.com y *.tailscale.com. El sistema sigue funcionando en esta PC." ;;
+    esac
+}
+
+apagar_compartir() {
+    if [ "$(valor COMPARTIR_ENLACE)" = 1 ]; then
+        dc exec -T tunel tailscale funnel reset > /dev/null 2>&1   # deja de publicar aunque el contenedor vuelva a arrancar
+        dc stop tunel > /dev/null 2>&1; dc rm -f tunel > /dev/null 2>&1
+    fi
+    retirar_devtunnel > /dev/null
+    poner COMPARTIR_ENLACE 0
+    consulta "DELETE FROM panel.servicios WHERE servicio = 'tunel'" > /dev/null 2>&1
+    detener_sin_suspension
+    registrar_evento ok "Acceso desde otras computadoras apagado"
+    regenerar_accesos
+    ok "Listo: la aplicación ya no se puede abrir desde otras computadoras (en esta PC sigue igual)."
+}
+
+# Acceso desde otras computadoras: Tailscale Funnel publica el sistema en https://auditor-rankings.<red>.ts.net/. La
+# conexión sale de la PC por el puerto 443 (con el proxy de la configuración): no abre puertos ni pide permisos de
+# administrador. La primera vez se inicia sesión en Tailscale y se habilita el enlace público (se abre el navegador);
+# después se enciende y se apaga con el sistema. --apagar: deja de compartir.
+cmd_compartir() {
+    verificar_docker; instalado
+    local a
+    for a in "$@"; do [ "$a" = --apagar ] && { apagar_compartir; return; }; done
+    titulo "Acceso desde otras computadoras"
+    echo "Se crea un enlace HTTPS fijo (Tailscale) para abrir la aplicación desde otras computadoras, también fuera de la"
+    echo "oficina. Esta PC sigue siendo el servidor: tiene que estar encendida y con el sistema funcionando."
+    echo "Quien tenga el enlace llega a la pantalla de ingreso: solo entran las personas con usuario del sistema."
+    si "¿Continuar?" S || fallar "Cancelado."
+    COMPARTIA_ANTES="$(valor COMPARTIR_ENLACE)"
+    retirar_devtunnel > /dev/null
+    [ "$(valor COMPARTIR_ENLACE)" = 1 ] || COMPARTIA_ANTES=0
+    guardar_proxy
+
+    titulo "1/4 Programa de Tailscale"
+    elegir_imagen IMAGEN_TUNEL "$IMAGEN_TAILSCALE" || fallar "No se pudo bajar el programa de Tailscale (el motivo está arriba)."
+    poner COMPARTIR_ENLACE 1
+    ( arrancar > /dev/null ) || fallar_compartir "El sistema no arrancó (bash ranking.sh logs muestra el motivo)."
+
+    titulo "2/4 Cuenta de Tailscale"
+    local i estado="" auth="" nombre="" vence="" problema="" abierto=""
+    for i in $(seq 1 "${ESPERA_TUNEL:-600}"); do
+        IFS='|' read -r estado auth nombre vence problema <<< "$(tailscale_dato)"
+        [ "$estado" = Running ] && [ -n "$nombre" ] && break
+        if [ -n "$auth" ] && [ "$auth" != "$abierto" ]; then
+            echo "Se abre el navegador para iniciar sesión en Tailscale; la primera vez se crea la cuenta (gratuita). Conviene"
+            echo "una cuenta de GitHub, Google o Microsoft personal: la de la empresa puede requerir la aprobación de IT."
+            printf '\n    %s\n\n' "$auth"
+            abrir_navegador "$auth"; abierto="$auth"
+        fi
+        if [ -z "$auth" ] && [ -n "$problema" ] && [ "$i" -ge "${ESPERA_RED_TUNEL:-45}" ]; then tunel_sin_conexion "$problema"; fi
+        [ $((i % 30)) = 0 ] && echo "  esperando el inicio de sesión... ($i s)"
+        sleep 1
+    done
+    [ "$estado" = Running ] && [ -n "$nombre" ] \
+        || fallar_compartir "No se completó el inicio de sesión en Tailscale. Volvé a correr: bash ranking.sh compartir"
+    ok "Sesión de Tailscale iniciada: $nombre"
+
+    titulo "3/4 Enlace público"
+    local salida pid url_f abierto_f=""; salida="$(mktemp)"
+    dc exec -T tunel tailscale funnel --bg --yes "http://127.0.0.1:$(valor PUERTO)" > "$salida" 2>&1 &
+    pid=$!
+    for i in $(seq 1 "${ESPERA_TUNEL:-600}"); do
+        kill -0 "$pid" 2> /dev/null || break
+        url_f="$(grep -o 'https://login\.tailscale\.com/[^[:space:]]*' "$salida" | tail -n 1)"
+        if [ -n "$url_f" ] && [ "$url_f" != "$abierto_f" ]; then
+            echo "Tailscale pide habilitar el enlace público (una sola vez). Se abre el navegador: confirmá con el botón Enable."
+            printf '\n    %s\n\n' "$url_f"
+            abrir_navegador "$url_f"; abierto_f="$url_f"
+        fi
+        [ $((i % 30)) = 0 ] && echo "  esperando la habilitación... ($i s)"
+        sleep 1
+    done
+    if kill -0 "$pid" 2> /dev/null; then
+        kill "$pid" 2> /dev/null; rm -f "$salida"
+        fallar_compartir "No se habilitó el enlace público en Tailscale. Volvé a correr: bash ranking.sh compartir"
+    fi
+    wait "$pid" || { cat "$salida"; rm -f "$salida"; fallar_compartir "Tailscale no habilitó el enlace público (el motivo está arriba)."; }
+    rm -f "$salida"
+
+    titulo "4/4 Comprobación"
+    local url probado=0; url="$(enlace_compartido)"
+    [ -n "$url" ] || fallar_compartir "El acceso no quedó activo (bash ranking.sh logs muestra el motivo)."
+    # La primera vez, Tailscale obtiene el certificado HTTPS del enlace: puede tardar hasta un minuto.
+    for i in $(seq 1 "${PRUEBAS_ENLACE:-12}"); do
+        curl -fsS --max-time 20 -o /dev/null "${url}health" > /dev/null 2>&1 && { probado=1; break; }
+        sleep 5
+    done
+    registrar_evento ok "Acceso desde otras computadoras: $url"
+    regenerar_accesos
+    iniciar_sin_suspension
+    ok "Listo. Enlace para compartir:"
+    printf '\n    %s\n\n' "$url"
+    if [ "$probado" = 1 ]; then ok "Comprobado: el enlace responde desde internet."
+    else aviso "El enlace todavía no respondió desde esta PC (la primera vez puede tardar unos minutos). Probalo en el navegador."; fi
+    IFS='|' read -r estado auth nombre vence problema <<< "$(tailscale_dato)"
+    if [ -n "$vence" ]; then
+        aviso "Para que el acceso no se corte cada 6 meses (una sola vez): en https://login.tailscale.com/admin/machines,"
+        aviso "en 'auditor-rankings', menú ··· > Disable key expiry."
+    fi
+    echo "Cada persona necesita un usuario del sistema (Panel de control > Usuarios > Crear usuario: se le entrega el enlace y"
+    echo "el código de activación). En su computadora abre el enlace y, en 'Auditor de Rankings Digitales', elige"
+    echo "'¿Olvidaste la contraseña?' con el código. Para instalarla como aplicación: menú ··· > Aplicaciones > Instalar."
+    echo "El acceso se enciende y se apaga con el sistema. El enlace también figura en el Panel de control."
+}
+
+# Los accesos de Windows se vuelven a generar (si se comparte, el lanzador evita que la PC se suspenda).
 regenerar_accesos() {
     [ "$(valor ACCESO_DIRECTO)" = 1 ] && [ -n "${WSL_DISTRO_NAME:-}" ] && command -v powershell.exe > /dev/null 2>&1 || return 0
     local antes_auto="${AUTOMATICO:-}"; AUTOMATICO=1
@@ -997,7 +1082,8 @@ cmd_verificar() {
     if docker info > /dev/null 2>&1; then linea ok "Docker funcionando"; else linea mal "Docker no está corriendo (sudo service docker start)"; fi
     if [ -f "$CONFIG" ]; then linea ok "Configuración en $CONFIG"; else linea mal "Sin configuración: falta bash ranking.sh instalar"; fi
     if [ "$fallo" = 0 ]; then
-        for n in db api espejo respaldo; do
+        local contenedores=(db api espejo respaldo); [ "$(valor COMPARTIR_ENLACE)" = 1 ] && contenedores+=(tunel)
+        for n in "${contenedores[@]}"; do
             if [ -n "$(dc ps --status running -q "$n" 2> /dev/null)" ]; then linea ok "Contenedor $n corriendo"; else linea mal "Contenedor $n apagado (bash ranking.sh abrir)"; fi
         done
         if curl -fsS --noproxy '*' "http://127.0.0.1:$(valor PUERTO)/health" > /dev/null 2>&1; then
@@ -1025,10 +1111,10 @@ cmd_verificar() {
         elif [ -n "$(find "$ultimo_auto" -mmin +$((49 * 60)) 2> /dev/null)" ]; then
             aviso "  AVISO  El último respaldo automático tiene más de dos días: $(basename "$ultimo_auto" .dump) (bash ranking.sh logs)"
         else linea ok "Respaldo automático: $(basename "$ultimo_auto" .dump)"; fi
-        if [ "$(valor COMPARTIR)" = 1 ]; then
+        if [ "$(valor COMPARTIR_ENLACE)" = 1 ]; then
             local enlace; enlace="$(enlace_compartido)"
             if [ -n "$enlace" ]; then linea ok "Acceso desde otras computadoras: $enlace"
-            else aviso "  AVISO  El acceso desde otras computadoras no está activo (se abre con la aplicación de Windows; si venció la sesión: bash ranking.sh compartir)"; fi
+            else aviso "  AVISO  El acceso desde otras computadoras no está activo (el Panel de control muestra el motivo; para rehacerlo: bash ranking.sh compartir)"; fi
         fi
         [ "${n:-0}" -gt 0 ] && aviso "  AVISO  $n charts en OneDrive (Spotify Charts / Youtube Charts) sin cargar: bash ranking.sh cargar-historicos"
     fi

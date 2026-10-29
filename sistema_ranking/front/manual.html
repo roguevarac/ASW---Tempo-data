@@ -484,8 +484,8 @@ habilitado, el <b>Panel de control</b> (Estado del sistema) muestra el enlace pa
 <ol class="pasos">
   <li>En el Panel de control, sección <b>Usuarios</b>, creá su usuario. El sistema muestra un código de activación.</li>
   <li>Enviale el enlace y el código.</li>
-  <li>La persona abre el enlace en Edge. Si lo solicita, ingresa con su cuenta Microsoft de la empresa (la de Outlook y
-    Teams).</li>
+  <li>La persona abre el enlace en Edge o Chrome. No necesita ninguna otra cuenta: el enlace lleva directamente a la
+    pantalla de ingreso del sistema.</li>
   <li>En la pantalla de ingreso del sistema elige <b>¿Olvidaste la contraseña?</b> e ingresa su email, el código y la
     contraseña que elija. Desde entonces ingresa con su email y esa contraseña.</li>
   <li>Para tenerlo como aplicación (ícono propio, sin pestañas): en Edge, menú <b>···</b> &gt; <b>Aplicaciones</b> &gt;
@@ -493,14 +493,27 @@ habilitado, el <b>Panel de control</b> (Estado del sistema) muestra el enlace pa
 </ol>
 <h3>Disponibilidad y seguridad</h3>
 <ul>
-  <li>Solo entran personas con cuenta Microsoft de la empresa y, además, con su usuario y contraseña del sistema. La
-    conexión viaja cifrada.</li>
+  <li>Quien tenga el enlace llega a la pantalla de ingreso, pero solo entran las personas con usuario y contraseña del
+    sistema. Los intentos fallidos frenan el ingreso y las sesiones vencen sin uso. La conexión viaja cifrada (HTTPS).</li>
   <li>La computadora que hace de servidor tiene que estar encendida y conectada a internet. Mientras se comparte no se
     suspende por inactividad, pero sí al apagarla, suspenderla a mano o cerrar la tapa.</li>
   <li>Si el servidor no está disponible, la aplicación lo indica y entra sola cuando vuelve a estarlo.</li>
   <li>Todas las personas trabajan sobre la misma información: lo que carga o modifica una persona lo ven las demás al
     actualizar la tabla.</li>
 </ul>
+<h3>Habilitación (administración)</h3>
+<p>El enlace lo provee Tailscale y se habilita una sola vez desde la terminal de Ubuntu de la computadora servidor:</p>
+<ol class="pasos">
+  <li>Ejecutá <code>bash ranking.sh compartir</code>.</li>
+  <li>Se abre el navegador para iniciar sesión en Tailscale. La primera vez se crea la cuenta, que es gratuita; conviene
+    una cuenta de GitHub, Google o Microsoft personal, porque la de la empresa puede requerir la aprobación de IT.</li>
+  <li>Tailscale solicita habilitar el enlace público: confirmá con <b>Enable</b>. Al finalizar, la terminal muestra el
+    enlace, que también figura en el Panel de control.</li>
+  <li>Para que la sesión no venza a los seis meses: en <code>https://login.tailscale.com/admin/machines</code>, en el
+    equipo <b>auditor-rankings</b>, menú <b>···</b> &gt; <b>Disable key expiry</b>.</li>
+</ol>
+<p>Desde entonces, el acceso se enciende y se apaga junto con el sistema. Para dejar de compartir:
+<code>bash ranking.sh compartir --apagar</code>.</p>
 </section>
 
 <section id="problemas">

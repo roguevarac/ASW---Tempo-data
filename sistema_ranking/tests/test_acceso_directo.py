@@ -82,6 +82,10 @@ texto = lanzar.decode("utf-8-sig")
 check("lanzar.ps1 con la distro, la carpeta del proyecto y el puerto de esta PC",
       "$Distro = 'Ubuntu-26.04'" in texto and f"$Proyecto = '{proyecto}'" in texto and "$Puerto = 8123" in texto
       and not re.search(r"__[A-Z_]+__", texto), texto[:600])   # sin marcadores sin completar (la carpeta temporal puede tener "__")
+sin_susp = (carpeta / "sin-suspension.ps1").read_bytes() if (carpeta / "sin-suspension.ps1").exists() else b""
+check("sin-suspension.ps1 (la PC no se suspende mientras se comparte), con BOM y fin de línea de Windows",
+      sin_susp.startswith(b"\xef\xbb\xbf") and sin_susp.count(b"\n") == sin_susp.count(b"\r\n") > 3
+      and b"SetThreadExecutionState" in sin_susp, sin_susp[:200])
 check("iniciando.html espera al puerto de esta PC", "http://localhost:8123/" in (carpeta / "iniciando.html").read_text())
 check("ícono copiado", (carpeta / "ranking.ico").read_bytes() == (RAIZ / "windows" / "ranking.ico").read_bytes())
 check("borra el lanzador viejo (el de la ventana negra)", not (carpeta / "Ranking Digital.cmd").exists())
@@ -102,7 +106,7 @@ check("registra el enlace auditor-rankings:// para este usuario (sin administrad
       and r"""-WindowStyle Hidden -File "' + 'C:\Users\Juan O''Neil\AppData\Local\RankingDigital\lanzar.ps1' + '" -SoloServidor')""" in ps, ps[-900:])
 check("sin pedirlo, no lo agrega al inicio de Windows (y saca el viejo)", "if (0 -eq 1)" in ps and "Remove-Item (Join-Path $inicio 'Ranking Digital.lnk')" in ps)
 if HAY_PWSH:
-    for nombre, contenido in (("accesos.ps1", ps), ("lanzar.ps1", texto)):
+    for nombre, contenido in (("accesos.ps1", ps), ("lanzar.ps1", texto), ("sin-suspension.ps1", sin_susp.decode("utf-8-sig"))):
         (base / nombre).write_text(contenido)
         r = subprocess.run([PWSH, "-NoProfile", "-Command", "$e=$null; $t=$null; [System.Management.Automation.Language.Parser]::"
                             f"ParseFile('{base / nombre}', [ref]$t, [ref]$e) | Out-Null; $e.Count"], capture_output=True, text=True)
@@ -118,7 +122,9 @@ if HAY_PWSH:
     (pf / "Microsoft" / "Edge" / "Application").mkdir(parents=True)
     (pf / "Microsoft" / "Edge" / "Application" / "msedge.exe").write_text("")
 
-    def lanzador(*args, responde=False, mantenedor=False):
+    (base / "lanzar_compartiendo.ps1").write_text(texto.replace("$Compartir = $false", "$Compartir = $true"))
+
+    def lanzador(*args, responde=False, mantenedor=False, compartiendo=False):
         """Corre lanzar.ps1 con Windows simulado; devuelve la lista de programas que lanzó."""
         stubs = f"""
             $global:llamadas = @()
@@ -128,7 +134,7 @@ if HAY_PWSH:
             function Invoke-WebRequest {{ if ({'$true' if responde else '$false'}) {{ return @{{ StatusCode = 200 }} }} else {{ throw 'sin servidor' }} }}
             function Get-CimInstance {{ if ({'$true' if mantenedor else '$false'}) {{ return @(@{{ ProcessId = 4242; CommandLine = 'wsl.exe -d Ubuntu-26.04 --cd x -- bash ranking.sh abrir --mantener --sin-navegador' }}) }} }}
             function Stop-Process {{ param($Id, [switch]$Force) $global:llamadas += ,@{{ programa = 'Stop-Process'; args = "$Id"; oculto = $true; espera = $false }} }}
-            & '{base / "lanzar.ps1"}' {' '.join(args)}
+            & '{base / ("lanzar_compartiendo.ps1" if compartiendo else "lanzar.ps1")}' {' '.join(args)}
             $global:llamadas | ConvertTo-Json -Compress -Depth 3
         """
         r = subprocess.run([PWSH, "-NoProfile", "-Command", stubs], capture_output=True, text=True, timeout=60)
@@ -157,6 +163,10 @@ if HAY_PWSH:
     ll, err = lanzador("-SoloServidor")
     check("-SoloServidor (inicio de Windows): enciende sin abrir ninguna ventana",
           [x["programa"] for x in ll] == ["wsl.exe", "wsl.exe"] and all(x["oculto"] for x in ll), (ll, err))
+    ll, err = lanzador("-SoloServidor", compartiendo=True)
+    check("compartiendo: al encender, también evita que la PC se suspenda (sin-suspension.ps1, oculto)",
+          [x["programa"] for x in ll] == ["powershell.exe", "wsl.exe", "wsl.exe"] and "sin-suspension.ps1" in ll[0]["args"]
+          and ll[0]["oculto"] and "-WindowStyle Hidden" in ll[0]["args"], (ll, err))
     ll, err = lanzador("-Apagar", mantenedor=True)
     check("-Apagar: detiene el sistema y corta el mantenedor",
           len(ll) == 2 and "bash ranking.sh detener" in ll[0]["args"] and ll[0]["espera"] and ll[1] == {

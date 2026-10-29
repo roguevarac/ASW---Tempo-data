@@ -224,34 +224,55 @@ pide confirmación y hace un respaldo.
 Para que otras personas usen el sistema desde su propia computadora, con esta PC como servidor:
 
 ```bash
-bash ranking.sh compartir              # solo cuentas Microsoft de la empresa + usuario del sistema
-bash ranking.sh compartir --cualquiera # sin cuenta de Microsoft: cualquiera con el enlace llega al ingreso
-bash ranking.sh compartir --apagar     # deja de compartir
+bash ranking.sh compartir           # enlace HTTPS fijo: https://auditor-rankings.<red>.ts.net/
+bash ranking.sh compartir --apagar  # deja de compartir
 ```
 
 **Cómo funciona:**
-- Usa **Microsoft Dev Tunnels**: un enlace HTTPS fijo (`https://auditor-rankings-xxxxxxxx-8000.<región>.devtunnels.ms/`)
-  que llega a `http://localhost:PUERTO` de esta PC.
-- La conexión sale de la PC hacia Microsoft, como OneDrive o Teams. No abre puertos, no pide permisos de administrador
-  y la API sigue escuchando solo en 127.0.0.1.
-- **Corre en Windows**, no en Docker: `devtunnel.exe` y `escritorio/tunel.ps1` quedan en
-  `%LOCALAPPDATA%\RankingDigital`. En Linux, la herramienta guarda la sesión de Microsoft en el llavero del sistema, y
-  dentro de Docker no hay llavero: la sesión se perdía en cada comando. En Windows queda en el administrador de
-  credenciales, usa el proxy de Windows y no necesita las librerías ICU.
-- La primera vez abre el navegador para iniciar sesión con la cuenta de la empresa.
-- `tunel.ps1` (oculto, lo inicia `lanzar.ps1` al encender la PC o abrir la aplicación) crea el túnel si hace falta, lo
-  mantiene abierto (si se corta, lo reabre), evita la suspensión por inactividad y deja su estado en
-  `tunel-estado.json` y `tunel.log`.
-- El mantenedor de Ubuntu pasa ese estado al Panel de control cada minuto (Estado del sistema, con "Copiar enlace").
-  También lo pasan `bash ranking.sh verificar` y `bash ranking.sh logs`.
+- Usa **Tailscale Funnel**, en el contenedor `tunel` (`docker-compose.yml`, perfil `compartir`). El enlace no cambia y
+  llega a `http://127.0.0.1:PUERTO` de esta PC.
+- La conexión sale de la PC por el puerto 443, como cualquier página web, con el proxy de la configuración. No abre
+  puertos, no pide permisos de administrador y la API sigue escuchando solo en 127.0.0.1.
+- Quien abre el enlace no necesita ninguna cuenta: llega a la pantalla de ingreso del sistema.
+- La sesión de Tailscale queda en el volumen `tunel`, que es un archivo. El contenedor arranca y se detiene con el
+  sistema (`abrir`, `detener`, el lanzador de Windows), y el enlace vuelve solo.
+- Si el proxy de la empresa inspecciona HTTPS, usa los certificados de `certificados/` (`bash ranking.sh certificados`).
+- El mantenedor de Ubuntu pasa el estado al Panel de control cada minuto: Estado del sistema, con "Copiar enlace" y
+  la fecha de vencimiento de la sesión. También lo muestran `verificar` y `logs`.
+- Mientras se comparte, `sin-suspension.ps1` (oculto, lo inicia `lanzar.ps1`) evita que Windows suspenda la PC por
+  inactividad. Sí se suspende al cerrar la tapa o a mano.
 
-**Seguridad:** por defecto el túnel solo deja pasar cuentas del tenant de Microsoft de la empresa; después está el
-ingreso del sistema (usuario, contraseña, sesiones y freno de intentos). La conexión viaja cifrada hasta la PC. Conviene avisar al área de sistemas que el Auditor se comparte de esta forma.
+**La primera vez** (`compartir` abre el navegador en cada paso):
+1. Iniciar sesión en Tailscale. Se crea una cuenta gratuita; conviene GitHub, Google o Microsoft personal, porque la
+   cuenta de la empresa puede requerir la aprobación de IT. Esa cuenta queda como dueña de la "red" de Tailscale.
+2. Habilitar el enlace público: botón **Enable**. Habilita HTTPS y Funnel en la red.
+3. Recomendado: en <https://login.tailscale.com/admin/machines>, en `auditor-rankings`, menú ··· > **Disable key
+   expiry**. Si no, la sesión vence a los 180 días, el Panel lo avisa y hay que volver a correr `compartir`.
 
-**Disponibilidad:** la PC tiene que estar encendida, con el sistema funcionando y conectada a internet.
-- Mientras se comparte, la PC no se suspende por inactividad (`tunel.ps1`). Sí se suspende al cerrar la tapa o a mano.
-- Si la red de la empresa bloquea `*.devtunnels.ms`, `compartir` lo informa. En ese caso, la alternativa es un servidor
-  (ver "Servidor Linux").
+**Por qué Tailscale** (29/10/2026). Reemplazó a Microsoft Dev Tunnels, que no funcionó:
+- en Docker, la sesión de Microsoft se perdía porque no hay llavero del sistema;
+- desde Windows, a otras personas de la empresa el ingreso con su cuenta Microsoft les daba `HTTP ERROR 431`, y el
+  modo sin cuenta tampoco las dejó entrar.
+
+Alternativas descartadas:
+- **Cloudflare Tunnel:** necesita un dominio propio y sale por el puerto 7844, que las redes corporativas suelen
+  bloquear.
+- **ngrok gratuito:** muestra una página de advertencia y tiene límites mensuales de pedidos.
+
+Al pasar a esta versión, el acceso anterior se retira solo: se cierra en Windows y se borra el túnel de Microsoft.
+Después hay que correr `compartir` una vez.
+
+**Seguridad:** el enlace es público. Lo protege el ingreso del sistema: usuario, contraseña, sesiones que vencen y
+freno de intentos fallidos. Solo entran las personas creadas en el Panel de control. La conexión viaja cifrada hasta la
+PC. Tailscale es una cuenta gratuita a nombre de quien la crea: para un uso formal de la empresa, lo adecuado es un
+plan de Tailscale de la empresa o un servidor propio (ver "Servidor Linux"). Conviene avisar al área de sistemas.
+
+**Si no conecta:** `compartir` muestra el motivo que informa Tailscale.
+- Si es un certificado (`x509`), correr `bash ranking.sh certificados` y repetir.
+- Si la red lo bloquea, IT tiene que habilitar la salida HTTPS (443) a `controlplane.tailscale.com`,
+  `login.tailscale.com`, `log.tailscale.com` y `*.tailscale.com`.
+
+Si la red de quien abre el enlace bloquea `*.ts.net`, a esa persona no le va a abrir.
 
 **Usuarios:** cada persona necesita su usuario. Se crea desde el Panel de control > Usuarios: el sistema muestra un
 código de activación, y la persona elige su contraseña en "¿Olvidaste la contraseña?". Puede instalarla como

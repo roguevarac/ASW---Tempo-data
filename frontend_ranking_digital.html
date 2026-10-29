@@ -1555,22 +1555,20 @@ const SERVICIOS = {
   tunel: 'Acceso desde otras computadoras',
 };
 
-// Acceso desde otras computadoras (bash ranking.sh compartir): el enlace para compartir y su estado.
+// Acceso desde otras computadoras (bash ranking.sh compartir, Tailscale): el enlace para compartir y su estado.
 function servicioTunel(t){
   if(!t) return ['Acceso desde otras computadoras', 'apagado', 'Sin configurar',
                  'Para habilitarlo, en la terminal de Ubuntu: <code>bash ranking.sh compartir</code>'];
   const d = t.detalle || {};
-  const quien = d.acceso === 'cualquiera' ? 'Cualquier persona con el enlace llega al ingreso'
-                                          : 'Solo cuentas Microsoft de la empresa, y después usuario y contraseña del sistema';
+  const vence = d.vence ? `<br>La sesión de Tailscale vence el ${esc(fechaCorta(String(d.vence).slice(0, 10)))}: para que no venza, `
+                          + 'desactivá el vencimiento en Tailscale (Manual de uso, "Uso desde otras computadoras").' : '';
   if(d.estado === 'activo' && t.segundos <= 300)
     return ['Acceso desde otras computadoras', 'ok', 'Activo',
             `<a href="${esc(d.url)}" target="_blank" rel="noopener" id="enlaceCompartido">${esc(d.url)}</a>
-             <button class="btn" id="copiarEnlace" data-url="${esc(d.url)}">Copiar enlace</button><br>${quien}`];
-  if(d.estado === 'sin_sesion')
-    return ['Acceso desde otras computadoras', 'error', 'Detenido',
-            'La sesión de Microsoft venció. En la terminal de Ubuntu: <code>bash ranking.sh compartir</code>'];
+             <button class="btn" id="copiarEnlace" data-url="${esc(d.url)}">Copiar enlace</button>
+             <br>Quien tenga el enlace llega a la pantalla de ingreso; solo entran las personas con usuario del sistema.${vence}`];
   if(d.estado === 'iniciando' && t.segundos <= 300) return ['Acceso desde otras computadoras', 'aviso', 'Iniciando', ''];
-  return ['Acceso desde otras computadoras', 'error', 'Sin conexión',
+  return ['Acceso desde otras computadoras', 'error', d.estado === 'sin_sesion' ? 'Detenido' : 'Sin conexión',
           esc(d.mensaje || 'El servicio no informa su estado. Se reintenta solo; si continúa: bash ranking.sh verificar')];
 }
 let relojPanel = null;

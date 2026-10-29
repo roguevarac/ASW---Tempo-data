@@ -441,24 +441,71 @@ try:
                f"delete from csv_uploads where filename = $${planilla.name}$$")
 
     # ================================================================ acceso desde otras computadoras (compartir)
-    # El túnel corre en Windows (escritorio/tunel.ps1, probado en test_tunel.py) y deja su estado en
-    # %LOCALAPPDATA%\RankingDigital\tunel-estado.json; Ubuntu lo pasa al Panel de control y a verificar.
-    codigo = fin(ranking("compartir", "--automatico"))
-    check("compartir fuera de Windows (WSL) explica que se configura desde Ubuntu en Windows",
-          codigo != 0 and "WSL" in texto("compartir.log"), texto("compartir.log")[-400:])
-    carpeta_win = base / "windows-localappdata" / "RankingDigital"
-    carpeta_win.mkdir(parents=True)
-    enlace = "https://auditor-rankings-prueba-8000.brs.devtunnels.ms/"
-    (carpeta_win / "tunel-estado.json").write_text(json.dumps(
-        {"estado": "activo", "url": enlace, "acceso": "empresa", "mensaje": None, "fecha": "2026-10-27T12:00:00Z"}), encoding="utf-8")
+    # Tailscale simulado (tests/tailscale_simulado, misma salida que tailscale 1.104): la prueba hace de la persona que
+    # inicia sesión y habilita el enlace público en el navegador.
+    def en_tunel(*a):
+        return dc("--profile", "compartir", "exec", "-T", "tunel", *a)
+
+    def contenedor_tunel():
+        return subprocess.run(["docker", "ps", "-q", "-f", f"name=^{PROYECTO_COMPOSE}-tunel-1$"], capture_output=True, text=True).stdout.strip()
+
+    def ultimo(nombre, titulo):
+        return texto(nombre).split(titulo)[-1]
+
     original = config.read_text()
-    config.write_text(original + f"COMPARTIR=1\nCARPETA_WINDOWS='{carpeta_win}'\n")
+    config.write_text(original + "COMPARTIR=1\nTUNEL_ID=auditor-rankings-viejo\nTUNEL_ACCESO=empresa\n")
+    codigo = fin(ranking("abrir", "--sin-navegador"))
+    check("el acceso anterior (enlace de Microsoft) se retira solo al arrancar: queda sin compartir y avisa cómo habilitar el nuevo",
+          codigo == 0 and "TUNEL_ID" not in config.read_text() and valor("COMPARTIR") is None and valor("COMPARTIR_ENLACE") is None
+          and "bash ranking.sh compartir" in texto("abrir.log"), texto("abrir.log")[-600:])
+    r = subprocess.run(["docker", "build", "-q", "-t", "rk-prueba-tunel:simulado", "--build-arg", f"BASE={IMAGEN}",
+                        str(RAIZ / "tests" / "tailscale_simulado")], capture_output=True, text=True)
+    check("(imagen de Tailscale simulado)", r.returncode == 0, r.stderr[-400:])
+    with open(config, "a") as f:
+        f.write("IMAGEN_TUNEL=rk-prueba-tunel:simulado\n")
+    enlace = "https://auditor-rankings.tail-prueba.ts.net/"
+    p = ranking("compartir", "--automatico", entorno=dict(ENTORNO, PRUEBAS_ENLACE="1"))
+    p.expect("login.tailscale.com/a/prueba123", timeout=300)
+    en_tunel("touch", "/var/lib/tailscale/sesion")                 # la persona inicia sesión en el navegador
+    p.expect("login.tailscale.com/f/funnel", timeout=120)
+    en_tunel("touch", "/var/lib/tailscale/funnel_habilitado")      # y confirma el enlace público (Enable)
+    codigo = fin(p)
+    log = ultimo("compartir.log", "== Acceso desde otras computadoras")
+    pedido = en_tunel("cat", "/var/lib/tailscale/funnel_pedido").stdout
+    entorno_tunel = en_tunel("cat", "/var/lib/tailscale/entorno").stdout
+    check("compartir: abre el inicio de sesión de Tailscale, después la habilitación del enlace público, y muestra el enlace fijo",
+          codigo == 0 and "Enlace para compartir:" in log and enlace in log and valor("COMPARTIR_ENLACE") == "1", log[-1500:])
+    check("...publica el sistema de esta PC (http://127.0.0.1:PUERTO) en segundo plano",
+          f"funnel --bg --yes http://127.0.0.1:{valor('PUERTO')}" in pedido, pedido)
+    check("...con la sesión en el volumen del contenedor (no en un llavero) y con el nombre del equipo",
+          all(x in entorno_tunel for x in ("TS_STATE_DIR=/var/lib/tailscale", "TS_USERSPACE=true", "TS_HOSTNAME=auditor-rankings",
+                                           "SSL_CERT_DIR=/etc/ssl/certs:/certificados")), entorno_tunel)
+    check("...avisa cómo evitar que la sesión venza (Disable key expiry)", "Disable key expiry" in log, log[-800:])
+    check("...y lo pasa al Panel de control", base_nueva("select concat(detalle->>'estado', ' ', detalle->>'url') from panel.servicios "
+                                                         "where servicio = 'tunel'") == f"activo {enlace}")
     fin(ranking("verificar"))
-    check("verificar muestra el enlace compartido y lo pasa al Panel de control",
-          f"Acceso desde otras computadoras: {enlace}" in texto("verificar.log")
-          and base_nueva("select detalle->>'url' from panel.servicios where servicio = 'tunel'") == enlace, texto("verificar.log")[-800:])
-    config.write_text(original)
+    v = ultimo("verificar.log", "== Verificación")
+    check("verificar: el contenedor del acceso corriendo y el enlace activo",
+          "Contenedor tunel corriendo" in v and f"Acceso desde otras computadoras: {enlace}" in v, v[-900:])
+    dc("--profile", "compartir", "restart", "tunel")
     base_nueva("delete from panel.servicios where servicio = 'tunel'")
+    fin(ranking("verificar"))
+    v = ultimo("verificar.log", "== Verificación")
+    check("después de reiniciar sigue activo, sin volver a iniciar sesión (la sesión queda en el volumen)",
+          f"Acceso desde otras computadoras: {enlace}" in v, v[-900:])
+    fin(ranking("compartir", "--apagar"))
+    check("compartir --apagar: deja de compartir, apaga el contenedor y lo saca del Panel de control",
+          valor("COMPARTIR_ENLACE") == "0" and not contenedor_tunel()
+          and base_nueva("select count(*) from panel.servicios where servicio = 'tunel'") == "0", texto("compartir.log")[-400:])
+    subprocess.run(["docker", "run", "--rm", "--entrypoint", "sh", "-v", f"{PROYECTO_COMPOSE}_tunel:/var/lib/tailscale",
+                    "rk-prueba-tunel:simulado", "-c", "rm -f /var/lib/tailscale/sesion /var/lib/tailscale/funnel; touch /var/lib/tailscale/sin_red"],
+                   capture_output=True)
+    codigo = fin(ranking("compartir", "--automatico", entorno=dict(ENTORNO, ESPERA_RED_TUNEL="3")))
+    log = ultimo("compartir.log", "== Acceso desde otras computadoras")
+    check("si la red de la empresa no llega a Tailscale: lo explica (qué pedirle a IT) y queda como estaba, sin compartir",
+          codigo != 0 and "Forbidden" in log and "controlplane.tailscale.com" in log and valor("COMPARTIR_ENLACE") == "0"
+          and not contenedor_tunel(), log[-900:])
+    subprocess.run(["docker", "volume", "rm", f"{PROYECTO_COMPOSE}_tunel"], capture_output=True)
 
     # ================================================================ respaldo y restauración
     antes = {t: base_nueva(f"select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from {t} x")

@@ -7,6 +7,7 @@ Panel de control (db/mejoras/05_panel.sql, /panel/* de api/app.py, pestaña "Pan
 
 Usa sus propios usuarios y datos. Variables: BASE, PGURL, STORAGE_DIR (el de la API).
 """
+import json
 import os
 import pathlib
 import subprocess
@@ -172,13 +173,30 @@ with sync_playwright() as p:
     pag.wait_for_selector('[data-tab="panel"]')
     check("sin la casilla 'Ver eliminados' (tampoco para el administrador)", pag.locator("#toggleDeleted, #toggleDeletedT").count() == 0
           and "Ver eliminados" not in pag.inner_text("body"))
-    sqlq("select panel.latido('tunel', '{\"estado\": \"activo\", \"acceso\": \"empresa\", "
-         "\"url\": \"https://auditor-rankings-x-8000.brs.devtunnels.ms/\"}'::jsonb)")
+    # Lo que informa Tailscale (tailscale status --json y tailscale funnel status --json, con la forma de la versión 1.104).
+    def tunel(status, funnel):
+        j = None if status is None else json.dumps({"status": status, "funnel": funnel})
+        sqlq("select panel.latido_tunel(" + ("null" if j is None else f"$j${j}$j$::jsonb") + ")")
+        return json.loads(sqlq("select detalle from panel.servicios where servicio = 'tunel'"))
+    yo = {"HostName": "auditor-rankings", "DNSName": "auditor-rankings.tail1234.ts.net.", "Online": True,
+          "KeyExpiry": "2027-04-27T12:00:00Z"}
+    abierto = {"TCP": {"443": {"HTTPS": True}}, "AllowFunnel": {"auditor-rankings.tail1234.ts.net:443": True}}
+    d = tunel({"BackendState": "NeedsLogin", "AuthURL": "https://login.tailscale.com/a/x", "Self": {"DNSName": ""}}, {})
+    check("acceso compartido sin sesión de Tailscale: lo indica con qué hacer", d["estado"] == "sin_sesion"
+          and "bash ranking.sh compartir" in d["mensaje"] and "url" not in d, d)
+    d = tunel({"BackendState": "Running", "Self": yo}, {})
+    check("con sesión pero sin enlace público habilitado: lo indica", d["estado"] == "sin_funnel", d)
+    d = tunel(None, None)
+    check("contenedor detenido: lo indica", d["estado"] == "detenido" and "bash ranking.sh abrir" in d["mensaje"], d)
+    d = tunel({"BackendState": "Running", "Self": yo}, abierto)
+    check("activo: enlace https del equipo, con el vencimiento de la sesión",
+          d == {"estado": "activo", "url": "https://auditor-rankings.tail1234.ts.net/", "acceso": "cualquiera",
+                "vence": "2027-04-27T12:00:00Z"}, d)
     pag.click('[data-tab="panel"]'); pag.wait_for_selector(".servicio")
     check("el Panel muestra el enlace para entrar desde otras computadoras, con botón para copiarlo",
-          pag.get_attribute("#enlaceCompartido", "href") == "https://auditor-rankings-x-8000.brs.devtunnels.ms/"
-          and pag.locator("#copiarEnlace").count() == 1 and "Solo cuentas Microsoft de la empresa" in pag.inner_text(".panel-body"),
-          pag.inner_text(".panel-body")[:600])
+          pag.get_attribute("#enlaceCompartido", "href") == "https://auditor-rankings.tail1234.ts.net/"
+          and pag.locator("#copiarEnlace").count() == 1 and "pantalla de ingreso" in pag.inner_text(".panel-body")
+          and "27/04/2027" in pag.inner_text(".panel-body"), pag.inner_text(".panel-body")[:600])
     sqlq("delete from panel.servicios where servicio = 'tunel'")
     texto = pag.inner_text(".panel-body")
     check("Estado del sistema: servicios, recursos, contenido y respaldos",
