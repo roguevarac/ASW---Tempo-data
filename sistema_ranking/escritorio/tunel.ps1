@@ -27,7 +27,10 @@ function Estado($estado, $url, $mensaje) {
 function Dt([string[]]$argumentos) {
     $salida = (& $Dt @argumentos 2>&1 | Out-String)
     $codigo = $LASTEXITCODE
-    if ($codigo -ne 0) { Anotar "devtunnel $($argumentos -join ' ') -> $codigo $($salida.Trim())" }
+    # "Ya existe" (el puerto ya publicado) es lo esperado al reabrir: no se anota como problema.
+    if ($codigo -ne 0 -and $salida -notmatch 'already exists|Conflict with existing') {
+        Anotar "devtunnel $($argumentos -join ' ') -> $codigo $($salida.Trim())"
+    }
     return @{ codigo = $codigo; salida = $salida }
 }
 function ConSesion {

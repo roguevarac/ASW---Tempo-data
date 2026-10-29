@@ -89,10 +89,14 @@ e = estado()
 check("abre el túnel y deja el enlace HTTPS del puerto del sistema (no el de 'inspect')",
       e.get("estado") == "activo" and e.get("url") == "https://auditor-rankings-prueba-8000.brs.devtunnels.ms/"
       and e.get("acceso") == "empresa", e)
-check("queda un registro (tunel.log)", "Connect via browser" in (carpeta / "tunel.log").read_text(encoding="utf-8"))
+registro = (carpeta / "tunel.log").read_text(encoding="utf-8")
+check("queda un registro (tunel.log)", "Connect via browser" in registro)
 comandos = (simulado / "comandos").read_text()
 check("al volver a abrirse reusa el mismo túnel (el enlace no cambia)",
       comandos.count("create auditor-rankings-prueba --expiration") == 1, comandos)
+
+check("el puerto ya publicado (Conflict) no se anota como error en el registro",
+      "Conflict" not in (carpeta / "tunel.log").read_text(encoding="utf-8"), (carpeta / "tunel.log").read_text(encoding="utf-8")[-800:])
 
 # --------------------------------------------------------------- cualquiera con el enlace
 generar("cualquiera")

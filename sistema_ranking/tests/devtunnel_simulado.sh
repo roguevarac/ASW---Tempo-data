@@ -11,7 +11,7 @@ case "$1 $2" in
         echo "To sign in, use a web browser to open https://microsoft.com/devicelogin and enter the code PRUEBA123"
         touch "$E/sesion"; echo "Logged in as prueba@empresa.com using Microsoft."; exit 0 ;;
     "port create")
-        if [ -f "$E/puerto-$3" ]; then echo "Tunnel port 8000 already exists."; exit 1; fi
+        if [ -f "$E/puerto-$3" ]; then echo "Tunnel service error: Conflict with existing entity. Tunnel port number conflicts with an existing port in the tunnel."; exit 1; fi
         touch "$E/puerto-$3"; echo "Port 8000 created."; exit 0 ;;
     "access reset") rm -f "$E/acceso"; exit 0 ;;
     "access create") echo "$4" > "$E/acceso"; exit 0 ;;
