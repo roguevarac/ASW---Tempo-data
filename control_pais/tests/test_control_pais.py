@@ -38,6 +38,16 @@ extra_mv = [
     (3001, "FALSO CHILE", 301, "Y", 1, 1, "SMP", "ALL CONTRACTUAL TERRITORIES", 50, 50, 50),
     # grupo World ex Chile: no cuenta; otro grupo generico tampoco existe -> no controlada
     (3002, "WORLD EX CHILE", 302, "Y", 1, 1, "SMP", "WORLD EX CHILE", 50, 50, 50),
+    # You Are My Heart 274220 (captura de Tempo del usuario): All Other Contractual Territories + UNITED STATES,
+    # linea Include: World. Publisher Controlled en All Other = Mech 56.25 / Perf 31.25 / Synch 56.25.
+    (274220, "YOU ARE MY HEART", 166692, "Y", 11, 101, "Vita Mia Music", "All Other Contractual Territories", 12.5, 25, 25),
+    (274220, "YOU ARE MY HEART", 166692, "Y", 12, 101, "Vita Mia Music", "All Other Contractual Territories", 12.5, 25, 25),
+    (274220, "YOU ARE MY HEART", 155812, "Y", 13, 102, "Sony/ATV Tunes LLC", "All Other Contractual Territories", 6.25, 6.25, 6.25),
+    (274220, "YOU ARE MY HEART", None, "N", 14, 103, "John Bettis Music", "All Other Contractual Territories", 12.5, 25, 25),
+    (274220, "YOU ARE MY HEART", None, "N", None, 104, "Kobalt Music Copyrights SARL", "All Other Contractual Territories", 6.25, 18.75, 18.75),
+    (274220, "YOU ARE MY HEART", 166692, "Y", 11, 101, "Vita Mia Music", "UNITED STATES", 12.5, 25, 25),
+    (274220, "YOU ARE MY HEART", 166692, "Y", 12, 101, "Vita Mia Music", "UNITED STATES", 12.5, 25, 25),
+    (274220, "YOU ARE MY HEART", 155812, "Y", 13, 102, "Sony/ATV Tunes LLC", "UNITED STATES", 6.25, 5, 5),
 ]
 for (sid, tit, cid, ctrl, wid, pid, pub, grp, p, m, s) in extra_mv:
     con.execute("insert into dp_song_metadata.song_share_detail_mv values (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -47,13 +57,15 @@ con.executemany("insert into dp_song_metadata.contract_territories values (?,?,?
     (3000, 300, "C300", "Include: World", None),
     (3001, 301, "C301", "Include: CHILEAN ISLANDS;PERU", None),
     (3002, 302, "C302", "Include: World", None),
+    (274220, 166692, "Fabian Lara And Allison Rick", "Include: World", None),
+    (274220, 155812, "Afanasieff, Walter", "Include: World", None),
 ])
 con.executemany("insert into dp_deal_metadata.contract_v values (?,?,?,?)",
-                [(300, "C300", "London", None), (301, "C301", "London", None), (302, "C302", "London", None)])
+                [(300, "C300", "London", None), (301, "C301", "London", None), (302, "C302", "London", None), (166692, "Fabian Lara And Allison Rick", "United States", None), (155812, "Afanasieff, Walter", "United States", None)])
 # Linea que cubre Chile en una obra sin participaciones: no debe salir
 con.execute("insert into dp_song_metadata.contract_territories values (3999, 399, 'C399', 'Include: CHILE', NULL)")
 # Tabla de obras para la v8 (todas, incluidas las extra)
-ids = [s[0] for s in songs] + [3000, 3001, 3002]
+ids = [s[0] for s in songs] + [3000, 3001, 3002, 274220]
 con.executemany("insert into public.rankingdigital_song_id values (?)", [(i,) for i in ids])
 
 def _duck(stmt_sql):
@@ -115,6 +127,10 @@ check("Baba O'Riley: alerta de otra linea, grupo mundial, ISWC preferido",
       "OTRA LINEA" in (b.get("alertas") or "") and b.get("como_se_eligio_grupo") == "Grupo mundial" and b.get("iswc") == "T-010.237.425-3", b)
 check("pais = CHILE", all(r["pais"] == "CHILE" for r in res))
 check("grupo propio de Chile gana (70)", num(R.get(3000, {}).get("performance_pc_total")) == 70 and R[3000]["como_se_eligio_grupo"] == "Grupo nombra al país", R.get(3000))
+y = R.get(274220, {})
+check("274220 (All Other Contractual Territories + Include: World) sale con 31.25 / 56.25 / 56.25",
+      (num(y.get("performance_pc_total")), num(y.get("mechanical_pc_total")), num(y.get("sync_pc_total"))) == (31.25, 56.25, 56.25)
+      and y.get("grupo_ip_usado") == "ALL OTHER CONTRACTUAL TERRITORIES", y)
 check("CHILEAN ISLANDS no cubre Chile", 3001 not in R)
 check("grupo WORLD EX CHILE no cuenta", 3002 not in R)
 check("linea sin participaciones no sale", 3999 not in R)
