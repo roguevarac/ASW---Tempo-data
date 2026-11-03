@@ -71,6 +71,10 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   leen en un solo flujo `UNION ALL` filtrado por ese `IN`. IPI = `dp_writer_data.publisher_v.cae_num` (LEFT JOIN). El
   usuario **sí tiene permiso sobre `dp_writer_data`** (probado el 03/11/2026); `cae_num` es numérico y muchas veces NULL.
   Sin porcentajes ni capacidad (el usuario los sacó). Test: `python3 editoriales_control/tests/test_editoriales.py`.
+- `control_pais/obras_controladas_pais_v1.sql` (+ `unload_obras_controladas_pais_v1.sql`, generado con
+  `python3 control_pais/tools/generar_unload.py`): todas las obras del catálogo controladas en un país (hoy CHILE; se
+  cambia en el bloque `claves`), con la regla de la v8. Exige línea de control que cubra el país; no lee `song_v`.
+  Test: `python3 control_pais/tests/test_control_pais.py` (compara contra la v8).
 - `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO y UNITED STATES). Una sola
   sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.
 - `reporte_cwr/unload_reporte_cwr_v8.sql`: la v8 dentro de un `UNLOAD` a S3 para resultados grandes. Se genera con
