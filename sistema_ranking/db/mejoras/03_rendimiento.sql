@@ -130,13 +130,14 @@ DROP TRIGGER IF EXISTS trg_audit_territory_seguimiento ON public.territory_segui
 CREATE TRIGGER trg_audit_territory_seguimiento AFTER INSERT OR DELETE OR UPDATE ON public.territory_seguimiento
     FOR EACH ROW EXECUTE FUNCTION fn_audit_trigger();
 
--- Tabla por territorio: una página, con los filtros de fn_territory_view más los de reclamos y estado de trabajo
--- ('—' = sin valor) y la búsqueda por Tempo ID o título. Ordenada por territorio y título.
+-- Tabla por territorio: una página, con los filtros de fn_territory_view más los de estado (de BO), reclamos y estado
+-- de trabajo ('—' = sin valor) y la búsqueda por Tempo ID o título. Ordenada por territorio y título.
+-- p_estado va al final para no cambiar la posición de los demás (fn_territory_exportar la llama por posición).
 DROP FUNCTION IF EXISTS public.fn_territory_pagina(date, date, pais_code_enum, boolean, text, text, text, integer, integer);
 CREATE OR REPLACE FUNCTION public.fn_territory_pagina(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
     p_pais pais_code_enum DEFAULT NULL::pais_code_enum, p_include_deleted boolean DEFAULT false, p_buscar text DEFAULT NULL::text,
     p_reclamos text DEFAULT NULL::text, p_estado_trabajo text DEFAULT NULL::text,
-    p_limite integer DEFAULT 100, p_offset integer DEFAULT 0)
+    p_limite integer DEFAULT 100, p_offset integer DEFAULT 0, p_estado text DEFAULT NULL::text)
  RETURNS TABLE(id uuid, track_master_id uuid, pais_code pais_code_enum, tempo_id text, track_artist_concat text, snapshot_date date,
                created_date date, bo_report_id uuid, bo text, ca text, perf_raw text, mech_raw text, estado text, reclamos text,
                mech_bo numeric, estado_trabajo text, estado_obra text, deleted_at timestamp with time zone,
@@ -166,6 +167,7 @@ AS $function$
         left join territory_tempo_report tr on tr.track_master_id = u.track_master_id and tr.pais_code = u.pais_code
                and tr.deleted_at is null
         where (p_include_deleted or (u.deleted_at is null and tm.deleted_at is null))
+          and (p_estado is null or coalesce(nullif(trim(br.bo_status), ''), '—') = p_estado)
           and (p_reclamos is null or coalesce(br.reclamos, '—') = p_reclamos)
           and (p_estado_trabajo is null or p_estado_trabajo = any(string_to_array(coalesce(br.estado_trabajo, '—'), ' / ')))
           and fn_coincide_busqueda(p_buscar, tm.tempo_id, tm.track_artist_concat)
@@ -182,6 +184,9 @@ CREATE OR REPLACE FUNCTION public.fn_territory_opciones()
  LANGUAGE sql
  STABLE
 AS $function$
+    select 'estado', v from (select distinct coalesce(nullif(trim(bo_status), ''), '—') as v from territory_bo_report
+                             where deleted_at is null union select '—') s
+    union all
     select 'reclamos', v from (select distinct coalesce(reclamos, '—') as v from territory_bo_report where deleted_at is null
                                union select '—') s
     union all

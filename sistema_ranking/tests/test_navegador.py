@@ -264,6 +264,10 @@ with sync_playwright() as p:
           pag.evaluate("[...document.querySelectorAll('thead th')].map(t => t.textContent.trim()).filter(Boolean).join('|')")
           == "País|Track - Artista|Created date|Tempo ID|% Perf Tempo|% Mech Tempo|BO ID|C/A|% Mech BO|Estado|Reclamos|Estado de trabajo|Ticket|Fecha",
           pag.evaluate("[...document.querySelectorAll('thead th')].map(t => t.innerText.trim()).join('|')"))
+    check("filtros de la tabla por territorio en orden: país, desde, hasta, Estado, Reclamos y Estado de trabajo",
+          pag.evaluate("[...document.querySelectorAll('.toolbar-left select, .toolbar-left input[type=date]')].map(e => e.id).join(',')")
+          == "countryFilter,dateFromT,dateToT,estadoFilter,reclamosFilter,estadoTrabajoFilter",
+          pag.evaluate("[...document.querySelectorAll('.toolbar-left select, .toolbar-left input[type=date]')].map(e => e.id).join(',')"))
     tk = pag.locator('[data-field-seg="ticket"]').first
     tk.fill("INC-555"); tk.press("Enter"); pag.wait_for_timeout(1000)
     fe = pag.locator('[data-field-seg="fecha"]').first
@@ -336,7 +340,7 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "Semanas en orden", "falta cargar la semana",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
                                           "Respaldo en OneDrive", "no altera la información",
                                           "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))

@@ -135,6 +135,14 @@ check("las opciones del filtro de estado de trabajo van separadas por problema",
       sqlq("select count(*) from fn_territory_opciones() where campo = 'estado_trabajo' and valor like '% / %'") == "0")
 est.rpc("fn_upsert_bo_report_batch", {"p_rows": [{"tempo_id": tid, "bo_status": "SONG", "reclamos": "", "mech_bo": "50"}], "p_pais_code": "AR"})
 check("NOT WORK y % distintos -> 'REVISAR NOT WORK / REVISAR %'", estado_ar() == "REVISAR NOT WORK / REVISAR %", estado_ar())
+check("filtro por Estado (de BO): encuentra la obra con ese estado y no con otro",
+      sqlq("select count(*) from fn_territory_pagina(p_pais => 'AR', p_estado => 'SONG')") == "1"
+      and sqlq("select count(*) from fn_territory_pagina(p_pais => 'AR', p_estado => 'WORK')") == "0")
+check("el filtro Estado ofrece los valores de la columna y '—' (sin valor)",
+      sqlq("select string_agg(valor, ',' order by valor) from fn_territory_opciones() where campo = 'estado' and valor in ('SONG', '—')") == "SONG,—")
+r = est.rpc("fn_territory_exportar", {"p_pais": "AR", "p_estado": "SONG"})
+check("la descarga por territorio aplica también el filtro Estado",
+      r.status_code == 200 and len(r.json()) == 1 and r.json()[0]["Estado"] == "SONG", r.text[:300])
 est.rpc("fn_upsert_bo_report_batch", {"p_rows": [{"tempo_id": tid, "bo_status": "WORK", "reclamos": "", "mech_bo": "100"}], "p_pais_code": "AR"})
 check("sin reclamo, WORK y % iguales -> vuelve a 'OK BO-Tempo'", estado_ar() == "OK BO-Tempo", estado_ar())
 

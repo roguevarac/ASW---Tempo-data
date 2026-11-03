@@ -241,7 +241,7 @@ const ESTADOS = ['ok','duplicada','uncontrolled','porcentaje_incorrecto'];
 
 let state = {
   session: null, profile: null, loginError: '',
-  activeTab: 'master', searchMaster: '', searchTerritory: '', territoryCountry: '', reclamosFilter: '', estadoTrabajoFilter: '',
+  activeTab: 'master', searchMaster: '', searchTerritory: '', territoryCountry: '', estadoFilter: '', reclamosFilter: '', estadoTrabajoFilter: '',
   dateFromT: '', dateToT: '',
   dateFrom: '', dateTo: '', masterCountry: '', history: null, historyLoading: false,
   master: [], territoryControl: [], uploads: [], loading: true,
@@ -252,7 +252,7 @@ let state = {
   panel: { acceso: false, sub: 'estado', datos: {}, filtrosAct: {}, eventoServicio: '', error: '', mensaje: '',
            codigo: null, ocupado: false, actualizado: null },
   masterTotal: 0, masterPage: 0, territoryTotal: 0, territoryPage: 0, territoryStale: true,
-  territoryOpciones: { reclamos: [], estado_trabajo: [] }, seqMaster: 0, seqTerritory: 0, envioBusy: false,
+  territoryOpciones: { estado: [], reclamos: [], estado_trabajo: [] }, seqMaster: 0, seqTerritory: 0, envioBusy: false,
 };
 
 function fmtNum(n){ return n===null || n===undefined ? '—' : Number(n).toLocaleString('es-AR'); }
@@ -334,7 +334,7 @@ async function loadTerritory(){
   const [t, o] = await Promise.all([
     sb.rpc('fn_territory_pagina', {
       ...filtrosFechas('territory'), p_pais: state.territoryCountry || null, p_include_deleted: incluyeEliminados(),
-      p_buscar: state.searchTerritory || null,
+      p_buscar: state.searchTerritory || null, p_estado: state.estadoFilter || null,
       p_reclamos: state.reclamosFilter || null, p_estado_trabajo: state.estadoTrabajoFilter || null,
       p_limite: PAGE_SIZE, p_offset: state.territoryPage * PAGE_SIZE,
     }),
@@ -347,6 +347,7 @@ async function loadTerritory(){
   state.territoryTotal = state.territoryControl.length ? Number(state.territoryControl[0].total) : 0;
   const op = o.data || [];
   state.territoryOpciones = {
+    estado: op.filter(x => x.campo === 'estado').map(x => x.valor),
     reclamos: op.filter(x => x.campo === 'reclamos').map(x => x.valor),
     estado_trabajo: op.filter(x => x.campo === 'estado_trabajo').map(x => x.valor),
   };
@@ -366,6 +367,7 @@ function filtrosActivos(){
   if(desde) f.push(`Desde: ${fechaCorta(desde)}`);
   if(hasta) f.push(`Hasta: ${fechaCorta(hasta)}`);
   if(t){
+    if(state.estadoFilter) f.push(`Estado: ${state.estadoFilter}`);
     if(state.reclamosFilter) f.push(`Reclamos: ${state.reclamosFilter}`);
     if(state.estadoTrabajoFilter) f.push(`Estado de trabajo: ${state.estadoTrabajoFilter}`);
   }
@@ -1249,7 +1251,7 @@ function fechaTicket(r){
 }
 
 function filtrosTerritorio(){
-  return !!(state.territoryCountry || state.dateFromT || state.dateToT || state.reclamosFilter || state.estadoTrabajoFilter
+  return !!(state.territoryCountry || state.dateFromT || state.dateToT || state.estadoFilter || state.reclamosFilter || state.estadoTrabajoFilter
             || state.searchTerritory.trim());
 }
 
@@ -1257,6 +1259,7 @@ function renderTerritory(){
   const rows = state.territoryControl;
 
   // Opciones "como en Excel": los valores distintos que existen hoy en la columna (los calcula la base).
+  const estadoOptions = state.territoryOpciones.estado;
   const reclamosOptions = state.territoryOpciones.reclamos;
   const estadoTrabajoOptions = state.territoryOpciones.estado_trabajo;
 
@@ -1276,6 +1279,10 @@ function renderTerritory(){
       </select>
       <label class="check">Desde <input type="date" class="edit-field ${state.dateFromT ? 'filtro-on' : ''}" style="width:auto" id="dateFromT" value="${state.dateFromT}"></label>
       <label class="check">Hasta <input type="date" class="edit-field ${state.dateToT ? 'filtro-on' : ''}" style="width:auto" id="dateToT" value="${state.dateToT}"></label>
+      <select id="estadoFilter" class="${state.estadoFilter ? 'filtro-on' : ''}">
+        <option value="">Estado: todos</option>
+        ${estadoOptions.map(v=>`<option value="${esc(v)}" ${state.estadoFilter===v?'selected':''}>${esc(v)}</option>`).join('')}
+      </select>
       <select id="reclamosFilter" class="${state.reclamosFilter ? 'filtro-on' : ''}">
         <option value="">Reclamos: todos</option>
         ${reclamosOptions.map(v=>`<option value="${v}" ${state.reclamosFilter===v?'selected':''}>${v}</option>`).join('')}
@@ -2016,9 +2023,11 @@ function attachAppEvents(){
   if(lm) lm.onclick = () => aplicarFiltro(() => { state.dateFrom=''; state.dateTo=''; state.masterCountry=''; state.searchMaster=''; });
   const lt = document.getElementById('clearFiltersT');
   if(lt) lt.onclick = () => aplicarFiltro(() => {
-    state.dateFromT=''; state.dateToT=''; state.territoryCountry=''; state.reclamosFilter=''; state.estadoTrabajoFilter='';
+    state.dateFromT=''; state.dateToT=''; state.territoryCountry=''; state.estadoFilter=''; state.reclamosFilter=''; state.estadoTrabajoFilter='';
     state.searchTerritory='';
   }, soloTerritorio);
+  const ef = document.getElementById('estadoFilter');
+  if(ef) ef.onchange = (e) => aplicarFiltro(() => { state.estadoFilter = e.target.value; }, soloTerritorio);
   const rf = document.getElementById('reclamosFilter');
   if(rf) rf.onchange = (e) => aplicarFiltro(() => { state.reclamosFilter = e.target.value; }, soloTerritorio);
   const etf = document.getElementById('estadoTrabajoFilter');
@@ -2087,6 +2096,7 @@ function attachAppEvents(){
   if(exT) exT.onclick = () => downloadFilteredCsv('fn_territory_exportar', {
     ...filtrosFechas('territory'),
     p_pais: state.territoryCountry || null, p_buscar: state.searchTerritory || null,
+    p_estado: state.estadoFilter || null,
     p_reclamos: state.reclamosFilter || null, p_estado_trabajo: state.estadoTrabajoFilter || null,
   }, `tabla_territorio${state.territoryCountry?'_'+state.territoryCountry:''}.csv`);
 

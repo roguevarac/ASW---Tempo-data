@@ -588,11 +588,11 @@ CREATE POLICY envio_identificadas_unificar ON public.envio_identificadas AS PERM
 
 -- ---------------------------------------------------------------- descarga de la tabla por territorio
 -- Las columnas de la tabla por territorio, en su orden (con Ticket y Fecha), con todos los filtros de la pantalla
--- (también reclamos, estado de trabajo y la búsqueda).
+-- (también estado de BO, reclamos, estado de trabajo y la búsqueda).
 DROP FUNCTION IF EXISTS public.fn_territory_exportar(date, date, pais_code_enum, text, text, text);
 CREATE OR REPLACE FUNCTION public.fn_territory_exportar(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
     p_pais pais_code_enum DEFAULT NULL::pais_code_enum, p_buscar text DEFAULT NULL::text,
-    p_reclamos text DEFAULT NULL::text, p_estado_trabajo text DEFAULT NULL::text)
+    p_reclamos text DEFAULT NULL::text, p_estado_trabajo text DEFAULT NULL::text, p_estado text DEFAULT NULL::text)
  RETURNS TABLE("Pais" text, "Track - Artista" text, "Created date" text, "Tempo ID" text,
                "% Perf Tempo" text, "% Mech Tempo" text, "BO ID" text, "C/A" text, "% Mech BO" text, "Estado" text,
                "Reclamos" text, "Estado de trabajo" text, "Ticket" text, "Fecha" text)
@@ -615,7 +615,7 @@ AS $function$
         coalesce(v.ticket, ''),
         coalesce(to_char(v.ticket_fecha, 'DD/MM/YYYY'), '')
     from fn_territory_pagina(p_date_from, p_date_to, p_pais, false, p_buscar, p_reclamos, p_estado_trabajo,
-                             2147483647, 0) v;
+                             2147483647, 0, p_estado) v;
 $function$;
 
 -- Ticket y fecha de una obra en un territorio (tabla por territorio). p_campo: 'ticket' o 'fecha'. La fecha se escribe
