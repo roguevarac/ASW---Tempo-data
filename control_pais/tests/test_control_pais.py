@@ -57,8 +57,8 @@ con.executemany("insert into dp_song_metadata.contract_territories values (?,?,?
     (3000, 300, "C300", "Include: World", None),
     (3001, 301, "C301", "Include: CHILEAN ISLANDS;PERU", None),
     (3002, 302, "C302", "Include: World", None),
-    (274220, 166692, "Fabian Lara And Allison Rick", "Include: World", None),
-    (274220, 155812, "Afanasieff, Walter", "Include: World", None),
+    (274220, 166692, "Fabian Lara And Allison Rick", "Include: World", ""),
+    (274220, 155812, "Afanasieff, Walter", "Include: World", ""),
 ])
 con.executemany("insert into dp_deal_metadata.contract_v values (?,?,?,?)",
                 [(300, "C300", "London", None), (301, "C301", "London", None), (302, "C302", "London", None), (166692, "Fabian Lara And Allison Rick", "United States", None), (155812, "Afanasieff, Walter", "United States", None)])

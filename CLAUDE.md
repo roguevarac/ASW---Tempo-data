@@ -40,6 +40,7 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     `World` por la lista explícita de países y deja `exclusions` NULL. Hay que comparar elemento por elemento.
   - Países con sufijo ` (REG)` y solo países con `gca_territory_ind='Y'`; los nombres de región vienen de `tempo_territory`.
   - Los overrides de la obra ya están aplicados en el texto (ganan sobre el contrato).
+  - `exclusions` puede venir como texto vacío (`''`), no solo NULL (caso real 274220). Tratar `''` como sin exclusiones.
 - Porcentajes de control por obra: `publisher_*_pc` filtrando `smp_controlled_ind='Y'`, un solo grupo IP por país
   (el que nombra al país; si no, región; si no, mundial).
 - **Territorio de control = líneas de control de la obra**, no el "Associated Contract" de la participación.

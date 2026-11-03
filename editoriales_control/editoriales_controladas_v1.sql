@@ -66,7 +66,7 @@ fuente AS (
             ct.contract_id,
             ct.contract_nm,
             NULL,
-            ct.contract_nm || ' (' || COALESCE(ct.inclusions, '') || COALESCE(' / ' || ct.exclusions, '') || ')'
+            ct.contract_nm || ' (' || COALESCE(ct.inclusions, '') || COALESCE(' / ' || NULLIF(TRIM(ct.exclusions), ''), '') || ')'
         FROM dp_song_metadata.contract_territories ct
     ) u
     -- EDITABLE: Tempo ID de las obras, separados por coma.
