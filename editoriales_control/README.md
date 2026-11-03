@@ -11,8 +11,11 @@ con su Include / Exclude de `contract_territories`, o "sin línea de control act
 líneas de control de la obra con su Include / Exclude; es la referencia del territorio controlado y puede incluir
 contratos que la participación no menciona, como ABKCO Music International Limited en Baba O'Riley).
 
-Solo salen obras con alguna editorial controlada (las no controladas no aparecen, pedido del usuario). Un ID que no
+Solo salen editoriales controladas **vigentes** (pedido del usuario): `smp_controlled_ind = 'Y'` con contrato asociado
+no vencido (`contract_v.contract_expiration_dt`; sin contrato o sin vencimiento cuenta), en obras que no son NOP
+(`song_v.song_not_ours_dt`) y que tienen al menos una línea de control vigente. Las líneas muestran [vig.], [sin venc.]
+o [VENCIDO]. Las obras no controladas no aparecen. Un ID que no
 está en la MV tampoco aparece. Sin porcentajes ni capacidad (pedido del usuario).
 
-Lee `song_share_detail_mv` y `contract_territories` una vez cada una, en un solo flujo filtrado por el `IN`.
+El `IN` filtra `contract_territories`; la MV se lee 2 veces, `song_v` y `contract_v` 1 vez, todas filtradas.
 Prueba (incluye el caso real 2701309): `python3 editoriales_control/tests/test_editoriales.py`.
