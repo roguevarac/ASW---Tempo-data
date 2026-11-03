@@ -67,7 +67,8 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 - `financials/mexico_emmac.sql`: lo generado en México (fuente EMMAC) por obra, en moneda local y USD.
 - `editoriales_control/editoriales_controladas_v1.sql`: editoriales con control Yes (`smp_controlled_ind='Y'`) por obra;
   los Tempo ID van en un `IN` dentro de la query (pedido del usuario, excepción a la regla de la tabla); una lectura de
-  `song_share_detail_mv`. Test: `python3 editoriales_control/tests/test_editoriales.py`.
+  `song_share_detail_mv`. IPI de la editorial = `dp_writer_data.publisher_v.cae_num` (LEFT JOIN al final; permiso sobre
+  `dp_writer_data` sin confirmar). Test: `python3 editoriales_control/tests/test_editoriales.py`.
 - `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO y UNITED STATES). Una sola
   sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.
 - `reporte_cwr/unload_reporte_cwr_v8.sql`: la v8 dentro de un `UNLOAD` a S3 para resultados grandes. Se genera con

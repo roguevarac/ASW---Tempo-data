@@ -19,7 +19,10 @@
 -- "detalle_por_grupo_ip"; las columnas numéricas dan el mínimo y el máximo
 -- entre grupos (si coinciden, el porcentaje es el mismo en todo el mundo).
 --
--- Solo usa dp_song_metadata (sin edw ni otros esquemas).
+-- IPI de la editorial: dp_writer_data.publisher_v.cae_num (CAE/IPI name number),
+-- con LEFT JOIN: una editorial sin IPI cargado sale con el IPI vacío.
+-- Requiere permiso de lectura sobre dp_writer_data; si no lo hay, la query falla
+-- con "permission denied for schema dp_writer_data".
 --
 -- Rendimiento: song_share_detail_mv se nombra UNA vez (cadena lineal, cruces
 -- con funciones de ventana). Todos los LISTAGG ordenan por la misma columna
@@ -135,14 +138,15 @@ por_editorial AS (
     GROUP BY l.song_id, l.publisher_id
 )
 
--- 6. Resultado.
+-- 6. Resultado. Primero Tempo ID, título, editorial controlada e IPI.
 SELECT
     e.song_id                                                        AS tempo_id,
-    e.song_title_tx                                                  AS titulo,
+    e.song_title_tx                                                  AS song_title,
+    CASE WHEN e.tiene_ctrl = 1 THEN e.publisher_name_tx END          AS editorial_controlada,
+    CASE WHEN e.tiene_ctrl = 1 THEN p.cae_num END                    AS ipi_editorial,
     CASE WHEN e.tiene_ctrl = 1 THEN 'CONTROLADA'
          ELSE 'SIN EDITORIAL CONTROLADA' END                         AS estado,
     CASE WHEN e.tiene_ctrl = 1 THEN e.publisher_id END               AS publisher_id,
-    CASE WHEN e.tiene_ctrl = 1 THEN e.publisher_name_tx END          AS editorial,
     CASE WHEN e.tiene_ctrl = 1 THEN e.capacidad END                  AS capacidad,
     CASE WHEN e.tiene_ctrl = 1 THEN e.writers_representados END      AS writers_representados,
     CASE WHEN e.tiene_ctrl = 1 THEN e.contratos_asociados END        AS contratos_asociados,
@@ -155,5 +159,8 @@ SELECT
     CASE WHEN e.tiene_ctrl = 1 THEN e.sync_pc_min END                AS sync_pc_min,
     CASE WHEN e.tiene_ctrl = 1 THEN e.sync_pc_max END                AS sync_pc_max
 FROM por_editorial e
-ORDER BY e.song_id, editorial
+LEFT JOIN dp_writer_data.publisher_v p
+       ON p.publisher_id = e.publisher_id
+      AND e.tiene_ctrl = 1
+ORDER BY e.song_id, editorial_controlada
 ;
