@@ -7,7 +7,7 @@ Estados: `CONTROLADA` y `SIN EDITORIAL CONTROLADA` (tiene participaciones, ningu
 (no es song_type 1 / secuencia 0, o un writer sin sociedad la saca) no aparece: comparar la cantidad de obras.
 
 Columnas: Tempo ID, song title, editorial controlada, IPI de la editorial (`dp_writer_data.publisher_v.cae_num`, permiso
-confirmado; es numérico y puede venir vacío), estado, publisher_id, capacidad
-(OP/SE/AM...) y writers que representa. Sin contratos, grupos IP ni porcentajes (pedido del usuario).
+confirmado; es numérico y puede venir vacío), estado, publisher_id y
+writers que representa. Sin contratos, grupos IP, porcentajes ni capacidad (pedido del usuario).
 
 Lee `dp_song_metadata.song_share_detail_mv` una sola vez y `dp_writer_data.publisher_v` para el IPI. Prueba: `python3 editoriales_control/tests/test_editoriales.py`.

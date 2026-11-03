@@ -16,12 +16,11 @@
 -- cae_num es numérico (sin ceros a la izquierda). Permiso sobre dp_writer_data
 -- confirmado por el usuario.
 --
--- Columnas pedidas por el usuario (03/11/2026): sin contratos, grupos IP ni
--- porcentajes.
+-- Columnas pedidas por el usuario (03/11/2026): sin contratos, grupos IP,
+-- porcentajes ni capacidad (rol OP/SE/AM de la editorial).
 --
 -- Rendimiento: song_share_detail_mv se nombra UNA vez (cadena lineal, cruces
--- con funciones de ventana). Los dos LISTAGG ordenan por la misma columna
--- "orden": cada fila se repite por tipo de lista (bloque "listas").
+-- con funciones de ventana).
 -- =====================================================================
 WITH
 -- 1. Única lectura de la MV, filtrada a las obras pedidas.
@@ -32,7 +31,6 @@ mv AS (
         s.smp_controlled_ind             AS ctrl,
         s.publisher_id,
         s.publisher_name_tx,
-        s.publisher_capacity_type_cd     AS capacidad,
         s.writer_id,
         s.writer_nm
     FROM dp_song_metadata.song_share_detail_mv s
@@ -40,15 +38,14 @@ mv AS (
     WHERE s.song_id IN (111111, 222222, 333333)
 ),
 
--- 2. Si la obra tiene alguna editorial controlada y primeras apariciones para
---    las listas (en lugar de LISTAGG DISTINCT).
+-- 2. Si la obra tiene alguna editorial controlada y primera aparición de cada
+--    writer por editorial (en lugar de LISTAGG DISTINCT).
 marcado AS (
     SELECT
         m.*,
         MAX(CASE WHEN m.ctrl = 'Y' THEN 1 ELSE 0 END) OVER (PARTITION BY m.song_id) AS tiene_ctrl,
-        ROW_NUMBER() OVER (PARTITION BY m.song_id ORDER BY m.publisher_id, m.writer_id)              AS rn_obra,
-        ROW_NUMBER() OVER (PARTITION BY m.song_id, m.publisher_id, m.writer_id ORDER BY m.capacidad) AS rn_writer,
-        ROW_NUMBER() OVER (PARTITION BY m.song_id, m.publisher_id, m.capacidad ORDER BY m.writer_id) AS rn_capacidad
+        ROW_NUMBER() OVER (PARTITION BY m.song_id ORDER BY m.publisher_id, m.writer_id)            AS rn_obra,
+        ROW_NUMBER() OVER (PARTITION BY m.song_id, m.publisher_id, m.writer_id ORDER BY m.ctrl)    AS rn_writer
     FROM mv m
 ),
 
@@ -60,39 +57,22 @@ filas AS (
        OR (tiene_ctrl = 0 AND rn_obra = 1)
 ),
 
--- 4. Cada fila se repite por tipo de lista para que los LISTAGG ordenen por la
---    misma columna (restricción de Redshift).
-tipos AS (
-              SELECT 'W' AS tipo
-    UNION ALL SELECT 'K'
-),
-listas AS (
-    SELECT
-        f.*,
-        t.tipo,
-        CASE t.tipo WHEN 'W' THEN COALESCE(f.writer_nm, '') ELSE COALESCE(f.capacidad, '') END AS orden
-    FROM filas f
-    CROSS JOIN tipos t
-),
-
--- 5. Una fila por obra + editorial.
+-- 4. Una fila por obra + editorial.
 por_editorial AS (
     SELECT
-        l.song_id,
-        MAX(l.song_title_tx)     AS song_title_tx,
-        MAX(l.tiene_ctrl)        AS tiene_ctrl,
-        l.publisher_id,
-        MAX(l.publisher_name_tx) AS publisher_name_tx,
-        LISTAGG(CASE WHEN l.tipo = 'K' AND l.rn_capacidad = 1 THEN l.capacidad END, ', ')
-            WITHIN GROUP (ORDER BY l.orden) AS capacidad,
-        LISTAGG(CASE WHEN l.tipo = 'W' AND l.rn_writer = 1 AND l.writer_id IS NOT NULL
-                     THEN l.writer_nm || ' (' || CAST(l.writer_id AS VARCHAR(20)) || ')' END, ' | ')
-            WITHIN GROUP (ORDER BY l.orden) AS writers_representados
-    FROM listas l
-    GROUP BY l.song_id, l.publisher_id
+        f.song_id,
+        MAX(f.song_title_tx)     AS song_title_tx,
+        MAX(f.tiene_ctrl)        AS tiene_ctrl,
+        f.publisher_id,
+        MAX(f.publisher_name_tx) AS publisher_name_tx,
+        LISTAGG(CASE WHEN f.rn_writer = 1 AND f.writer_id IS NOT NULL
+                     THEN f.writer_nm || ' (' || CAST(f.writer_id AS VARCHAR(20)) || ')' END, ' | ')
+            WITHIN GROUP (ORDER BY f.writer_nm) AS writers_representados
+    FROM filas f
+    GROUP BY f.song_id, f.publisher_id
 )
 
--- 6. Resultado.
+-- 5. Resultado.
 SELECT
     e.song_id                                                   AS tempo_id,
     e.song_title_tx                                             AS song_title,
@@ -101,7 +81,6 @@ SELECT
     CASE WHEN e.tiene_ctrl = 1 THEN 'CONTROLADA'
          ELSE 'SIN EDITORIAL CONTROLADA' END                    AS estado,
     CASE WHEN e.tiene_ctrl = 1 THEN e.publisher_id END          AS publisher_id,
-    CASE WHEN e.tiene_ctrl = 1 THEN e.capacidad END             AS capacidad,
     CASE WHEN e.tiene_ctrl = 1 THEN e.writers_representados END AS writers_representados
 FROM por_editorial e
 LEFT JOIN dp_writer_data.publisher_v p
