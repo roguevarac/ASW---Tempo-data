@@ -25,6 +25,8 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 - Redshift: todos los `LISTAGG` de un mismo SELECT deben tener el mismo `WITHIN GROUP (ORDER BY ...)`. No usar
   `LISTAGG(DISTINCT ...)` (no corre en el test con DuckDB); marcar primeras apariciones con `ROW_NUMBER`.
 - Respetar el grano. Nunca sumar porcentajes de `writer_*` entre filas de publishers (se repiten por cadena).
+- Redshift: en un `UNION ALL` no dejar `NULL` sin tipo frente a columnas numéricas de las vistas: da
+  `could not convert type "unknown" to numeric because of modifier`. Castear las dos ramas (`CAST(NULL AS BIGINT)`, etc.).
 
 ## Hechos del modelo que importan (verificados en el DDL)
 - `song_share_detail_mv`: una fila por canción + territorio IP + writer + publisher + contrato + nivel de jerarquía.

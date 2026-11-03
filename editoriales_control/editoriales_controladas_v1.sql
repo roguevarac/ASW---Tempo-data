@@ -67,30 +67,37 @@ song_info AS (
 -- 3. Flujo único: participaciones (M) y líneas de control (L); vencimientos y
 --    NOP se cruzan una sola vez, después de unir.
 base AS (
+    -- Tipos explícitos en las dos ramas: Redshift no convierte un NULL sin tipo a
+    -- las columnas numéricas de la MV ("could not convert type unknown to numeric").
     SELECT
-        'M'                                   AS tipo,
-        s.song_id,
-        s.song_title_tx,
-        s.smp_controlled_ind                  AS ctrl,
-        s.publisher_id,
-        s.publisher_name_tx,
-        s.writer_id,
-        s.writer_nm,
-        s.associated_contract_id              AS contract_id,
-        s.associated_contract_nm              AS contract_nm,
-        TRIM(s.song_ip_territory_nm)          AS territorio_ip,
-        CAST(NULL AS VARCHAR(65535))          AS territorio_txt
+        CAST('M' AS VARCHAR(1))                         AS tipo,
+        CAST(s.song_id AS BIGINT)                       AS song_id,
+        CAST(s.song_title_tx AS VARCHAR(1000))          AS song_title_tx,
+        CAST(s.smp_controlled_ind AS VARCHAR(10))       AS ctrl,
+        CAST(s.publisher_id AS BIGINT)                  AS publisher_id,
+        CAST(s.publisher_name_tx AS VARCHAR(1000))      AS publisher_name_tx,
+        CAST(s.writer_id AS BIGINT)                     AS writer_id,
+        CAST(s.writer_nm AS VARCHAR(1000))              AS writer_nm,
+        CAST(s.associated_contract_id AS BIGINT)        AS contract_id,
+        CAST(s.associated_contract_nm AS VARCHAR(1000)) AS contract_nm,
+        CAST(TRIM(s.song_ip_territory_nm) AS VARCHAR(1000)) AS territorio_ip,
+        CAST(NULL AS VARCHAR(65535))                    AS territorio_txt
     FROM dp_song_metadata.song_share_detail_mv s
     WHERE s.song_id IN (SELECT song_id FROM ct_in)
     UNION ALL
     SELECT
-        'L',
-        ct.song_id,
-        NULL, NULL, NULL, NULL, NULL, NULL,
-        ct.contract_id,
-        ct.contract_nm,
-        NULL,
-        COALESCE(ct.inclusions, '') || COALESCE(' / ' || NULLIF(TRIM(ct.exclusions), ''), '')
+        CAST('L' AS VARCHAR(1)),
+        CAST(ct.song_id AS BIGINT),
+        CAST(NULL AS VARCHAR(1000)),
+        CAST(NULL AS VARCHAR(10)),
+        CAST(NULL AS BIGINT),
+        CAST(NULL AS VARCHAR(1000)),
+        CAST(NULL AS BIGINT),
+        CAST(NULL AS VARCHAR(1000)),
+        CAST(ct.contract_id AS BIGINT),
+        CAST(ct.contract_nm AS VARCHAR(1000)),
+        CAST(NULL AS VARCHAR(1000)),
+        CAST(COALESCE(ct.inclusions, '') || COALESCE(' / ' || NULLIF(TRIM(ct.exclusions), ''), '') AS VARCHAR(65535))
     FROM ct_in ct
 ),
 fuente AS (
