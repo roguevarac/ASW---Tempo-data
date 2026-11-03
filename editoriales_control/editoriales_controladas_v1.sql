@@ -4,17 +4,14 @@
 -- Una fila por obra + editorial con control "Yes" en Tempo
 -- (song_share_detail_mv.smp_controlled_ind = 'Y').
 -- Las obras que no tienen ninguna editorial controlada también salen, en una
--- sola fila, con el estado que explica por qué:
+-- sola fila, con estado SIN EDITORIAL CONTROLADA.
 --   * CONTROLADA                 : editorial con control Yes.
 --   * SIN EDITORIAL CONTROLADA   : la obra tiene participaciones, ninguna con control Yes.
---   * SIN DATOS                  : la obra no figura en song_share_detail_mv
---                                  (no es song_type 1 / secuencia 0, o un writer
---                                  sin sociedad la hace desaparecer de la MV).
+-- Un Tempo ID que no figura en song_share_detail_mv NO aparece en el resultado
+-- (no es song_type 1 / secuencia 0, o un writer sin sociedad la saca de la MV):
+-- comparar la cantidad de obras del resultado con la de la lista.
 --
--- OBRAS: se leen de public.rankingdigital_song_id (columna song_id). Para
--- cambiarlas se carga esa tabla; la query no se toca. Ejemplo:
---   TRUNCATE public.rankingdigital_song_id;
---   INSERT INTO public.rankingdigital_song_id (song_id) VALUES (111), (222), (333);
+-- OBRAS: se escriben en el IN del bloque 1 (buscar "EDITABLE"), separadas por coma.
 --
 -- Porcentajes: son los publisher_*_pc (collectable) de la editorial, sumados
 -- entre los writers que representa DENTRO de cada grupo IP. Nunca se suman
@@ -29,12 +26,6 @@
 -- "orden": cada fila se repite por tipo de lista (bloque "listas").
 -- =====================================================================
 WITH
-ids AS (
-    SELECT DISTINCT CAST(t.song_id AS BIGINT) AS song_id
-    FROM public.rankingdigital_song_id t
-    WHERE t.song_id IS NOT NULL
-),
-
 -- 1. Única lectura de la MV, filtrada a las obras pedidas. DISTINCT quita
 --    filas idénticas (misma editorial y writer repetidos por nivel).
 mv AS (
@@ -54,7 +45,8 @@ mv AS (
         COALESCE(s.publisher_mechanical_pc, 0)            AS mech,
         COALESCE(s.publisher_sync_pc, 0)                  AS sync
     FROM dp_song_metadata.song_share_detail_mv s
-    WHERE s.song_id IN (SELECT song_id FROM ids)
+    -- EDITABLE: Tempo ID de las obras, separados por coma.
+    WHERE s.song_id IN (111111, 222222, 333333)
 ),
 
 -- 2. Marcas sobre el flujo único: si la obra tiene alguna editorial
@@ -143,15 +135,12 @@ por_editorial AS (
     GROUP BY l.song_id, l.publisher_id
 )
 
--- 6. Resultado: todas las obras pedidas.
+-- 6. Resultado.
 SELECT
-    i.song_id                                                        AS tempo_id,
-    COALESCE(e.song_title_tx, 'Sin título')                          AS titulo,
-    CASE
-        WHEN e.song_id IS NULL  THEN 'SIN DATOS'
-        WHEN e.tiene_ctrl = 1   THEN 'CONTROLADA'
-        ELSE 'SIN EDITORIAL CONTROLADA'
-    END                                                              AS estado,
+    e.song_id                                                        AS tempo_id,
+    e.song_title_tx                                                  AS titulo,
+    CASE WHEN e.tiene_ctrl = 1 THEN 'CONTROLADA'
+         ELSE 'SIN EDITORIAL CONTROLADA' END                         AS estado,
     CASE WHEN e.tiene_ctrl = 1 THEN e.publisher_id END               AS publisher_id,
     CASE WHEN e.tiene_ctrl = 1 THEN e.publisher_name_tx END          AS editorial,
     CASE WHEN e.tiene_ctrl = 1 THEN e.capacidad END                  AS capacidad,
@@ -165,8 +154,6 @@ SELECT
     CASE WHEN e.tiene_ctrl = 1 THEN e.mech_pc_max END                AS mech_pc_max,
     CASE WHEN e.tiene_ctrl = 1 THEN e.sync_pc_min END                AS sync_pc_min,
     CASE WHEN e.tiene_ctrl = 1 THEN e.sync_pc_max END                AS sync_pc_max
-FROM ids i
-LEFT JOIN por_editorial e
-       ON e.song_id = i.song_id
-ORDER BY i.song_id, editorial
+FROM por_editorial e
+ORDER BY e.song_id, editorial
 ;
