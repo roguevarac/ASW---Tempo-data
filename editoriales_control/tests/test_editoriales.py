@@ -33,9 +33,9 @@ rows = [
     # 5) Obra no pedida
     (5, "OBRA CINCO", "Y", 10, "SMP ARG", "OP", 500, "GIL", 700, "C GIL", "World", 50, 50, 50),
 ]
-con.execute("create table dp_writer_data.publisher_v(publisher_id bigint, cae_num varchar)")
+con.execute("create table dp_writer_data.publisher_v(publisher_id bigint, cae_num bigint)")
 # 10 y 20 con IPI; 21 sin fila en publisher_v (IPI vacio, no se pierde la fila); 99 no controlada
-con.executemany("insert into dp_writer_data.publisher_v values (?,?)", [(10, "00123456789"), (20, "00987654321"), (99, "555")])
+con.executemany("insert into dp_writer_data.publisher_v values (?,?)", [(10, 123456789), (20, 987654321), (99, 555)])
 con.executemany("insert into dp_song_metadata.song_share_detail_mv values (" + ",".join("?" * 14) + ")", rows)
 
 texto = SQL.read_text(encoding="utf-8")
@@ -60,7 +60,7 @@ check("obra 1: suma por grupo entre writers = 50, sin duplicar", (r.get("perf_pc
 check("obra 1: writers representados", r.get("writers_representados") == "ANA (100) | BETO (101)", r.get("writers_representados"))
 check("obra 1: contratos", r.get("contratos_asociados") == "C ANA (500) | C BETO (501)", r.get("contratos_asociados"))
 check("obra 1: editorial no controlada no aparece", (1, 99) not in by)
-check("obra 1: columnas pedidas", (r.get("song_title"), r.get("editorial_controlada"), r.get("ipi_editorial")) == ("OBRA UNO", "SMP ARG", "00123456789"), r)
+check("obra 1: columnas pedidas", (r.get("song_title"), r.get("editorial_controlada"), r.get("ipi_editorial")) == ("OBRA UNO", "SMP ARG", 123456789), r)
 check("primeras columnas: tempo_id, song_title, editorial_controlada, ipi_editorial", cols[:4] == ["tempo_id", "song_title", "editorial_controlada", "ipi_editorial"], cols[:4])
 r = by.get((2, 20), {})
 check("obra 2: min/max entre grupos", (r.get("perf_pc_min"), r.get("perf_pc_max")) == (25, 50), r)

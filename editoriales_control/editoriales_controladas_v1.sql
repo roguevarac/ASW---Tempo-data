@@ -21,8 +21,8 @@
 --
 -- IPI de la editorial: dp_writer_data.publisher_v.cae_num (CAE/IPI name number),
 -- con LEFT JOIN: una editorial sin IPI cargado sale con el IPI vacío.
--- Requiere permiso de lectura sobre dp_writer_data; si no lo hay, la query falla
--- con "permission denied for schema dp_writer_data".
+-- cae_num es numérico (sin ceros a la izquierda). Permiso sobre dp_writer_data
+-- confirmado por el usuario.
 --
 -- Rendimiento: song_share_detail_mv se nombra UNA vez (cadena lineal, cruces
 -- con funciones de ventana). Todos los LISTAGG ordenan por la misma columna
