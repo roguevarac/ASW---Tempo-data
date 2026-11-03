@@ -64,9 +64,9 @@ def check(nombre, cond, extra=""):
     fallas += 0 if cond else 1
 
 by = {(r["tempo_id"], r["territorio_ip"], r["publisher_id"]): r for r in res}
-check("columnas", cols == ["tempo_id", "song_title", "territorio_ip", "editorial_controlada", "ipi_editorial", "estado",
+check("columnas", cols == ["tempo_id", "song_title", "territorio_ip", "editorial_controlada", "ipi_editorial",
                            "publisher_id", "writers_representados", "contrato_asociado", "lineas_control_obra"], cols)
-check("filas: Baba 2, obra 1 1, obra 3 1; 4 y 5 no salen", len(res) == 4, [(r["tempo_id"], r["territorio_ip"]) for r in res])
+check("filas: Baba 2, obra 1 1; obra 3 (no controlada), 4 y 5 no salen", len(res) == 3, [(r["tempo_id"], r["territorio_ip"]) for r in res])
 
 w = by.get((2701309, "All Other Contractual Territories", 1063009), {})
 m = by.get((2701309, "MEXICO, PHILIPPINES (REG)", 1055780), {})
@@ -84,9 +84,7 @@ check("obra 1: writers sin repetir", u.get("writers_representados") == "ANA (100
 check("obra 1: contrato sin linea de control activa", u.get("contrato_asociado") == "C ANA (Include: World) | C BETO (sin línea de control activa)", u.get("contrato_asociado"))
 check("obra 1: editorial no controlada no aparece", (1, "World", 99) not in by)
 
-t = by.get((3, None, None), {})
-check("obra 3: SIN EDITORIAL CONTROLADA con sus lineas", t.get("estado") == "SIN EDITORIAL CONTROLADA" and t.get("song_title") == "OBRA TRES"
-      and t.get("lineas_control_obra") == "C OTRA (Include: ARGENTINA)" and t.get("ipi_editorial") is None, t)
+check("obra 3 (sin editorial controlada) no aparece", all(k[0] != 3 for k in by))
 check("obra 5 no pedida no aparece", all(k[0] != 5 for k in by))
 print("\nTodo OK" if not fallas else f"\n{fallas} fallas")
 sys.exit(1 if fallas else 0)

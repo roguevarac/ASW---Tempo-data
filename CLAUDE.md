@@ -71,7 +71,8 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   único `IN` dentro de la query (pedido del usuario, excepción a la regla de la tabla); MV y `contract_territories` se
   leen en un solo flujo `UNION ALL` filtrado por ese `IN`. IPI = `dp_writer_data.publisher_v.cae_num` (LEFT JOIN). El
   usuario **sí tiene permiso sobre `dp_writer_data`** (probado el 03/11/2026); `cae_num` es numérico y muchas veces NULL.
-  Sin porcentajes ni capacidad (el usuario los sacó). Test: `python3 editoriales_control/tests/test_editoriales.py`.
+  Solo obras controladas: las no controladas no salen (pedido del usuario). Sin porcentajes ni capacidad.
+  Test: `python3 editoriales_control/tests/test_editoriales.py`.
 - `control_pais/obras_controladas_pais_v1.sql` (+ `unload_obras_controladas_pais_v1.sql`, generado con
   `python3 control_pais/tools/generar_unload.py`): todas las obras del catálogo controladas en un país (hoy CHILE; se
   cambia en el bloque `claves`), con la regla de la v8. Exige línea de control que cubra el país; no lee `song_v`.

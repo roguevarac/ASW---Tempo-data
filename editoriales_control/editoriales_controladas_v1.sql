@@ -20,8 +20,8 @@
 --   El grupo "All (Other) Contractual Territories" significa "los demás
 --   territorios contratados" (los de las líneas de control).
 --
--- Las obras sin ninguna editorial controlada salen en una sola fila con estado
--- SIN EDITORIAL CONTROLADA. Un Tempo ID que no figura en song_share_detail_mv NO
+-- Las obras sin ninguna editorial controlada NO salen (pedido del usuario,
+-- 03/11/2026). Un Tempo ID que no figura en song_share_detail_mv NO
 -- aparece (no es song_type 1 / secuencia 0, o un writer sin sociedad la saca de
 -- la MV): comparar la cantidad de obras del resultado con la de la lista.
 --
@@ -137,23 +137,21 @@ con_lineas AS (
     FROM agrupado a
 )
 
--- 6. Resultado.
+-- 6. Resultado: solo obras con alguna editorial controlada (las no controladas no salen).
 SELECT
-    CAST(e.song_id AS BIGINT)                                   AS tempo_id,
-    e.titulo                                                    AS song_title,
-    CASE WHEN e.tiene_ctrl = 1 THEN e.territorio_ip END         AS territorio_ip,
-    CASE WHEN e.tiene_ctrl = 1 THEN e.publisher_name_tx END     AS editorial_controlada,
-    CASE WHEN e.tiene_ctrl = 1 THEN p.cae_num END               AS ipi_editorial,
-    CASE WHEN e.tiene_ctrl = 1 THEN 'CONTROLADA'
-         ELSE 'SIN EDITORIAL CONTROLADA' END                    AS estado,
-    CASE WHEN e.tiene_ctrl = 1 THEN e.publisher_id END          AS publisher_id,
-    CASE WHEN e.tiene_ctrl = 1 THEN e.writers_representados END AS writers_representados,
-    CASE WHEN e.tiene_ctrl = 1 THEN e.contrato_asociado END     AS contrato_asociado,
-    e.lineas_control_obra                                       AS lineas_control_obra
+    CAST(e.song_id AS BIGINT)  AS tempo_id,
+    e.titulo                   AS song_title,
+    e.territorio_ip            AS territorio_ip,
+    e.publisher_name_tx        AS editorial_controlada,
+    p.cae_num                  AS ipi_editorial,
+    e.publisher_id             AS publisher_id,
+    e.writers_representados    AS writers_representados,
+    e.contrato_asociado        AS contrato_asociado,
+    e.lineas_control_obra      AS lineas_control_obra
 FROM con_lineas e
 LEFT JOIN dp_writer_data.publisher_v p
        ON p.publisher_id = e.publisher_id
-      AND e.tiene_ctrl = 1
 WHERE e.tipo = 'M'
+  AND e.tiene_ctrl = 1
 ORDER BY tempo_id, territorio_ip, editorial_controlada
 ;
