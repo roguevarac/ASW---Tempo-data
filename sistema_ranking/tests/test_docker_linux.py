@@ -234,7 +234,7 @@ try:
     codigo = fin(p)
     log = texto("migrar.log")
     check("migrar: termina bien", codigo == 0 and "Migración completa" in log, log[-2500:])
-    for t in sql(ORIGEN, "select string_agg(tablename, ' ') from pg_tables where schemaname='public' and tablename not in ('envios', 'envio_obras', 'envio_identificadas', 'obra_alias', 'territory_tracks_partes', 'territory_seguimiento')").split():
+    for t in sql(ORIGEN, "select string_agg(tablename, ' ') from pg_tables where schemaname='public' and tablename not in ('envios', 'envio_obras', 'envio_identificadas', 'obra_alias', 'territory_tracks_partes', 'territory_seguimiento', 'tickets')").split():
         q = f"select count(*) || ':' || coalesce(md5(string_agg(x::text, '|' order by x::text)), '') from public.{t} x"
         check(f"migrar: tabla {t} idéntica", sql(ORIGEN, q) == base_nueva(q))
     r = login("admin@prueba.local", "clave-migrada-123")

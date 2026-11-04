@@ -8,6 +8,8 @@
 --                     registrada como WORK
 --   REVISAR %         el % Mech de BO y el de Tempo no coinciden (antes "REVISAR")
 -- Sin problemas: OK BO-Tempo / OK - Obra AR / OK - Obra MX, como antes.
+-- Con ticket (territory_seguimiento): TICKET ENVIADO mientras la obra tenga problemas, o si estaba marcada a mano al
+-- cargar el ticket; si un reporte nuevo la deja sin problemas, vuelve a OK (13_tickets_enviados.sql).
 -- Los manuales (duplicada, dif de split) no se pisan. Las filas ya cargadas se recalculan.
 -- Idempotente: se aplica en cada arranque (db/mejoras.sh).
 -- =====================================================================
@@ -30,7 +32,7 @@ CREATE OR REPLACE FUNCTION public.fn_estado_automatico(p_estado text)
  IMMUTABLE
 AS $function$
     select p_estado is null or string_to_array(p_estado, ' / ') <@ array['REVISAR', 'REVISAR %', 'RECLAMO ACTIVO',
-           'REVISAR NOT WORK', 'OK BO-Tempo', 'OK - Obra AR', 'OK - Obra MX'];
+           'REVISAR NOT WORK', 'OK BO-Tempo', 'OK - Obra AR', 'OK - Obra MX', 'TICKET ENVIADO'];
 $function$;
 
 CREATE OR REPLACE FUNCTION public.trg_bo_report_auto_revisar()
@@ -42,6 +44,7 @@ declare
     v_oficina    text;
     v_pct        text;
     v_problemas  text[] := '{}';
+    v_ticket     boolean;
 begin
     if fn_estado_automatico(new.estado_trabajo) then
 
@@ -75,7 +78,14 @@ begin
         if v_pct = 'REVISAR %' then
             v_problemas := array_append(v_problemas, 'REVISAR %');
         end if;
-        new.estado_trabajo := case when cardinality(v_problemas) > 0 then array_to_string(v_problemas, ' / ') else v_pct end;
+        v_ticket := exists (select 1 from territory_seguimiento s where s.track_master_id = new.track_master_id
+                            and s.pais_code = new.pais_code and nullif(trim(s.ticket), '') is not null);
+        if v_ticket and (cardinality(v_problemas) > 0
+                         or (tg_op = 'UPDATE' and new.estado_trabajo = 'TICKET ENVIADO' and not fn_estado_automatico(old.estado_trabajo))) then
+            new.estado_trabajo := 'TICKET ENVIADO';
+        else
+            new.estado_trabajo := case when cardinality(v_problemas) > 0 then array_to_string(v_problemas, ' / ') else v_pct end;
+        end if;
     end if;
     return new;
 end;

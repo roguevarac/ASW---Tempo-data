@@ -274,6 +274,12 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     `fn_ticket_filtrado` (`db/mejoras/12_tickets_masivos.sql`, mismos filtros que `fn_territory_pagina`): `p_aplicar=false`
     cuenta (obras y cuántas ya tienen otro ticket), `true` guarda todo o nada; sin filtros se rechaza. La celda sigue
     editable para una obra sola.
+  - **Ticket enviado y pestaña "Tickets enviados" (04/11/2026, `db/mejoras/13_tickets_enviados.sql`):** con ticket, el
+    estado de trabajo pasa a TICKET ENVIADO (etiqueta amarilla) mientras la obra tenga problemas o si estaba marcada a
+    mano; un reporte nuevo sin problemas la deja en OK; quitar el ticket recalcula (trigger de 10 + `fn_guardar_seguimiento`,
+    que se mudó de 04 a 13). Tabla `public.tickets` (quién lo cargó primero y cuándo; va en los TRUNCATE y se excluye
+    de la comparación de migración). `fn_tickets_lista` (sale de las obras; `tickets` solo aporta autor y fecha) y
+    `fn_ticket_obras` ("Ver obras").
   - **Contador "Identificadas · Sin identificar"** arriba de la tabla principal (`.conteo-id`), no en el paginador.
   - **Dos perfiles (27/10/2026, pedido del usuario):** "Usuario estándar" y "Administrador" (= acceso al Panel de
     control, hoy solo rocio.guevara@sonymusicpub.com). El front muestra el perfil según `panel.acceso`, no el

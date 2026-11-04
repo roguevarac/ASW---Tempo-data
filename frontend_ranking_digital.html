@@ -79,6 +79,7 @@ tbody tr.is-deleted{opacity:0.45;}
 .estados{display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
 .estados .marcar{margin-top:2px;padding:2px 8px;font-size:11px;}
 .badge.estado-tr{background:var(--red-bg);color:var(--red);}
+.badge.ticket{background:rgba(217,164,65,0.18);color:#B07D12;}
 .rowbtn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:11.5px;padding:3px 6px;}
 .rowbtn:hover{color:var(--red);}
 .empty{padding:40px 10px;text-align:center;color:var(--text-muted);font-size:13px;}
@@ -221,7 +222,7 @@ const ESTADOS_MANUALES = ['duplicada','dif de split'];
 function celdaEstadoTrabajo(r){
   const v = r.estado_trabajo || '';
   const etiquetas = v ? v.split(' / ').map(e => {
-    const clase = ESTADOS_MANUALES.includes(e) ? 'unc' : e.startsWith('OK') ? 'ok' : 'estado-tr';
+    const clase = ESTADOS_MANUALES.includes(e) ? 'unc' : e.startsWith('OK') ? 'ok' : e === 'TICKET ENVIADO' ? 'ticket' : 'estado-tr';
     return `<span class="badge ${clase}">${esc(e)}</span>`;
   }).join('') : '—';
   if(!(canWrite() && r.bo_report_id)) return `<div class="estados">${etiquetas}</div>`;
@@ -244,7 +245,7 @@ let state = {
   master: [], territoryControl: [], uploads: [], loading: true,
   uploadQueue: [], uploadIndex: -1, uploading: false, editEstado: null,
   historial: null, histTab: 'youtube', histPais: '', controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
-  envioDialog: null, ticketDialog: null,
+  envioDialog: null, ticketDialog: null, tickets: null, ticketObras: null,
   loginModo: 'ingresar', loginAviso: '',
   panel: { acceso: false, sub: 'estado', datos: {}, filtrosAct: {}, eventoServicio: '', error: '', mensaje: '',
            codigo: null, ocupado: false, actualizado: null },
@@ -410,6 +411,8 @@ async function loadAll(){
   await Promise.all(tareas);
   state.historial = null;   // se vuelve a leer al abrir "Historial de cargas"
   if(state.activeTab === 'history') loadHistorial();
+  state.tickets = null;   // se vuelve a leer al abrir "Tickets enviados"
+  if(state.activeTab === 'tickets') loadTickets();
   state.loading = false;
   render();
 }
@@ -486,6 +489,60 @@ async function updateSeguimiento(el){
     if(el.dataset.fieldSeg === 'ticket') fila.ticket = data || null;
     else fila.ticket_fecha_txt = data || '';
   }
+  // Con ticket, el estado de trabajo pasa a TICKET ENVIADO (y al quitarlo se recalcula): se vuelve a leer la página.
+  if(el.dataset.fieldSeg === 'ticket'){
+    const foco = document.activeElement?.dataset || {};   // si pasó a la fecha con Tab, sigue ahí después de redibujar
+    await loadTerritory(); render();
+    if(foco.fieldSeg) document.querySelector(`[data-field-seg="${foco.fieldSeg}"][data-track="${foco.track}"][data-pais="${foco.pais}"]`)?.focus();
+  }
+}
+
+// Tickets enviados: un renglón por número de ticket (quién lo cargó, cuándo, fecha del ticket, países y obras).
+async function loadTickets(){
+  const { data, error } = await sb.rpc('fn_tickets_lista', {});
+  if(error) console.error('fn_tickets_lista:', error.message);
+  state.tickets = data || [];
+  if(state.activeTab === 'tickets') render();
+}
+async function openTicketObras(ticket){
+  state.ticketObras = { ticket, rows: null };
+  render();
+  const { data } = await sb.rpc('fn_ticket_obras', { p_ticket: ticket });
+  if(state.ticketObras?.ticket === ticket){ state.ticketObras.rows = data || []; render(); }
+}
+function renderTickets(){
+  const t = state.tickets;
+  if(!t) return `<div class="empty">Cargando...</div>`;
+  if(!t.length) return `<div class="empty">Sin tickets cargados. Se cargan en la tabla por territorio (Cargar ticket o la columna Ticket).</div>`;
+  return `
+  <table id="tablaTickets"><thead><tr><th>Ticket</th><th>Cargado por</th><th>Cargado el</th><th>Fecha del ticket</th>
+    <th>Países</th><th class="num">Obras</th><th></th></tr></thead>
+  <tbody>${t.map(r => `<tr>
+    <td class="tempo">${esc(r.ticket)}</td>
+    <td>${esc(r.creado_por)}</td>
+    <td class="mono">${fmtFecha(r.creado_el)}</td>
+    <td class="mono">${r.fecha ? fechaCorta(r.fecha) : '—'}</td>
+    <td>${esc(r.paises || '')}</td>
+    <td class="num">${fmtNum(Number(r.obras))}</td>
+    <td><button class="rowbtn" data-ticket-obras="${esc(r.ticket)}">Ver obras</button></td>
+  </tr>`).join('')}</tbody></table>`;
+}
+function renderTicketObras(){
+  const d = state.ticketObras;
+  if(!d) return '';
+  return `
+  <div class="modal-bg" id="ticketObrasBg">
+    <div class="modal">
+      <button class="close" id="closeTicketObras">Cerrar</button>
+      <h2 class="display">Ticket ${esc(d.ticket)}</h2>
+      ${!d.rows ? `<div class="empty">Cargando...</div>` : `
+      <p class="sub">${fmtNum(d.rows.length)} obra${d.rows.length === 1 ? '' : 's'}</p>
+      <table><thead><tr><th>País</th><th>Track - Artista</th><th>Tempo ID</th><th>Fecha</th><th>Estado de trabajo</th></tr></thead>
+      <tbody>${d.rows.map(r => `<tr><td class="mono">${r.pais_code}</td><td>${esc(r.track_artist_concat)}</td>
+        <td class="tempo">${esc(r.tempo_id || '—')}</td><td class="mono">${r.ticket_fecha ? fechaCorta(r.ticket_fecha) : '—'}</td>
+        <td>${celdaEstadoTrabajo({ estado_trabajo: r.estado_trabajo })}</td></tr>`).join('')}</tbody></table>`}
+    </div>
+  </div>`;
 }
 
 // Ticket para todas las obras filtradas de la tabla por territorio (los tickets se envían por grupo de obras).
@@ -1247,7 +1304,7 @@ function renderTopbar(){
 
 function renderTabs(){
   const tabs = [['master','Tabla principal', true],['territory','Tabla por territorio', true],
-    ['upload','Carga CSV', canUpload()],['history','Historial de cargas', true],
+    ['tickets','Tickets enviados', true], ['upload','Carga CSV', canUpload()],['history','Historial de cargas', true],
     ...(state.panel.acceso ? [['panel','Panel de control', true]] : [])];
   return `<div class="tabs">${tabs.map(([k,l,en]) =>
     `<div class="tab ${state.activeTab===k?'active':''}" data-tab="${k}">${l}${!en?'<span class="lock">solo lectura</span>':''}</div>`).join('')}</div>`;
@@ -2000,6 +2057,7 @@ function renderBody(){
   if(state.activeTab==='territory') return renderTerritory();
   if(state.activeTab==='upload') return renderUpload();
   if(state.activeTab==='history') return renderHistory();
+  if(state.activeTab==='tickets') return renderTickets();
   if(state.activeTab==='panel') return renderPanel();
 }
 
@@ -2010,13 +2068,14 @@ function render(){
     ${renderTopbar()}${renderTabs()}
     <div class="panel-body">${renderBody()}</div>
     <footer><span>Auditor de Rankings Digitales</span><span>${rows_count()}</span></footer>
-  </div>${renderHistoryModal()}${renderEnvioDialog()}${renderTicketDialog()}${renderAvisoFiltro()}`;
+  </div>${renderHistoryModal()}${renderEnvioDialog()}${renderTicketDialog()}${renderTicketObras()}${renderAvisoFiltro()}`;
   attachAppEvents();
   if(state.activeTab === 'panel') attachPanelEvents();
 }
 function rows_count(){
   if(state.activeTab==='master') return `${fmtNum(state.masterTotal)} canciones`;
   if(state.activeTab==='territory') return `${fmtNum(state.territoryTotal)} registros de territorio`;
+  if(state.activeTab==='tickets' && state.tickets) return `${fmtNum(state.tickets.length)} tickets`;
   return '';
 }
 
@@ -2040,6 +2099,7 @@ function attachAppEvents(){
     state.activeTab = t.dataset.tab;
     if(!state.uploading) state.uploadQueue = [];
     if(state.activeTab === 'history' && !state.historial) loadHistorial();
+    if(state.activeTab === 'tickets') loadTickets();
     programarPanel();
     if(state.activeTab === 'panel'){ state.panel.mensaje = ''; loadPanel().then(() => { if(state.activeTab === 'panel') render(); }); }
     render();
@@ -2146,6 +2206,9 @@ function attachAppEvents(){
   if(closeE) closeE.onclick = () => { if(!state.envioBusy){ state.envioDialog = null; render(); } };
   const bgE = document.getElementById('envioBg');
   if(bgE) bgE.onclick = (e) => { if(e.target === bgE && !state.envioBusy){ state.envioDialog = null; render(); } };
+  document.querySelectorAll('[data-ticket-obras]').forEach(b => b.onclick = () => openTicketObras(b.dataset.ticketObras));
+  const cto = document.getElementById('closeTicketObras');
+  if(cto) cto.onclick = () => { state.ticketObras = null; render(); };
   const tf = document.getElementById('ticketFiltrado');
   if(tf) tf.onclick = openTicketDialog;
   const at = document.getElementById('aplicarTicket');

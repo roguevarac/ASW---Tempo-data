@@ -79,6 +79,7 @@ th{color:var(--text-muted);font-weight:500;font-size:12px;text-transform:upperca
     <li><a href="#principal">Tabla principal</a></li>
     <li><a href="#descargas">Reporte BO y CSV: opciones de descarga</a></li>
     <li><a href="#territorio">Tabla por territorio</a></li>
+    <li><a href="#tickets">Tickets enviados</a></li>
     <li><a href="#historial">Historial de cargas</a></li>
     <li><a href="#onedrive">Guardado y respaldos</a></li>
     <li><a href="#panel">Panel de control</a></li>
@@ -137,7 +138,7 @@ caracteres y, al guardarla, se cierran las sesiones abiertas.</p>
     Carga CSV e Historial de cargas, el último seleccionado. La fecha corresponde a la <b>semana del chart</b>, no al
     día de la carga: cargar hoy un chart anterior no la modifica.</li>
   <li><b>Superior derecha:</b> usuario y perfil, <b>Manual de uso</b> y <b>Cerrar sesión</b>.</li>
-  <li><b>Pestañas:</b> Tabla principal, Tabla por territorio, Carga CSV e Historial de cargas.</li>
+  <li><b>Pestañas:</b> Tabla principal, Tabla por territorio, Tickets enviados, Carga CSV e Historial de cargas.</li>
   <li><b>Pie de página:</b> cantidad de filas visibles con los filtros aplicados.</li>
 </ul>
 </section>
@@ -344,6 +345,9 @@ y REVISAR % aparece al filtrar por cada uno. En la descarga, los problemas van s
   <li><b>OK BO-Tempo:</b> los porcentajes coinciden (diferencia igual o menor a 0,1).</li>
   <li><b>OK - Obra AR / OK - Obra MX:</b> BO informa 0% y Tempo informa un porcentaje, pero la obra se originó en la
     oficina de Argentina o de México. Es un caso esperado.</li>
+  <li><b>TICKET ENVIADO</b> (en amarillo): la obra tiene un ticket cargado y sus problemas están informados. Se mantiene
+    mientras la obra tenga problemas; si un reporte nuevo la deja sin problemas, pasa a OK. Al quitar el ticket, el
+    estado se vuelve a calcular.</li>
   <li>Sin valor: faltan los datos para comparar (Reporte Tempo Control o Reporte BackOffice de la obra en ese
     territorio) y no hay reclamo ni otro estado de BO.</li>
 </ul>
@@ -365,6 +369,23 @@ el estado, presioná <b>Marcar</b> y seleccioná <b>Automático</b>.</p>
   <li><b>Descargar CSV</b> genera la tabla completa con los filtros y la búsqueda aplicados, y las mismas columnas de la
     pantalla.</li>
 </ul>
+</section>
+
+<section id="tickets">
+<h2>Tickets enviados</h2>
+<p>Un renglón por número de ticket, el más reciente primero. Se completa solo al cargar tickets en la tabla por
+territorio.</p>
+<table>
+  <tr><th>Columna</th><th>Qué representa</th></tr>
+  <tr><td>Ticket</td><td>Número de ticket.</td></tr>
+  <tr><td>Cargado por</td><td>Usuario que cargó el ticket por primera vez.</td></tr>
+  <tr><td>Cargado el</td><td>Día y hora de esa carga.</td></tr>
+  <tr><td>Fecha del ticket</td><td>La fecha ingresada junto con el ticket.</td></tr>
+  <tr><td>Países</td><td>Territorios de las obras que tienen el ticket.</td></tr>
+  <tr><td>Obras</td><td>Cantidad de obras que tienen hoy ese ticket. Si a una obra se le carga otro ticket, pasa al
+    nuevo.</td></tr>
+</table>
+<p><b>Ver obras</b> muestra cada obra del ticket con su territorio, Tempo ID, fecha y estado de trabajo.</p>
 </section>
 
 <section id="historial">

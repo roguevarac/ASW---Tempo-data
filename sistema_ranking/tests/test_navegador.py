@@ -298,6 +298,15 @@ with sync_playwright() as p:
     check("...y la tabla muestra el ticket nuevo", pag.locator('[data-field-seg="ticket"]').first.input_value() == "INC-777")
     pag.click("#clearFiltersT"); aceptar_filtro()
     check("sin filtros no se ofrece Cargar ticket", pag.locator("#ticketFiltrado").count() == 0)
+    pag.click('[data-tab="tickets"]'); pag.wait_for_selector("#tablaTickets", timeout=10000)
+    check("pestaña Tickets enviados: el ticket con quién lo cargó y cuántas obras",
+          "INC-777" in pag.inner_text("#tablaTickets") and "admin@prueba.local" in pag.inner_text("#tablaTickets"),
+          pag.inner_text("#tablaTickets")[:400])
+    pag.click('[data-ticket-obras="INC-777"]'); pag.wait_for_selector("#closeTicketObras")
+    pag.wait_for_timeout(800)
+    check("...y Ver obras muestra las obras del ticket", "Tema Navegador" in pag.inner_text("#ticketObrasBg"), pag.inner_text("#ticketObrasBg")[:300])
+    pag.click("#closeTicketObras")
+    pag.click('[data-tab="territory"]'); pag.wait_for_timeout(1200)
     pag.locator('[data-history-track]').first.click(); pag.wait_for_selector("#closeHistory", timeout=5000)
     check("histórico de cambios abre", pag.is_visible("#closeHistory"))
     pag.click("#closeHistory")
@@ -353,7 +362,7 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Tickets enviados",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
                                           "Respaldo en OneDrive", "no altera la información",
                                           "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))
