@@ -322,8 +322,9 @@ filtros abarcan todos los registros.</p>
   <tr><td>Estado, Reclamos</td><td>Datos de BO: estado de la obra y reclamos (counterclaims).</td></tr>
   <tr><td>Estado de trabajo</td><td>Resultado de la comparación entre Tempo y BO (ver abajo), con una etiqueta por
     estado: rojo para los problemas, verde para OK y azul para los estados marcados a mano.</td></tr>
-  <tr><td>Ticket</td><td>Número del ticket enviado cuando la obra está mal registrada. Se escribe en la celda y se
-    guarda al salir de ella o al presionar Enter.</td></tr>
+  <tr><td>Ticket</td><td>Número del ticket enviado cuando la obra está mal registrada. Para un grupo de obras se carga
+    con <b>Cargar ticket</b> (ver abajo); para una sola, se escribe en la celda y se guarda al salir de ella o al
+    presionar Enter.</td></tr>
   <tr><td>Fecha</td><td>Fecha del ticket. Se escribe como DDMMAAAA (por ejemplo, 26092026) y se muestra como
     26/09/2026.</td></tr>
   <tr><td>Show prior</td><td>Histórico de cambios de la obra en ese territorio, con fecha: cada cambio del Reporte
@@ -356,6 +357,9 @@ el estado, presioná <b>Marcar</b> y seleccioná <b>Automático</b>.</p>
   <li><b>Estado</b> (el Estado de BO), <b>Reclamos</b> y <b>Estado de trabajo</b>, con los valores presentes en la
     tabla, como el filtro de Excel. "—" selecciona las obras sin valor.</li>
   <li><b>Buscar</b> por título, artista o Tempo ID; con un guion (<code>-</code>), las obras sin Tempo ID.</li>
+  <li><b>Cargar ticket</b> (aparece con un filtro aplicado): carga el mismo ticket y la misma fecha en todas las obras
+    filtradas, también las de las páginas siguientes. Antes de confirmar indica cuántas obras son y cuántas ya tienen
+    otro ticket, que se reemplaza. La fecha se propone con el día de hoy y se puede modificar.</li>
   <li>Los filtros y la búsqueda de esta tabla se conservan al pasar a otra pestaña y volver. <b>Limpiar</b> los quita
     todos.</li>
   <li><b>Descargar CSV</b> genera la tabla completa con los filtros y la búsqueda aplicados, y las mismas columnas de la

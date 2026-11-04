@@ -269,6 +269,11 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     última semana del país en esa plataforma (`fn_semana_faltante`) y avisa "falta cargar la semana del ...". Las
     semanas ya cargadas o anteriores sí cargan. El front ordena los archivos por semana. `cargar-historicos` no pasa por
     ese control (el historial de OneDrive puede tener huecos).
+  - **Tickets en bloque (04/11/2026, pedido del usuario: los tickets se mandan por grupo de obras):** con un filtro en la
+    tabla por territorio aparece "Cargar ticket": el mismo ticket y fecha a todas las obras filtradas (todas las páginas).
+    `fn_ticket_filtrado` (`db/mejoras/12_tickets_masivos.sql`, mismos filtros que `fn_territory_pagina`): `p_aplicar=false`
+    cuenta (obras y cuántas ya tienen otro ticket), `true` guarda todo o nada; sin filtros se rechaza. La celda sigue
+    editable para una obra sola.
   - **Contador "Identificadas · Sin identificar"** arriba de la tabla principal (`.conteo-id`), no en el paginador.
   - **Dos perfiles (27/10/2026, pedido del usuario):** "Usuario estándar" y "Administrador" (= acceso al Panel de
     control, hoy solo rocio.guevara@sonymusicpub.com). El front muestra el perfil según `panel.acceso`, no el

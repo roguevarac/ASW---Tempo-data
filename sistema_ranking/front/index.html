@@ -182,6 +182,8 @@ tr.clic:hover td{background:var(--panel-raised);}
 .login-links a:hover,.login-volver:hover{color:var(--brass);}
 .login-card .ok{color:var(--green);font-size:12.5px;margin:-6px 0 12px;}
 .login-card .nota{font-size:12.5px;color:var(--text-muted);margin:0 0 12px;}
+.ticket-campos{display:flex;gap:12px;margin:12px 0;}
+.ticket-campos label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-muted);flex:1;}
 .envio-op{display:block;width:100%;text-align:left;margin:0 0 10px;padding:12px 14px;}
 .envio-op b{display:block;font-size:13px;margin-bottom:3px;}
 .envio-op span{font-size:12px;color:var(--text-muted);}
@@ -247,7 +249,7 @@ let state = {
   master: [], territoryControl: [], uploads: [], loading: true,
   uploadQueue: [], uploadIndex: -1, uploading: false, editEstado: null,
   historial: null, histTab: 'youtube', histPais: '', controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
-  envioDialog: null,
+  envioDialog: null, ticketDialog: null,
   loginModo: 'ingresar', loginAviso: '',
   panel: { acceso: false, sub: 'estado', datos: {}, filtrosAct: {}, eventoServicio: '', error: '', mensaje: '',
            codigo: null, ocupado: false, actualizado: null },
@@ -489,6 +491,62 @@ async function updateSeguimiento(el){
     if(el.dataset.fieldSeg === 'ticket') fila.ticket = data || null;
     else fila.ticket_fecha_txt = data || '';
   }
+}
+
+// Ticket para todas las obras filtradas de la tabla por territorio (los tickets se envían por grupo de obras).
+function filtrosTerritorioRpc(){
+  return { ...filtrosFechas('territory'), p_pais: state.territoryCountry || null, p_buscar: state.searchTerritory || null,
+           p_estado: state.estadoFilter || null, p_reclamos: state.reclamosFilter || null,
+           p_estado_trabajo: state.estadoTrabajoFilter || null };
+}
+function hoyDDMMAAAA(){ const d = new Date(); return String(d.getDate()).padStart(2, '0') + String(d.getMonth() + 1).padStart(2, '0') + d.getFullYear(); }
+async function openTicketDialog(){
+  state.ticketDialog = { conteo: null, ticket: '', fecha: hoyDDMMAAAA(), busy: false, error: '', hecho: null };
+  render();
+  const { data, error } = await sb.rpc('fn_ticket_filtrado', { p_ticket: null, p_fecha: null, p_aplicar: false, ...filtrosTerritorioRpc() });
+  if(!state.ticketDialog) return;
+  if(error) state.ticketDialog.error = error.message;
+  else state.ticketDialog.conteo = { obras: Number(data?.[0]?.obras || 0), otro: Number(data?.[0]?.con_otro_ticket || 0) };
+  render();
+}
+async function aplicarTicket(){
+  const d = state.ticketDialog;
+  d.ticket = document.getElementById('ticketMasivo').value.trim();
+  d.fecha = document.getElementById('fechaMasiva').value.trim();
+  if(!d.ticket){ d.error = 'Ingresá el número de ticket.'; render(); return; }
+  d.busy = true; d.error = ''; render();
+  const { data, error } = await sb.rpc('fn_ticket_filtrado', { p_ticket: d.ticket, p_fecha: d.fecha, p_aplicar: true, ...filtrosTerritorioRpc() });
+  d.busy = false;
+  if(error){ d.error = error.message; render(); return; }
+  d.hecho = Number(data?.[0]?.obras || 0);
+  await loadTerritory();
+  render();
+}
+function renderTicketDialog(){
+  const d = state.ticketDialog;
+  if(!d) return '';
+  const c = d.conteo;
+  const obras = (n) => `${n} obra${n === 1 ? '' : 's'}`;
+  const cuerpo = d.hecho !== null
+    ? `<p class="sub">Ticket ${esc(d.ticket)} cargado en ${obras(d.hecho)}.</p>
+       <button class="btn primary" id="closeTicket">Aceptar</button>`
+    : !c ? (d.error ? `<p class="aviso-panel error">${esc(d.error)}</p>` : `<div class="empty">Calculando…</div>`)
+    : `<p class="sub">Filtros aplicados: ${filtrosActivos().join(' · ')}.<br>
+         Se carga en las <b>${obras(c.obras)}</b> filtradas (todas las páginas).${c.otro ? ` ${obras(c.otro)} ya tienen otro ticket: se reemplaza.` : ''}</p>
+       <div class="ticket-campos">
+         <label>Ticket <input class="edit-field" id="ticketMasivo" value="${esc(d.ticket)}" placeholder="Número de ticket"></label>
+         <label>Fecha <input class="edit-field" id="fechaMasiva" value="${esc(d.fecha)}" placeholder="DDMMAAAA"></label>
+       </div>
+       ${d.error ? `<p class="aviso-panel error">${esc(d.error)}</p>` : ''}
+       <button class="btn primary" id="aplicarTicket" ${c.obras && !d.busy ? '' : 'disabled'}>${d.busy ? 'Cargando…' : `Cargar ticket en ${obras(c.obras)}`}</button>`;
+  return `
+  <div class="modal-bg" id="ticketBg">
+    <div class="modal small">
+      ${d.hecho === null ? `<button class="close" id="cancelTicket">Cancelar</button>` : ''}
+      <h2 class="display">Cargar ticket</h2>
+      ${cuerpo}
+    </div>
+  </div>`;
 }
 
 async function updateBoReportField(id, field, value){
@@ -1293,6 +1351,7 @@ function renderTerritory(){
       </select>
       <input class="search ${state.searchTerritory.trim() ? 'filtro-on' : ''}" placeholder="Buscar track, artista o Tempo ID (- = sin Tempo ID)" value="${esc(state.searchTerritory)}" id="searchTerritory">
       ${filtrosTerritorio() ? `<button class="btn" id="clearFiltersT">Limpiar</button>` : ''}
+      ${filtrosTerritorio() && canWrite() ? `<button class="btn" id="ticketFiltrado">Cargar ticket</button>` : ''}
     </div>
     <button class="btn primary" id="exportTerritory"><i>&#8595;</i> Descargar CSV${state.territoryCountry?` (${state.territoryCountry})`:''}</button>
   </div>
@@ -1956,7 +2015,7 @@ function render(){
     ${renderTopbar()}${renderTabs()}
     <div class="panel-body">${renderBody()}</div>
     <footer><span>Auditor de Rankings Digitales</span><span>${rows_count()}</span></footer>
-  </div>${renderHistoryModal()}${renderEnvioDialog()}${renderAvisoFiltro()}`;
+  </div>${renderHistoryModal()}${renderEnvioDialog()}${renderTicketDialog()}${renderAvisoFiltro()}`;
   attachAppEvents();
   if(state.activeTab === 'panel') attachPanelEvents();
 }
@@ -2092,6 +2151,16 @@ function attachAppEvents(){
   if(closeE) closeE.onclick = () => { if(!state.envioBusy){ state.envioDialog = null; render(); } };
   const bgE = document.getElementById('envioBg');
   if(bgE) bgE.onclick = (e) => { if(e.target === bgE && !state.envioBusy){ state.envioDialog = null; render(); } };
+  const tf = document.getElementById('ticketFiltrado');
+  if(tf) tf.onclick = openTicketDialog;
+  const at = document.getElementById('aplicarTicket');
+  if(at) at.onclick = aplicarTicket;
+  const tm = document.getElementById('ticketMasivo');
+  if(tm && !state.ticketDialog.enfocado){ tm.focus(); state.ticketDialog.enfocado = true; }
+  ['ticketMasivo', 'fechaMasiva'].forEach(id => { const el = document.getElementById(id);
+    if(el) el.onkeydown = (e) => { if(e.key === 'Enter') aplicarTicket(); }; });
+  const cerrarTicket = () => { if(!state.ticketDialog?.busy){ state.ticketDialog = null; render(); } };
+  ['cancelTicket', 'closeTicket'].forEach(id => { const el = document.getElementById(id); if(el) el.onclick = cerrarTicket; });
   const exT = document.getElementById('exportTerritory');
   if(exT) exT.onclick = () => downloadFilteredCsv('fn_territory_exportar', {
     ...filtrosFechas('territory'),

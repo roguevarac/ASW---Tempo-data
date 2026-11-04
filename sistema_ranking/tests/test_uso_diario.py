@@ -257,6 +257,27 @@ check("descarga con todos los filtros de la pantalla (país, búsqueda, reclamos
 check("las respuestas grandes viajan comprimidas",
       httpx.get(f"{BASE}/", headers={"Accept-Encoding": "gzip"}).headers.get("content-encoding") == "gzip")
 
+# ------------------------------------------------------------------ ticket para todas las obras filtradas
+r = rpc(h, "fn_ticket_filtrado", {"p_ticket": "INC-900", "p_fecha": "04112026", "p_aplicar": True})
+check("ticket a las obras filtradas: sin ningún filtro no se carga (nunca a la tabla entera)",
+      r.status_code >= 400 and "filtro" in r.json().get("message", "") and sqlq("select count(*) from territory_seguimiento where ticket = 'INC-900'") == "0", r.text)
+uy = sqlq("select count(*) from fn_territory_pagina(p_pais => 'UY', p_limite => 100000)")
+con_ticket = sqlq("select count(*) from fn_territory_pagina(p_pais => 'UY', p_limite => 100000) where ticket is not null")
+r = rpc(h, "fn_ticket_filtrado", {"p_ticket": None, "p_fecha": None, "p_aplicar": False, "p_pais": "UY"})
+check("antes de cargar: cuántas obras filtradas y cuántas ya tienen otro ticket", int(uy) > 1 and int(con_ticket) >= 1
+      and r.json() == [{"obras": int(uy), "con_otro_ticket": int(con_ticket)}], (r.text, uy, con_ticket))
+r = rpc(h, "fn_ticket_filtrado", {"p_ticket": " INC-900 ", "p_fecha": "04112026", "p_aplicar": True, "p_pais": "UY"})
+check("carga el mismo ticket y fecha en todas las obras filtradas (todas las páginas)",
+      r.status_code == 200 and r.json()[0]["obras"] == int(uy)
+      and sqlq("select count(*) from fn_territory_pagina(p_pais => 'UY', p_limite => 100000) where ticket = 'INC-900' "
+               "and ticket_fecha = '2026-11-04'") == uy, r.text)
+r = rpc(h, "fn_ticket_filtrado", {"p_ticket": "INC-901", "p_fecha": "31022026", "p_aplicar": True, "p_pais": "UY"})
+check("con una fecha no válida no cambia ninguna obra (todo o nada)",
+      r.status_code >= 400 and "DDMMAAAA" in r.json().get("message", "")
+      and sqlq("select count(*) from territory_seguimiento where ticket = 'INC-901'") == "0", r.text)
+r = rpc(h_aud, "fn_ticket_filtrado", {"p_ticket": "INC-902", "p_fecha": "04112026", "p_aplicar": True, "p_pais": "UY"})
+check("sin permiso de escritura no se cargan tickets", r.status_code == 403, r.text)
+
 # ------------------------------------------------------------------ en el navegador
 tmp = pathlib.Path(tempfile.mkdtemp())
 sin_semana = tmp / "regional-uy-weekly.csv"

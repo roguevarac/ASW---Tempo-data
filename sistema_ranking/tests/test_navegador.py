@@ -285,6 +285,19 @@ with sync_playwright() as p:
     check("ticket y fecha se escriben en la tabla y la fecha se muestra DD/MM/AAAA",
           sqlq("select ticket || '|' || ticket_fecha from territory_seguimiento") == "INC-555|2026-09-26"
           and fe.input_value() == "26/09/2026", (sqlq("select ticket || '|' || ticket_fecha from territory_seguimiento"), fe.input_value()))
+    pag.fill("#searchTerritory", "Navegador"); pag.wait_for_timeout(1500)
+    pag.click("#ticketFiltrado"); pag.wait_for_selector("#aplicarTicket", timeout=5000)
+    texto_ticket = pag.inner_text("#ticketBg")
+    pag.fill("#ticketMasivo", "INC-777"); pag.fill("#fechaMasiva", "04112026"); pag.click("#aplicarTicket")
+    pag.wait_for_selector("#closeTicket", timeout=5000)
+    check("Cargar ticket con un filtro aplicado: indica cuántas obras y carga el ticket en todas las filtradas",
+          "Se carga en las" in texto_ticket and "INC-777" in pag.inner_text("#ticketBg")
+          and sqlq("select count(*) from territory_seguimiento where ticket = 'INC-777' and ticket_fecha = '2026-11-04'")
+          == sqlq("select count(*) from fn_territory_pagina(p_buscar => 'Navegador', p_limite => 100000)"), texto_ticket)
+    pag.click("#closeTicket"); pag.wait_for_timeout(500)
+    check("...y la tabla muestra el ticket nuevo", pag.locator('[data-field-seg="ticket"]').first.input_value() == "INC-777")
+    pag.click("#clearFiltersT"); aceptar_filtro()
+    check("sin filtros no se ofrece Cargar ticket", pag.locator("#ticketFiltrado").count() == 0)
     pag.locator('[data-history-track]').first.click(); pag.wait_for_selector("#closeHistory", timeout=5000)
     check("histórico de cambios abre", pag.is_visible("#closeHistory"))
     pag.click("#closeHistory")
@@ -340,7 +353,7 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
                                           "Respaldo en OneDrive", "no altera la información",
                                           "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))
