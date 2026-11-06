@@ -69,7 +69,7 @@ for filtros in ["", "p_pais => 'AR'", "p_date_from => '2023-01-01', p_date_to =>
     check(f"tabla por territorio ({filtros or 'sin filtros'}): mismo total que fn_territory_view",
           sql(f"select total from fn_territory_pagina(p_limite => 1 {a})") == sql(f"select count(*) from fn_territory_view({filtros})"))
 pagina = sql("select string_agg(id::text, ',' order by n) from (select id, row_number() over () n from fn_master_pagina(p_limite => 100, p_offset => 100)) s")
-todas = sql("select string_agg(id::text, ',') from (select id from fn_master_view() order by last_chart_date desc nulls last, track_artist_concat, id offset 100 limit 100) s")
+todas = sql("select string_agg(id::text, ',') from (select id from fn_master_view() order by lower(track_artist_concat), track_artist_concat, id offset 100 limit 100) s")
 check("tabla principal: la página 2 son las filas 101 a 200 del mismo orden", pagina == todas)
 check("búsqueda por título o Tempo ID (sin distinguir mayúsculas; % y _ se buscan literalmente)",
       sql("select total from fn_master_pagina(p_buscar => 'TEMA 1234', p_limite => 1)")
