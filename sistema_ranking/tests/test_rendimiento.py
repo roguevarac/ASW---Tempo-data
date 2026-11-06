@@ -13,6 +13,9 @@ import time
 
 from playwright.sync_api import sync_playwright
 
+# Chromium de la máquina de pruebas (variable CHROMIUM o el enlace estable de /opt/pw-browsers; si no, el de Playwright).
+CHROMIUM = os.environ.get("CHROMIUM") or ("/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else None)
+
 BASE, PGURL = os.environ["BASE"], os.environ["PGURL"]
 LIMITE_S = float(os.environ.get("LIMITE_SEGUNDOS", "3"))   # holgado: en una PC normal tarda menos de 1 s
 fallas = []
@@ -103,7 +106,7 @@ sql("TRUNCATE audit_logs; DELETE FROM panel.acceso WHERE email = 'admin@prueba.l
 # ---- tiempos en el navegador
 total_obras = int(sql("select count(*) from tracks_master"))
 with sync_playwright() as p:
-    nav = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome")
+    nav = p.chromium.launch(executable_path=CHROMIUM)
     pag = nav.new_page()
     pag.goto(BASE + "/")
     pag.fill("#loginEmail", "admin@prueba.local"); pag.fill("#loginPass", "clave-admin-123")

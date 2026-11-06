@@ -13,6 +13,30 @@ SET search_path = public;
 
 -- Repara la codificación: el texto completo si se puede; si no, cada secuencia ("Ã¡", "â€¦") por separado. Deja igual
 -- lo que no es una secuencia rota ("BATIDÃO", coreano, cirílico).
+-- Los bytes del texto como los ve Windows-1252. Esa codificación no define 0x81, 0x8D, 0x8F, 0x90 ni 0x9D, que aparecen en
+-- Á, Í, Ï, Ð, Ý y en "”" mal leídos (por ejemplo "PLÁSTICO" se lee "PLÃ" + chr(129) + "STICO"): convert_to falla con
+-- ellos, así que esos caracteres se pasan a su byte a mano (pedido del usuario, 06/11/2026: "PLÁSTICO" y "FANÁTICO"
+-- quedaban como otra obra, con un carácter invisible).
+CREATE OR REPLACE FUNCTION public.fn_bytes_win1252(p_texto text)
+ RETURNS bytea
+ LANGUAGE plpgsql
+ IMMUTABLE
+AS $function$
+declare
+    b bytea := convert_to(translate(p_texto, chr(129) || chr(141) || chr(143) || chr(144) || chr(157),
+                                    chr(3) || chr(4) || chr(5) || chr(6) || chr(7)), 'WIN1252');
+    k integer;
+begin
+    for i in 0 .. length(b) - 1 loop
+        k := get_byte(b, i);
+        if k between 3 and 7 then
+            b := set_byte(b, i, (array[129, 141, 143, 144, 157])[k - 2]);
+        end if;
+    end loop;
+    return b;
+end;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.fn_reparar_texto(p_texto text)
  RETURNS text
  LANGUAGE plpgsql
@@ -29,14 +53,14 @@ begin
         return v;
     end if;
     begin
-        r := convert_from(convert_to(v, 'WIN1252'), 'UTF8');
+        r := convert_from(fn_bytes_win1252(v), 'UTF8');
         if r is not null then return r; end if;
     exception when others then
         null;
     end;
     for m in select regexp_matches(v, '(â' || cola || cola || '|[ÃÂ]' || cola || ')', 'g') loop
         begin
-            v := replace(v, m[1], convert_from(convert_to(m[1], 'WIN1252'), 'UTF8'));
+            v := replace(v, m[1], convert_from(fn_bytes_win1252(m[1]), 'UTF8'));
         exception when others then
             null;
         end;
@@ -59,6 +83,8 @@ begin
     end if;
 
     v_text := replace(fn_reparar_texto(p_input), '…', '...');
+    -- Caracteres invisibles (de control C1, de ancho cero, BOM): harían que dos títulos iguales a la vista sean obras distintas.
+    v_text := regexp_replace(v_text, '[\u0080-\u009F\u200B-\u200D\u2060\uFEFF]', '', 'g');
 
     -- Proteger "¿" y "¡" de unaccent (los convierte en "?" y "!").
     v_text := replace(v_text, '¿', chr(1));

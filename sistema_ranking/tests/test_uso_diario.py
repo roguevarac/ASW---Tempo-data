@@ -18,6 +18,9 @@ import tempfile
 import httpx
 from playwright.sync_api import sync_playwright
 
+# Chromium de la máquina de pruebas (variable CHROMIUM o el enlace estable de /opt/pw-browsers; si no, el de Playwright).
+CHROMIUM = os.environ.get("CHROMIUM") or ("/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else None)
+
 BASE = os.environ.get("BASE", "http://localhost:8787")
 PGURL = os.environ["PGURL"]
 fallas = []
@@ -224,6 +227,16 @@ check("'â€¦' y '…' se leen como '...': una sola obra",
       == "1|3 PECADOS DESPUES... - Milo j")
 check("tildes mal codificadas ('FrÃ¡gil', 'Ã‘')", sqlq("select track_artist_concat from tracks_master where track_name_raw like 'Fr%gil Diario'")
       == "Fragil Diario - Banda N")
+# Á, Í mayúsculas: sus bytes (0x81, 0x8D) no existen en Windows-1252 y quedaban como "A" + un carácter invisible.
+chart("PLÁSTICO", "2025-04-17", 11, 110, "Lali, Duki")
+chart("PLÃ\x81STICO", "2025-04-17", 11, 110, "Lali, Duki")
+chart("FANÃ\x81TICO", "2025-04-17", 12, 120, "Lali")
+chart("MÃ\x8dO", "2025-04-17", 13, 130, "Banda Mia")
+check("'Á' e 'Í' mayúsculas mal codificadas: misma obra que la bien escrita, sin caracteres invisibles",
+      sqlq("select count(*) from tracks_master where track_artist_concat = 'PLASTICO - Lali, Duki'") == "1"
+      and sqlq("select count(*) from tracks_master where track_name_clean like 'PL%STICO'") == "1"
+      and sqlq("select track_artist_concat from tracks_master where track_name_raw like 'FAN%TICO'") == "FANATICO - Lali"
+      and sqlq("select track_artist_concat from tracks_master where track_name_raw like 'M%O' and artist_name_raw = 'Banda Mia'") == "MIO - Banda Mia")
 
 # ------------------------------------------------------------------ Tempo ID: número o valores estándar
 r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": tres, "p_tempo_id": "COMPILADO"})
@@ -278,13 +291,31 @@ check("con una fecha no válida no cambia ninguna obra (todo o nada)",
 r = rpc(h_aud, "fn_ticket_filtrado", {"p_ticket": "INC-902", "p_fecha": "04112026", "p_aplicar": True, "p_pais": "UY"})
 check("sin permiso de escritura no se cargan tickets", r.status_code == 403, r.text)
 
+# ------------------------------------------------------------------ descargas de la tabla principal con la búsqueda; orden alfabético
+esperadas = sqlq("select count(*) from fn_master_pagina(p_buscar => 'fusion', p_limite => 100000)")
+r = rpc(h, "fn_envio_conteo", {"p_tipo": "csv_principal", "p_buscar": "fusion"})
+check("la descarga cuenta solo las obras de la búsqueda aplicada", int(esperadas) >= 1
+      and r.json()[0]["todas"] == int(esperadas) and r.json()[0]["todas"] < int(sqlq("select count(*) from tracks_master where deleted_at is null")), r.text)
+r = rpc(h, "fn_preparar_envio", {"p_tipo": "csv_principal", "p_modo": "todas", "p_buscar": "fusion"})
+envio = r.json()[0]["envio_id"]
+obras = rpc(h, "fn_envio_obras", {"p_envio_id": envio}).json()
+check("el CSV sale con las obras de la búsqueda (y queda registrada en el envío)",
+      r.json()[0]["obras"] == int(esperadas) and all("fusion" in o["track_artist_concat"].lower() for o in obras)
+      and sqlq(f"select buscar from envios where id = {envio}") == "fusion", (r.text, obras[:3]))
+nombres = [x["track_artist_concat"] for x in rpc(h, "fn_master_pagina", {"p_limite": 500}).json()]
+check("tabla principal en orden alfabético", len(nombres) > 3 and nombres == sorted(nombres, key=str.lower), nombres[:8])
+territorio = [x["track_artist_concat"] for x in rpc(h, "fn_territory_pagina", {"p_limite": 500}).json()]
+check("tabla por territorio en orden alfabético (también al buscar)", len(territorio) > 3 and territorio == sorted(territorio, key=str.lower)
+      and [x["track_artist_concat"] for x in rpc(h, "fn_territory_pagina", {"p_buscar": "a", "p_limite": 500}).json()]
+      == sorted([x["track_artist_concat"] for x in rpc(h, "fn_territory_pagina", {"p_buscar": "a", "p_limite": 500}).json()], key=str.lower), territorio[:8])
+
 # ------------------------------------------------------------------ en el navegador
 tmp = pathlib.Path(tempfile.mkdtemp())
 sin_semana = tmp / "regional-uy-weekly.csv"
 sin_semana.write_text("rank,uri,artist_names,track_name,source,peak_rank,previous_rank,weeks_on_chart,streams\n"
                       "1,spotify:track:9,Banda Sin Semana,Tema Sin Semana,Sello,1,2,3,5000\n", encoding="utf-8")
 with sync_playwright() as p:
-    nav = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome")
+    nav = p.chromium.launch(executable_path=CHROMIUM)
     pag = nav.new_page()
     errores_js = []
     pag.on("pageerror", lambda e: errores_js.append(str(e)))

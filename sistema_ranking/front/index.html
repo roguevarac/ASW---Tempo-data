@@ -685,7 +685,8 @@ const ENVIO_TIPOS = {
 };
 
 function envioFiltros(){
-  return { p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null, p_pais: state.masterCountry || null };
+  return { p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null, p_pais: state.masterCountry || null,
+           p_buscar: state.searchMaster.trim() || null };
 }
 
 async function openEnvioDialog(tipo){
@@ -715,8 +716,10 @@ function renderEnvioDialog(){
   if(!d) return '';
   const t = ENVIO_TIPOS[d.tipo];
   const c = d.conteo;
-  const filtros = [state.masterCountry && `país ${state.masterCountry}`, state.dateFrom && `desde ${state.dateFrom}`,
-                   state.dateTo && `hasta ${state.dateTo}`].filter(Boolean).join(', ');
+  const busqueda = state.searchMaster.trim();
+  const filtros = [busqueda && (busqueda === '-' ? 'sin Tempo ID' : `búsqueda "${esc(busqueda)}"`),
+                   state.masterCountry && `país ${state.masterCountry}`, state.dateFrom && `desde ${fechaCorta(state.dateFrom)}`,
+                   state.dateTo && `hasta ${fechaCorta(state.dateTo)}`].filter(Boolean).join(', ');
   const u = d.ultimo;
   const ultimo = u ? `Última descarga: ${fmtFecha(u.created_at)}${u.carga ? ` · carga ${u.carga}` : ''} · ${({ nuevas: 'solo nuevas', identificadas: 'identificadas desde la anterior' })[u.modo] || 'todas'} · ${u.obras} obras`
                    : `Sin descargas previas de este tipo.`;
@@ -730,7 +733,7 @@ function renderEnvioDialog(){
       ${!c ? `<div class="empty">Calculando…</div>` : `
       <button class="btn envio-op" data-envio-modo="todas" ${c.todas && !state.envioBusy ? '' : 'disabled'}>
         <b>Todas · ${obras(c.todas)}</b>
-        <span>${t.soloTempo ? 'Todas las obras con Tempo ID.' : 'Todas las obras de la tabla principal.'}</span>
+        <span>${t.soloTempo ? 'Todas las obras con Tempo ID' : 'Todas las obras'}${filtros ? ' que cumplen los filtros aplicados.' : ' de la tabla principal.'}</span>
       </button>
       <button class="btn envio-op" data-envio-modo="identificadas" ${c.identificadas && !state.envioBusy ? '' : 'disabled'}>
         <b>Identificadas desde la última descarga · ${obras(c.identificadas)}</b>

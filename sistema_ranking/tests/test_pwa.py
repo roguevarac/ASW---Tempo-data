@@ -17,6 +17,9 @@ import tempfile
 import httpx
 from playwright.sync_api import sync_playwright
 
+# Chromium de la máquina de pruebas (variable CHROMIUM o el enlace estable de /opt/pw-browsers; si no, el de Playwright).
+CHROMIUM = os.environ.get("CHROMIUM") or ("/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else None)
+
 BASE = os.environ.get("BASE", "http://localhost:8787").rstrip("/")
 fallas = []
 
@@ -46,7 +49,7 @@ with sync_playwright() as p:
     # Perfil normal (no incógnito, que nunca deja instalar aplicaciones), como el Edge del usuario.
     perfil = tempfile.mkdtemp(prefix="rk_perfil_")
     # Como el Edge de Windows (la pantalla de espera ofrece encender el servidor solo en Windows).
-    ctx = p.chromium.launch_persistent_context(perfil, executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    ctx = p.chromium.launch_persistent_context(perfil, executable_path=CHROMIUM,
                                                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                                                           "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0")
     nav = ctx

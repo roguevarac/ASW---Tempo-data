@@ -213,7 +213,8 @@ no quedan datos parciales y el archivo puede volver a cargarse.</p>
 sola obra, el sistema normaliza el título y el artista al cargarlos:</p>
 <ul>
   <li><b>Corrige las tildes mal codificadas</b> de archivos guardados con otra codificación: "FrÃ¡gil" se lee como
-    "Frágil" y "DESPUESâ€¦" como "DESPUES…".</li>
+    "Frágil", "PLÃSTICO" como "PLÁSTICO" y "DESPUESâ€¦" como "DESPUES…". También elimina los caracteres invisibles, para
+    que dos títulos iguales a la vista correspondan siempre a la misma obra.</li>
   <li><b>Elimina los acentos:</b> "Canción" se registra como "Cancion". Los signos <code>¿</code> y <code>¡</code> se
     conservan.</li>
   <li><b>Escribe los puntos suspensivos como tres puntos:</b> "DESPUES…" se registra como "DESPUES...".</li>
@@ -237,7 +238,7 @@ y BO los interpretan como separadores de columna.</p></div>
 
 <section id="principal">
 <h2>Tabla principal</h2>
-<p>Una fila por canción, ordenadas desde la aparición más reciente en los charts. La tabla muestra 100 filas por
+<p>Una fila por canción, en orden alfabético por Track - Artista, también al buscar o filtrar. La tabla muestra 100 filas por
 página; debajo se indican las filas visibles y el total (por ejemplo, "1–100 de 12.345") y los botones para pasar de
 página. La búsqueda y los filtros se aplican sobre todas las canciones, no solo sobre la página visible.</p>
 <p>Arriba de la tabla figuran las obras <b>identificadas</b> (con Tempo ID, incluidas las marcadas como UNCONTROLLED o
@@ -285,6 +286,9 @@ sección siguiente. Respetan los filtros de país y fechas, no la búsqueda.</p>
 <h2>Reporte BO y CSV: opciones de descarga</h2>
 <p><b>Descargar reporte BO</b> y <b>Descargar CSV</b> abren una ventana con dos opciones y la cantidad de obras de cada
 una. También se informa la última descarga de ese tipo: fecha, cantidad de obras y opción elegida.</p>
+<p>Las dos descargas respetan los filtros y la búsqueda aplicados en la tabla principal: por ejemplo, con la búsqueda
+"UNCONTROLLED" el archivo incluye solo esas obras. La ventana indica los filtros aplicados, y el archivo sale en orden
+alfabético.</p>
 <table>
   <tr><th>Opción</th><th>Incluye</th></tr>
   <tr><td><b>Todas</b></td><td>Reporte BO: todas las obras con Tempo ID. CSV: todas las obras de la tabla principal,
@@ -309,8 +313,8 @@ genera un archivo vacío ni se utiliza un número de carga.</p></div>
 <section id="territorio">
 <h2>Tabla por territorio</h2>
 <p>Una fila por obra y territorio (la semana más reciente en que la obra figuró en el chart de ese territorio), con
-los datos de Tempo y de BO. Al igual que la tabla principal, muestra 100 filas por página, y la búsqueda y los
-filtros abarcan todos los registros.</p>
+los datos de Tempo y de BO, en orden alfabético por Track - Artista y, para una misma obra, por territorio. Al igual
+que la tabla principal, muestra 100 filas por página, y la búsqueda y los filtros abarcan todos los registros.</p>
 <table>
   <tr><th>Columna</th><th>Descripción</th></tr>
   <tr><td>País, Track - Artista</td><td>Territorio y obra.</td></tr>

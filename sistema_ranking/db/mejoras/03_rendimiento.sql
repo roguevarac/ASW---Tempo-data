@@ -67,7 +67,7 @@ AS $function$
     ), pagina as (
         select b.*, count(*) over () as total
         from base b
-        order by b.ultima desc nulls last, b.track_artist_concat, b.id
+        order by lower(b.track_artist_concat), b.track_artist_concat, b.id   -- siempre alfabético (pedido del usuario, 06/11/2026)
         limit greatest(p_limite, 0) offset greatest(p_offset, 0)
     )
     select p.id, p.track_artist_concat, p.track_name_clean, p.tempo_id, p.ultima, p.deleted_at,
@@ -80,7 +80,7 @@ AS $function$
         from envio_obras eo join envios en on en.id = eo.envio_id
         where eo.track_master_id = p.id
     ) e on true
-    order by p.ultima desc nulls last, p.track_artist_concat, p.id;
+    order by lower(p.track_artist_concat), p.track_artist_concat, p.id;
 $function$;
 
 -- Tabla principal: cuántas obras tienen Tempo ID (número o marcador, como UNCONTROLLED) y cuántas no, con los mismos
@@ -131,7 +131,7 @@ CREATE TRIGGER trg_audit_territory_seguimiento AFTER INSERT OR DELETE OR UPDATE 
     FOR EACH ROW EXECUTE FUNCTION fn_audit_trigger();
 
 -- Tabla por territorio: una página, con los filtros de fn_territory_view más los de estado (de BO), reclamos y estado
--- de trabajo ('—' = sin valor) y la búsqueda por Tempo ID o título. Ordenada por territorio y título.
+-- de trabajo ('—' = sin valor) y la búsqueda por Tempo ID o título. Ordenada alfabéticamente por título (y país).
 -- p_estado va al final para no cambiar la posición de los demás (fn_territory_exportar la llama por posición).
 DROP FUNCTION IF EXISTS public.fn_territory_pagina(date, date, pais_code_enum, boolean, text, text, text, integer, integer);
 CREATE OR REPLACE FUNCTION public.fn_territory_pagina(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
@@ -174,7 +174,7 @@ AS $function$
     )
     select b.*, count(*) over () as total
     from base b
-    order by b.pais_code, b.track_artist_concat, b.id
+    order by lower(b.track_artist_concat), b.pais_code, b.id   -- siempre alfabético (pedido del usuario, 06/11/2026)
     limit greatest(p_limite, 0) offset greatest(p_offset, 0);
 $function$;
 
@@ -196,11 +196,11 @@ AS $function$
     order by 1, 2;
 $function$;
 
--- Cantidad de obras de cada opción de descarga (reporte BO o CSV) con los filtros de la tabla principal: las mismas
--- que tomaría fn_preparar_envio.
-DROP FUNCTION IF EXISTS public.fn_envio_conteo(text, date, date, pais_code_enum);   -- antes devolvía "nuevas"
+-- Cantidad de obras de cada opción de descarga (reporte BO o CSV) con los filtros y la búsqueda de la tabla principal:
+-- las mismas que tomaría fn_preparar_envio.
+DROP FUNCTION IF EXISTS public.fn_envio_conteo(text, date, date, pais_code_enum);   -- antes no tenía la búsqueda
 CREATE OR REPLACE FUNCTION public.fn_envio_conteo(p_tipo text, p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
-    p_pais pais_code_enum DEFAULT NULL::pais_code_enum)
+    p_pais pais_code_enum DEFAULT NULL::pais_code_enum, p_buscar text DEFAULT NULL::text)
  RETURNS TABLE(todas bigint, identificadas bigint)
  LANGUAGE sql
  STABLE
@@ -209,7 +209,8 @@ AS $function$
            count(*) filter (where fn_envio_identificada(p_tipo, v.tempo_id) and not exists (
                select 1 from envio_identificadas ei where ei.tipo = p_tipo and ei.track_master_id = v.id))
     from fn_master_view(p_date_from, p_date_to, p_pais, false) v
-    where p_tipo <> 'reporte_bo' or fn_envio_identificada(p_tipo, v.tempo_id);
+    where (p_tipo <> 'reporte_bo' or fn_envio_identificada(p_tipo, v.tempo_id))
+      and fn_coincide_busqueda(p_buscar, v.tempo_id, v.track_artist_concat);
 $function$;
 
 -- Semana del último chart cargado, por territorio y plataforma (un acceso al índice por combinación).

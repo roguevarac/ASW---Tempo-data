@@ -83,13 +83,17 @@ CREATE POLICY envio_obras_select ON public.envio_obras AS PERMISSIVE FOR SELECT 
 GRANT SELECT ON public.envios, public.envio_obras TO authenticated;
 GRANT ALL ON public.envios, public.envio_obras TO service_role;
 
--- Arma un envío con las obras de la tabla principal (mismos filtros de país y fechas que la pantalla) y lo
--- registra. p_modo 'todas': todas; 'identificadas': las identificadas que nunca figuraron identificadas en una descarga
+ALTER TABLE public.envios ADD COLUMN IF NOT EXISTS buscar text;   -- búsqueda de la tabla principal al descargar
+
+-- Arma un envío con las obras de la tabla principal (mismos filtros de país y fechas, y la misma búsqueda, que la
+-- pantalla; pedido del usuario, 06/11/2026: "si filtré por UNCONTROLLED, el CSV sale por eso") y lo registra. p_modo 'todas': todas; 'identificadas': las identificadas que nunca figuraron identificadas en una descarga
 -- de ese tipo; 'nuevas' (anterior): las que nunca salieron en ese tipo.
 -- El reporte BO solo lleva obras con tempo_id numérico y toma el número de carga siguiente.
 -- Sin obras no registra nada (ni gasta un número de carga) y devuelve obras = 0.
+DROP FUNCTION IF EXISTS public.fn_preparar_envio(text, text, date, date, pais_code_enum);
 CREATE OR REPLACE FUNCTION public.fn_preparar_envio(p_tipo text, p_modo text, p_date_from date DEFAULT NULL::date,
-                                                    p_date_to date DEFAULT NULL::date, p_pais pais_code_enum DEFAULT NULL::pais_code_enum)
+                                                    p_date_to date DEFAULT NULL::date, p_pais pais_code_enum DEFAULT NULL::pais_code_enum,
+                                                    p_buscar text DEFAULT NULL::text)
  RETURNS TABLE(envio_id bigint, carga integer, obras integer)
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -108,13 +112,14 @@ begin
         raise exception 'Modo de envío desconocido: %', p_modo;
     end if;
 
-    insert into envios (tipo, modo, pais_code, date_from, date_to)
-    values (p_tipo, p_modo, p_pais, p_date_from, p_date_to)
+    insert into envios (tipo, modo, pais_code, date_from, date_to, buscar)
+    values (p_tipo, p_modo, p_pais, p_date_from, p_date_to, nullif(trim(coalesce(p_buscar, '')), ''))
     returning id into v_envio;
 
     create temp table if not exists _envio_vista (id uuid, tempo_id text) on commit drop;
     truncate _envio_vista;
-    insert into _envio_vista select v.id, v.tempo_id from fn_master_view(p_date_from, p_date_to, p_pais, false) v;
+    insert into _envio_vista select v.id, v.tempo_id from fn_master_view(p_date_from, p_date_to, p_pais, false) v
+                             where fn_coincide_busqueda(p_buscar, v.tempo_id, v.track_artist_concat);
 
     insert into envio_obras (envio_id, track_master_id)
     select v_envio, v.id
@@ -145,8 +150,8 @@ begin
     return query select v_envio, v_carga, v_obras;
 end;
 $function$;
-REVOKE EXECUTE ON FUNCTION public.fn_preparar_envio(text, text, date, date, pais_code_enum) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.fn_preparar_envio(text, text, date, date, pais_code_enum) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION public.fn_preparar_envio(text, text, date, date, pais_code_enum, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.fn_preparar_envio(text, text, date, date, pais_code_enum, text) TO authenticated, service_role;
 
 -- Las obras de un envío, para armar el archivo (CSV de la tabla principal o reporte BO).
 CREATE OR REPLACE FUNCTION public.fn_envio_obras(p_envio_id bigint)
@@ -158,7 +163,7 @@ AS $function$
     from envio_obras eo
     join tracks_master tm on tm.id = eo.track_master_id
     where eo.envio_id = p_envio_id
-    order by tm.track_artist_concat, tm.id;
+    order by lower(tm.track_artist_concat), tm.track_artist_concat, tm.id;
 $function$;
 
 -- Último envío de cada obra, por tipo (lo muestra la tabla principal y lo usa su filtro "Seguimiento").

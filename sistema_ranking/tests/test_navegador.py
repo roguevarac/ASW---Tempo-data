@@ -15,6 +15,9 @@ import tempfile
 
 from playwright.sync_api import sync_playwright
 
+# Chromium de la máquina de pruebas (variable CHROMIUM o el enlace estable de /opt/pw-browsers; si no, el de Playwright).
+CHROMIUM = os.environ.get("CHROMIUM") or ("/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else None)
+
 BASE = os.environ.get("BASE", "http://localhost:8787")
 PGURL = os.environ["PGURL"]
 fallas, errores_js = [], []
@@ -51,7 +54,7 @@ tempo = tmp / "tempo_ids.csv"
 tempo.write_text("Track - Artista,Tempo ID\nTema Navegador - Artista Navegador,777001\n", encoding="utf-8")
 
 with sync_playwright() as p:
-    nav = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome")
+    nav = p.chromium.launch(executable_path=CHROMIUM)
     ctx = nav.new_context(accept_downloads=True)
     pag = ctx.new_page()
     pag.on("pageerror", lambda e: errores_js.append(str(e)))

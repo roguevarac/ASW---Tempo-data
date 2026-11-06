@@ -22,6 +22,9 @@ sys.path.insert(0, str(RAIZ / "api"))
 import importar_charts  # noqa: E402
 import espejo  # noqa: E402
 
+# Chromium de la máquina de pruebas (variable CHROMIUM o el enlace estable de /opt/pw-browsers; si no, el de Playwright).
+CHROMIUM = os.environ.get("CHROMIUM") or ("/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else None)
+
 BASE, PGURL, STORAGE_DIR = os.environ["BASE"], os.environ["PGURL"], os.environ["STORAGE_DIR"]
 fallas = []
 
@@ -101,7 +104,7 @@ no_chart = escribir(sp / "ar" / "tempo_ids.csv", "track_artist_concat,tempo_id\n
 # ---------------------------------------------------------------- 1. paridad con el front real
 vaciar()
 with sync_playwright() as p:
-    nav = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome")
+    nav = p.chromium.launch(executable_path=CHROMIUM)
     pag = nav.new_page()
     pag.goto(BASE + "/")
     pag.fill("#loginEmail", "admin@prueba.local"); pag.fill("#loginPass", "clave-admin-123"); pag.click("#loginBtn")
@@ -158,7 +161,7 @@ check("volver a correrlo no duplica nada (retoma: saltea lo ya importado)",
 
 # ---------------------------------------------------------------- 3. en la aplicación
 with sync_playwright() as p:
-    nav = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome")
+    nav = p.chromium.launch(executable_path=CHROMIUM)
     pag = nav.new_page()
     pag.goto(BASE + "/")
     pag.fill("#loginEmail", "admin@prueba.local"); pag.fill("#loginPass", "clave-admin-123"); pag.click("#loginBtn")

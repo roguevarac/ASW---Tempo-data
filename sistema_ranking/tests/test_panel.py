@@ -16,6 +16,9 @@ import sys
 import httpx
 from playwright.sync_api import sync_playwright
 
+# Chromium de la máquina de pruebas (variable CHROMIUM o el enlace estable de /opt/pw-browsers; si no, el de Playwright).
+CHROMIUM = os.environ.get("CHROMIUM") or ("/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else None)
+
 BASE = os.environ.get("BASE", "http://localhost:8787")
 PGURL = os.environ["PGURL"]
 STORAGE = pathlib.Path(os.environ["STORAGE_DIR"])
@@ -160,7 +163,7 @@ check("registro del servidor: muestra los pedidos rechazados", any("403" in l["m
 
 # ------------------------------------------------------------------ en el navegador
 with sync_playwright() as p:
-    nav = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome")
+    nav = p.chromium.launch(executable_path=CHROMIUM)
     errores_js = []
     pag = nav.new_page()
     pag.on("pageerror", lambda e: errores_js.append(str(e)))
