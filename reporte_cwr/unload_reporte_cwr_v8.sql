@@ -153,7 +153,7 @@ song_info AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id IN (SELECT song_id FROM ids)
       AND ident_iswc_cd IS NOT NULL

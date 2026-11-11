@@ -56,6 +56,8 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 - Los países se buscan por todas sus formas de escritura (CTE `alias_pais`): Estados Unidos aparece como
   `UNITED STATES` en los textos de contratos y como `USA`, `US`, `U.S.A.`, `US & CANADA` en grupos IP. Agregar alias ahí.
 - `MIN/MAX` de vencimientos ignoran NULL: contar líneas sin vencimiento por separado antes de decir "todos vencidos".
+- `identifiers_iswc_v.preferred_indicator` y `conflict_indicator` valen **'Yes' / 'No'** (no 'Y'). Hasta el 11/11/2026 la v8
+  y control_pais preguntaban `= 'Y'` y tomaban siempre el menor ISWC; ahora `IN ('Yes', 'Y')`.
 
 ## Financials (front "Song Financials")
 - Sale de `dp_earnings_lines.earnings_lines_v`: Gross Income = `gross_client_share_of_income_amt`, Affiliate NPS =
@@ -94,6 +96,9 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   formas de escritura salen de `public.control_pais_claves` (`CLAVES` en `control_pais/tools/generar_unload.py`;
   BRASIL = BRAZIL/BRASIL, agregado). Próximos: Colombia, Argentina, Perú, Uruguay y Brasil (Estados Unidos no).
   Test: `python3 control_pais/tests/test_control_pais.py` (compara contra la v8).
+- `split_cliente/split_cliente_v1.sql`: split completo de todas las obras de un client_id (por territorio del split,
+  writer y publisher), con ISWC preferido, vencimientos del cliente y del contrato asociado. Test:
+  `python3 split_cliente/tests/test_split_cliente.py`.
 - `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO y UNITED STATES). Una sola
   sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.
 - `reporte_cwr/unload_reporte_cwr_v8.sql`: la v8 dentro de un `UNLOAD` a S3 para resultados grandes. Se genera con

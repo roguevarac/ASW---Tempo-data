@@ -234,7 +234,7 @@ res AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id BETWEEN 0 AND 999999
       AND ident_iswc_cd IS NOT NULL
@@ -514,7 +514,7 @@ res AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id BETWEEN 1000000 AND 1999999
       AND ident_iswc_cd IS NOT NULL
@@ -794,7 +794,7 @@ res AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id BETWEEN 2000000 AND 2999999
       AND ident_iswc_cd IS NOT NULL
@@ -1074,7 +1074,7 @@ res AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id BETWEEN 3000000 AND 3999999
       AND ident_iswc_cd IS NOT NULL
@@ -1354,7 +1354,7 @@ res AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id BETWEEN 4000000 AND 4999999
       AND ident_iswc_cd IS NOT NULL
@@ -1634,7 +1634,7 @@ res AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id BETWEEN 5000000 AND 5999999
       AND ident_iswc_cd IS NOT NULL
@@ -1914,7 +1914,7 @@ res AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id BETWEEN 6000000 AND 6999999
       AND ident_iswc_cd IS NOT NULL
@@ -2194,7 +2194,7 @@ res AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id BETWEEN 7000000 AND 7999999
       AND ident_iswc_cd IS NOT NULL
@@ -2474,7 +2474,7 @@ res AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id BETWEEN 8000000 AND 8999999
       AND ident_iswc_cd IS NOT NULL
@@ -2754,7 +2754,7 @@ res AS (
 iswc AS (
     SELECT
         tempo_song_id AS song_id,
-        COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
+        COALESCE(MAX(CASE WHEN preferred_indicator IN (''Yes'', ''Y'') THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
     WHERE tempo_song_id BETWEEN 9000000 AND 999999999999
       AND ident_iswc_cd IS NOT NULL
