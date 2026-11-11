@@ -11,9 +11,10 @@
 --     de control de la obra (contract_territories) cubre el país, comparando
 --     los textos Include / Exclude elemento por elemento.
 --
--- PARA CAMBIAR DE PAÍS: editar solo el bloque "claves" (país, sus formas de
--- escritura y las regiones que lo contienen). Ejemplo Argentina:
---   ('P', 'ARGENTINA'), ('R', 'LATIN AMERICA'), ('R', 'SOUTH AMERICA').
+-- PAÍS: en el procedimiento es un parámetro (CALL public.sp_obras_controladas_pais
+-- ('ARGENTINA', 500000, 0)). Acá, la línea marcada "PAIS" del bloque claves. Las
+-- formas de escritura de cada país están en public.control_pais_claves; un país
+-- nuevo se agrega ahí (ver CLAVES en control_pais/tools/generar_unload.py).
 --
 -- Diferencias con la v8 (que trabaja sobre una lista de obras):
 --   * Exige una línea de control que cubra el país. La v8 además daba por
@@ -42,13 +43,15 @@
 WITH
 
 -- ---------------------------------------------------------------------
--- 0. PARÁMETROS. EDITABLE: país (P = forma de escritura del país; R = región
---    que lo contiene). La primera fila P es el nombre que sale en el reporte.
+-- 0. PAÍS. Sus formas de escritura (P) y las regiones que lo contienen (R) se
+--    leen de public.control_pais_claves (la crean los archivos de procedimiento;
+--    misma lista que alias_pais / regiones de la v8). EDITABLE: el país, en una
+--    sola línea.
 -- ---------------------------------------------------------------------
 claves AS (
-              SELECT 'P' AS tipo, 'CHILE' AS clave, 1 AS orden
-    UNION ALL SELECT 'R',         'LATIN AMERICA',  2
-    UNION ALL SELECT 'R',         'SOUTH AMERICA',  3
+    SELECT c.pais, c.tipo, c.clave, c.orden
+    FROM public.control_pais_claves c
+    WHERE c.pais = 'CHILE'   -- PAIS
 ),
 
 -- ---------------------------------------------------------------------
@@ -292,7 +295,7 @@ SELECT
     CAST(r.song_id AS BIGINT)                             AS song_id,
     r.song_title_tx,
     iw.iswc,
-    k.clave                                               AS pais,
+    k.pais                                                AS pais,
     CAST(COALESCE(r.perf, 0) AS NUMERIC(10,2))            AS performance_pc_total,
     CAST(COALESCE(r.mech, 0) AS NUMERIC(10,2))            AS mechanical_pc_total,
     CAST(COALESCE(r.sync, 0) AS NUMERIC(10,2))            AS sync_pc_total,

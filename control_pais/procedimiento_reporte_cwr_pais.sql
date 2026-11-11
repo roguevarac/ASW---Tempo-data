@@ -1,30 +1,71 @@
 -- =====================================================================
--- PROCEDIMIENTO: reporte CWR v8 para CHILE sobre las obras controladas (por tandas)
+-- PROCEDIMIENTO: reporte CWR v8 para un país, sobre sus obras controladas (por tandas)
 --
 -- No editar acá: se genera desde reporte_cwr/reporte_cwr_x_territorio_v8.sql con
 --   python3 control_pais/tools/generar_unload.py
--- País: bloque "claves" de esa query (hoy CHILE).
--- ANTES: tiene que estar cargada public.obras_controladas_pais_resultado (CALL public.sp_obras_controladas_pais).
+-- ANTES: tiene que estar cargado el país en public.obras_controladas_pais_resultado
+-- (CALL public.sp_obras_controladas_pais('PAIS', 500000, 0)).
 --
--- PASO 1 (una sola vez, y cada vez que cambie la query): ejecutar TODO este
---   archivo. Crea public.reporte_cwr_pais_resultado (resultado), public.reporte_cwr_pais_log
---   (avance por tanda) y el procedimiento.
--- PASO 2: correr
---     CALL public.sp_reporte_cwr_pais(500000, 0);
---   (tanda de 500.000 Tempo ID, desde el 0: vacía el resultado y empieza de cero).
---   Cada tanda se confirma (COMMIT) al terminar y queda anotada en el log.
---   Avance:  SELECT * FROM public.reporte_cwr_pais_log ORDER BY tanda;
--- PASO 3: el archivo, un solo CSV:
---     UNLOAD ('SELECT * FROM public.reporte_cwr_pais_resultado ORDER BY song_id, pais')
---     TO 's3://dw-export-prod/7000042560/reporte_cwr_pais_'
+-- PASO 1 (una vez, y cada vez que te pase una versión nueva): ejecutar TODO este
+--   archivo. Crea o actualiza public.control_pais_claves (formas de escritura de
+--   cada país), public.reporte_cwr_pais_resultado (resultado), public.reporte_cwr_pais_log
+--   (avance) y el procedimiento. NO borra resultados ya guardados.
+--   Países disponibles: 'ARGENTINA', 'CHILE', 'PERU', 'URUGUAY', 'COLOMBIA', 'BRASIL', 'UNITED STATES'.
+-- PASO 2: correr, con el país entre comillas:
+--     CALL public.sp_reporte_cwr_pais('CHILE', 500000, 0);
+--   (tandas de 500.000 Tempo ID; desde 0 = borra solo lo de ese país y empieza
+--   de cero). Cada país queda guardado aparte (columna pais).
+--   Avance:  SELECT * FROM public.reporte_cwr_pais_log WHERE pais = 'CHILE' ORDER BY tanda;
+-- PASO 3: el archivo de ese país:
+--     UNLOAD ('SELECT * FROM public.reporte_cwr_pais_resultado WHERE pais = ''CHILE'' ORDER BY song_id')
+--     TO 's3://dw-export-prod/7000042560/reporte_cwr_pais_chile_'
 --     IAM_ROLE 'arn:aws:iam::991042281579:role/DataWarehouse/RedShift-S3-Unload'
 --     FORMAT AS CSV HEADER EXTENSION 'csv' PARALLEL OFF MAXFILESIZE 1 GB ALLOWOVERWRITE;
 --
 -- Si se corta: lo ya confirmado queda guardado. Ver en el log el "hasta" de la
--- última tanda y seguir desde el siguiente Tempo ID, sin vaciar:
---     CALL public.sp_reporte_cwr_pais(500000, <hasta + 1>);
+-- última tanda y seguir desde el siguiente Tempo ID, sin borrar:
+--     CALL public.sp_reporte_cwr_pais('CHILE', 500000, <hasta + 1>);
 -- Si una tanda tarda demasiado, usar un tamaño menor (ej. 250000).
 -- =====================================================================
+CREATE TABLE IF NOT EXISTS public.control_pais_claves (
+    pais   VARCHAR(100),
+    tipo   VARCHAR(1),
+    clave  VARCHAR(200),
+    orden  INTEGER
+);
+DELETE FROM public.control_pais_claves;
+INSERT INTO public.control_pais_claves (pais, tipo, clave, orden) VALUES
+    ('ARGENTINA', 'P', 'ARGENTINA', 1),
+    ('ARGENTINA', 'R', 'LATIN AMERICA', 2),
+    ('ARGENTINA', 'R', 'SOUTH AMERICA', 3),
+    ('CHILE', 'P', 'CHILE', 1),
+    ('CHILE', 'R', 'LATIN AMERICA', 2),
+    ('CHILE', 'R', 'SOUTH AMERICA', 3),
+    ('PERU', 'P', 'PERU', 1),
+    ('PERU', 'R', 'LATIN AMERICA', 2),
+    ('PERU', 'R', 'SOUTH AMERICA', 3),
+    ('URUGUAY', 'P', 'URUGUAY', 1),
+    ('URUGUAY', 'R', 'LATIN AMERICA', 2),
+    ('URUGUAY', 'R', 'SOUTH AMERICA', 3),
+    ('COLOMBIA', 'P', 'COLOMBIA', 1),
+    ('COLOMBIA', 'R', 'LATIN AMERICA', 2),
+    ('COLOMBIA', 'R', 'SOUTH AMERICA', 3),
+    ('BRASIL', 'P', 'BRAZIL', 1),
+    ('BRASIL', 'P', 'BRASIL', 2),
+    ('BRASIL', 'R', 'LATIN AMERICA', 3),
+    ('BRASIL', 'R', 'SOUTH AMERICA', 4),
+    ('UNITED STATES', 'P', 'UNITED STATES', 1),
+    ('UNITED STATES', 'P', 'UNITED STATES OF AMERICA', 2),
+    ('UNITED STATES', 'P', 'USA', 3),
+    ('UNITED STATES', 'P', 'US', 4),
+    ('UNITED STATES', 'P', 'U S A', 5),
+    ('UNITED STATES', 'P', 'U S', 6),
+    ('UNITED STATES', 'R', 'NORTH AMERICA', 7),
+    ('UNITED STATES', 'R', 'US AND CANADA', 8),
+    ('UNITED STATES', 'R', 'US & CANADA', 9),
+    ('UNITED STATES', 'R', 'USA AND CANADA', 10),
+    ('UNITED STATES', 'R', 'USA & CANADA', 11);
+
 CREATE TABLE IF NOT EXISTS public.reporte_cwr_pais_resultado (
     song_id BIGINT,
     song_title_tx VARCHAR(2000),
@@ -56,16 +97,22 @@ CREATE TABLE IF NOT EXISTS public.reporte_cwr_pais_resultado (
     alertas VARCHAR(4000)
 );
 
-CREATE TABLE IF NOT EXISTS public.reporte_cwr_pais_log (
+-- El log se rehace (ahora lleva el país); el resultado no se toca.
+DROP TABLE IF EXISTS public.reporte_cwr_pais_log;
+CREATE TABLE public.reporte_cwr_pais_log (
+    pais      VARCHAR(100),
     tanda     INTEGER,
     desde     BIGINT,
     hasta     BIGINT,
-    obras     BIGINT,
+    filas     BIGINT,
     inicio    VARCHAR(60),
     fin       VARCHAR(60)
 );
 
-CREATE OR REPLACE PROCEDURE public.sp_reporte_cwr_pais(p_tamano BIGINT, p_desde BIGINT)
+-- Versión anterior (sin país), si estaba creada.
+DROP PROCEDURE IF EXISTS public.sp_reporte_cwr_pais(BIGINT, BIGINT);
+
+CREATE OR REPLACE PROCEDURE public.sp_reporte_cwr_pais(p_pais VARCHAR(100), p_tamano BIGINT, p_desde BIGINT)
 AS $$
 DECLARE
     v_max    BIGINT;
@@ -73,17 +120,23 @@ DECLARE
     v_hasta  BIGINT;
     v_filas  BIGINT;
     v_tanda  INTEGER;
+    v_claves INTEGER;
     v_inicio VARCHAR(60);
 BEGIN
     IF p_tamano IS NULL OR p_tamano < 1 THEN
         RAISE EXCEPTION 'El tamaño de tanda tiene que ser mayor que 0';
     END IF;
-    IF p_desde = 0 THEN
-        TRUNCATE public.reporte_cwr_pais_resultado;
-        TRUNCATE public.reporte_cwr_pais_log;
+    SELECT COUNT(*) INTO v_claves FROM public.control_pais_claves WHERE pais = p_pais;
+    IF v_claves = 0 THEN
+        RAISE EXCEPTION 'País % sin formas de escritura en public.control_pais_claves', p_pais;
     END IF;
-    SELECT CAST(MAX(song_id) AS BIGINT) INTO v_max FROM public.obras_controladas_pais_resultado;
-    SELECT COALESCE(MAX(tanda), 0) INTO v_tanda FROM public.reporte_cwr_pais_log;
+    IF p_desde = 0 THEN
+        DELETE FROM public.reporte_cwr_pais_resultado WHERE pais = p_pais;
+        DELETE FROM public.reporte_cwr_pais_log WHERE pais = p_pais;
+        COMMIT;
+    END IF;
+    SELECT CAST(MAX(song_id) AS BIGINT) INTO v_max FROM public.obras_controladas_pais_resultado WHERE pais = p_pais;
+    SELECT COALESCE(MAX(tanda), 0) INTO v_tanda FROM public.reporte_cwr_pais_log WHERE pais = p_pais;
     v_desde := p_desde;
     WHILE v_desde <= v_max LOOP
         v_hasta  := v_desde + p_tamano - 1;
@@ -95,40 +148,16 @@ WITH
 ids AS (
     SELECT DISTINCT CAST(t.song_id AS BIGINT) AS song_id
     FROM public.obras_controladas_pais_resultado t
-    WHERE t.song_id BETWEEN ' || CAST(v_desde AS VARCHAR(20)) || ' AND ' || CAST(v_hasta AS VARCHAR(20)) || '
+    WHERE t.pais = ' || QUOTE_LITERAL(p_pais) || ' AND t.song_id BETWEEN ' || CAST(v_desde AS VARCHAR(20)) || ' AND ' || CAST(v_hasta AS VARCHAR(20)) || '
 ),
 paises AS (
-    SELECT ''CHILE'' AS pais
+    SELECT c.pais FROM public.control_pais_claves c WHERE c.pais = ' || QUOTE_LITERAL(p_pais) || ' AND c.orden = 1
 ),
 alias_pais AS (
-              SELECT ''ARGENTINA'' AS pais, ''ARGENTINA'' AS alias
-    UNION ALL SELECT ''CHILE'',         ''CHILE''
-    UNION ALL SELECT ''PERU'',          ''PERU''
-    UNION ALL SELECT ''URUGUAY'',       ''URUGUAY''
-    UNION ALL SELECT ''COLOMBIA'',      ''COLOMBIA''
-    UNION ALL SELECT ''UNITED STATES'', ''UNITED STATES''
-    UNION ALL SELECT ''UNITED STATES'', ''UNITED STATES OF AMERICA''
-    UNION ALL SELECT ''UNITED STATES'', ''USA''
-    UNION ALL SELECT ''UNITED STATES'', ''US''
-    UNION ALL SELECT ''UNITED STATES'', ''U S A''
-    UNION ALL SELECT ''UNITED STATES'', ''U S''
+    SELECT c.pais, c.clave AS alias FROM public.control_pais_claves c WHERE c.tipo = ''P''
 ),
 regiones AS (
-              SELECT ''LATIN AMERICA'' AS region, ''ARGENTINA'' AS pais
-    UNION ALL SELECT ''LATIN AMERICA'', ''CHILE''
-    UNION ALL SELECT ''LATIN AMERICA'', ''PERU''
-    UNION ALL SELECT ''LATIN AMERICA'', ''URUGUAY''
-    UNION ALL SELECT ''LATIN AMERICA'', ''COLOMBIA''
-    UNION ALL SELECT ''SOUTH AMERICA'', ''ARGENTINA''
-    UNION ALL SELECT ''SOUTH AMERICA'', ''CHILE''
-    UNION ALL SELECT ''SOUTH AMERICA'', ''PERU''
-    UNION ALL SELECT ''SOUTH AMERICA'', ''URUGUAY''
-    UNION ALL SELECT ''SOUTH AMERICA'', ''COLOMBIA''
-    UNION ALL SELECT ''NORTH AMERICA'', ''UNITED STATES''
-    UNION ALL SELECT ''US AND CANADA'', ''UNITED STATES''
-    UNION ALL SELECT ''US & CANADA'',   ''UNITED STATES''
-    UNION ALL SELECT ''USA AND CANADA'',''UNITED STATES''
-    UNION ALL SELECT ''USA & CANADA'',  ''UNITED STATES''
+    SELECT c.clave AS region, c.pais FROM public.control_pais_claves c WHERE c.tipo = ''R''
 ),
 
 mv_raw AS (
@@ -576,11 +605,11 @@ LEFT JOIN res r        ON r.song_id = i.song_id AND r.pais = p.pais
 LEFT JOIN song_info si ON si.song_id = i.song_id
 LEFT JOIN iswc iw      ON iw.song_id = i.song_id';
         GET DIAGNOSTICS v_filas := ROW_COUNT;
-        INSERT INTO public.reporte_cwr_pais_log VALUES (v_tanda, v_desde, v_hasta, v_filas, v_inicio, TIMEOFDAY());
+        INSERT INTO public.reporte_cwr_pais_log VALUES (p_pais, v_tanda, v_desde, v_hasta, v_filas, v_inicio, TIMEOFDAY());
         COMMIT;
-        RAISE INFO 'Tanda %: Tempo ID % a %: % filas', v_tanda, v_desde, v_hasta, v_filas;
+        RAISE INFO '% - tanda %: Tempo ID % a %: % filas', p_pais, v_tanda, v_desde, v_hasta, v_filas;
         v_desde := v_hasta + 1;
     END LOOP;
-    RAISE INFO 'Listo. Máximo Tempo ID recorrido: %', v_max;
+    RAISE INFO '% listo. Máximo Tempo ID recorrido: %', p_pais, v_max;
 END;
 $$ LANGUAGE plpgsql;

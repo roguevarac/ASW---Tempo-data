@@ -82,6 +82,12 @@ def correr(sql):
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
+sys.path.insert(0, str(AQUI / "tools"))
+import generar_unload as gu
+# Formas de escritura por país (la tabla que crean los procedimientos)
+con.execute("create table public.control_pais_claves (pais varchar, tipo varchar, clave varchar, orden integer)")
+con.executemany("insert into public.control_pais_claves values (?,?,?,?)", gu.filas_claves())
+PAIS_LIT = lambda p: "''" + p + "''"
 v8 = correr((CWR / "reporte_cwr_x_territorio_v8.sql").read_text(encoding="utf-8").rstrip().rstrip(";"))
 texto = (AQUI / "obras_controladas_pais_v1.sql").read_text(encoding="utf-8")
 res = correr(texto.rstrip().rstrip(";"))
@@ -143,8 +149,6 @@ check("vencimientos: MIXTO / TODOS VENCIDOS / VIGENTE",
 check("duplicados de contract_territories no duplican lineas", R[1500]["cantidad_lineas"] == 1, R[1500]["cantidad_lineas"])
 check("UNLOAD da exactamente lo mismo", res_unload == res)
 # Tandas: la union de los rangos (sin superponerse) da exactamente el resultado completo
-sys.path.insert(0, str(AQUI / "tools"))
-import generar_unload as gu
 cuerpo = gu.cuerpo_sin_comentarios(texto)
 por_tandas = []
 for desde, hasta in [(0, 999), (1000, 274219), (274220, 2701308), (2701309, 999999999999)]:
@@ -161,7 +165,8 @@ assert "TIMESTAMP;" not in proc.split("DECLARE", 1)[1].split("BEGIN", 1)[0].repl
 dinamico = proc.split("EXECUTE '", 1)[1].split("';\n        GET DIAGNOSTICS", 1)[0]
 con.execute("create table obras_controladas_pais_resultado (" + ", ".join(f"{c} {t}" for c, t in gu.COLUMNAS) + ")")
 for desde, hasta in [(0, 499), (500, 999999), (1000000, 1999999), (2000000, 2999999)]:
-    sql_tanda = (dinamico.replace("' || CAST(v_desde AS VARCHAR(20)) || '", str(desde))
+    sql_tanda = (dinamico.replace("' || QUOTE_LITERAL(p_pais) || '", PAIS_LIT("CHILE"))
+                         .replace("' || CAST(v_desde AS VARCHAR(20)) || '", str(desde))
                          .replace("' || CAST(v_hasta AS VARCHAR(20)) || '", str(hasta))
                          .replace("''", "'")
                          .replace("public.obras_controladas_pais_resultado", "obras_controladas_pais_resultado"))
@@ -192,7 +197,8 @@ proc_cwr = (AQUI / "procedimiento_reporte_cwr_pais.sql").read_text(encoding="utf
 din = proc_cwr.split("EXECUTE '", 1)[1].split("';\n        GET DIAGNOSTICS", 1)[0]
 con.execute("create table cwr_res (" + ", ".join(f"{c} {t}" for c, t in gu.COLUMNAS_CWR) + ")")
 for desde, hasta in [(0, 999), (1000, 274219), (274220, 2701308), (2701309, 9999999)]:
-    con.execute(_duck(din.replace("' || CAST(v_desde AS VARCHAR(20)) || '", str(desde))
+    con.execute(_duck(din.replace("' || QUOTE_LITERAL(p_pais) || '", PAIS_LIT("CHILE"))
+                         .replace("' || CAST(v_desde AS VARCHAR(20)) || '", str(desde))
                          .replace("' || CAST(v_hasta AS VARCHAR(20)) || '", str(hasta)).replace("''", "'")
                          .replace("public.reporte_cwr_pais_resultado", "cwr_res")))
 cur = con.execute("select * from cwr_res order by song_id")
@@ -201,7 +207,48 @@ norm2 = lambda filas: sorted([{k: (None if v is None else str(v)[:10] if k.endsw
                               for k, v in r.items()} for r in filas], key=lambda r: int(r["song_id"]))
 check("procedimiento reporte CWR: tandas guardadas = corrida completa", norm2(res_cwr) == norm2(cwr), (len(res_cwr), len(cwr)))
 check("procedimiento reporte CWR: recorre hasta el maximo Tempo ID de la lista",
-      "INTO v_max FROM public.obras_controladas_pais_resultado;" in proc_cwr)
+      "INTO v_max FROM public.obras_controladas_pais_resultado WHERE pais = p_pais;" in proc_cwr)
+# ---------------------------------------------------------------------------
+# País como parámetro: correr UNITED STATES no toca CHILE y da lo mismo que la v8 para US
+din1 = (AQUI / "procedimiento_obras_controladas_pais.sql").read_text(encoding="utf-8").split("EXECUTE '", 1)[1].split("';\n        GET DIAGNOSTICS", 1)[0]
+antes_cl = con.execute("select count(*) from public.obras_controladas_pais_resultado where pais = 'CHILE'").fetchone()[0]
+for desde, hasta in [(0, 999999), (1000000, 9999999)]:
+    con.execute(_duck(din1.replace("' || QUOTE_LITERAL(p_pais) || '", PAIS_LIT("UNITED STATES"))
+                          .replace("' || CAST(v_desde AS VARCHAR(20)) || '", str(desde))
+                          .replace("' || CAST(v_hasta AS VARCHAR(20)) || '", str(hasta)).replace("''", "'")))
+us = {r[0] for r in con.execute("select song_id from public.obras_controladas_pais_resultado where pais = 'UNITED STATES'").fetchall()}
+v8_us = {r["song_id"]: r for r in v8 if r["pais"] == "UNITED STATES"}
+v8_us_ctrl = {i for i, r in v8_us.items() if any((num(r[c]) or 0) > 0 for c in ("performance_pc_total", "mechanical_pc_total", "sync_pc_total"))}
+check("pais parametro: Chile no se toca al correr otro pais",
+      con.execute("select count(*) from public.obras_controladas_pais_resultado where pais = 'CHILE'").fetchone()[0] == antes_cl)
+check("pais parametro: obras controladas en US = v8 salvo diferencias documentadas", (us ^ v8_us_ctrl) <= {600, 700, 800}, sorted(us ^ v8_us_ctrl))
+check("pais parametro: las obras de US del caso de prueba (2000 a 2006) salen como en la v8",
+      {i for i in us if 2000 <= i <= 2006} == {i for i in v8_us_ctrl if 2000 <= i <= 2006}, sorted(us))
+din2 = (AQUI / "procedimiento_reporte_cwr_pais.sql").read_text(encoding="utf-8").split("EXECUTE '", 1)[1].split("';\n        GET DIAGNOSTICS", 1)[0]
+con.execute(_duck(din2.replace("' || QUOTE_LITERAL(p_pais) || '", PAIS_LIT("UNITED STATES"))
+                      .replace("' || CAST(v_desde AS VARCHAR(20)) || '", "0")
+                      .replace("' || CAST(v_hasta AS VARCHAR(20)) || '", "9999999").replace("''", "'")
+                      .replace("public.reporte_cwr_pais_resultado", "cwr_res")))
+cur = con.execute("select * from cwr_res where pais = 'UNITED STATES'")
+cwr_us = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
+v8_us_lista = [r for r in v8 if r["pais"] == "UNITED STATES" and r["song_id"] in us]
+check("pais parametro: reporte CWR de US identico a la v8 (todas las columnas)",
+      norm2(cwr_us) == norm2(v8_us_lista), (len(cwr_us), len(v8_us_lista)))
+check("pais parametro: el reporte de Chile sigue igual", norm2([r for r in [dict(zip([d[0] for d in c.description], x)) for c in [con.execute("select * from cwr_res where pais = 'CHILE'")] for x in c.fetchall()]]) == norm2(cwr))
+proc1 = (AQUI / "procedimiento_obras_controladas_pais.sql").read_text(encoding="utf-8")
+check("procedimientos: borran solo el pais que se corre", "DELETE FROM public.obras_controladas_pais_resultado WHERE pais = p_pais" in proc1
+      and "TRUNCATE public.obras_controladas_pais_resultado" not in proc1)
+# Brasil: formas de escritura BRAZIL / BRASIL; la columna pais sale como BRASIL
+con.execute("insert into dp_song_metadata.song_share_detail_mv values (4000, 400, 'C400', 'Y', 1, 1, 'SMP BR', 'BRAZIL', 60, 60, 60, 'OBRA BRASIL')")
+con.execute("insert into dp_song_metadata.contract_territories values (4000, 400, 'C400', 'Include: ARGENTINA;BRAZIL;CHILE', NULL)")
+for desde, hasta in [(0, 9999999)]:
+    con.execute(_duck(din1.replace("' || QUOTE_LITERAL(p_pais) || '", PAIS_LIT("BRASIL"))
+                          .replace("' || CAST(v_desde AS VARCHAR(20)) || '", str(desde))
+                          .replace("' || CAST(v_hasta AS VARCHAR(20)) || '", str(hasta)).replace("''", "'")))
+br = con.execute("select song_id, performance_pc_total, como_se_eligio_grupo from public.obras_controladas_pais_resultado where pais = 'BRASIL' and song_id = 4000").fetchall()
+check("Brasil: grupo BRAZIL de SMP con linea que incluye BRAZIL -> 60, pais = BRASIL", br and float(br[0][1]) == 60 and br[0][2] == "Grupo nombra al país", br)
+check("Brasil: Te Encontre (ARGENTINA;CHILE;MEXICO) no cubre Brasil",
+      con.execute("select count(*) from public.obras_controladas_pais_resultado where pais = 'BRASIL' and song_id = 300").fetchone()[0] == 0)
 check("orden por obra", [r["song_id"] for r in res] == sorted(r["song_id"] for r in res))
 print("\nTodo OK" if not fallas else f"\n{len(fallas)} fallas")
 sys.exit(1 if fallas else 0)

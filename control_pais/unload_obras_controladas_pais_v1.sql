@@ -23,9 +23,9 @@ UNLOAD ('
 WITH
 
 claves AS (
-              SELECT ''P'' AS tipo, ''CHILE'' AS clave, 1 AS orden
-    UNION ALL SELECT ''R'',         ''LATIN AMERICA'',  2
-    UNION ALL SELECT ''R'',         ''SOUTH AMERICA'',  3
+    SELECT c.pais, c.tipo, c.clave, c.orden
+    FROM public.control_pais_claves c
+    WHERE c.pais = ''CHILE''
 ),
 
 ct_norm AS (
@@ -251,7 +251,7 @@ SELECT
     CAST(r.song_id AS BIGINT)                             AS song_id,
     r.song_title_tx,
     iw.iswc,
-    k.clave                                               AS pais,
+    k.pais                                                AS pais,
     CAST(COALESCE(r.perf, 0) AS NUMERIC(10,2))            AS performance_pc_total,
     CAST(COALESCE(r.mech, 0) AS NUMERIC(10,2))            AS mechanical_pc_total,
     CAST(COALESCE(r.sync, 0) AS NUMERIC(10,2))            AS sync_pc_total,

@@ -28,6 +28,46 @@ COLUMNAS = [
     ("estado_contrato", "VARCHAR(100)"), ("alertas", "VARCHAR(4000)"),
 ]
 RANGOS = ROOT / "rangos_tandas.txt"
+TABLA_CLAVES = "public.control_pais_claves"
+MARCA_PAIS = "pais = 'CHILE'"   # el país de ejemplo en las queries; en el procedimiento es el parámetro p_pais
+# Formas de escritura (P) y regiones que contienen al país (R): las mismas listas que alias_pais y regiones
+# de reporte_cwr/reporte_cwr_x_territorio_v8.sql. La clave del diccionario es el nombre del país (columna pais y
+# parámetro del CALL).
+# PAÍS NUEVO: agregarlo acá y regenerar (o insertar sus filas en public.control_pais_claves).
+CLAVES = {
+    "ARGENTINA": (["ARGENTINA"], ["LATIN AMERICA", "SOUTH AMERICA"]),
+    "CHILE": (["CHILE"], ["LATIN AMERICA", "SOUTH AMERICA"]),
+    "PERU": (["PERU"], ["LATIN AMERICA", "SOUTH AMERICA"]),
+    "URUGUAY": (["URUGUAY"], ["LATIN AMERICA", "SOUTH AMERICA"]),
+    "COLOMBIA": (["COLOMBIA"], ["LATIN AMERICA", "SOUTH AMERICA"]),
+    # Brasil: en los textos de Tempo aparece como BRAZIL (no estaba en la v8; agregado el 11/11/2026)
+    "BRASIL": (["BRAZIL", "BRASIL"], ["LATIN AMERICA", "SOUTH AMERICA"]),
+    "UNITED STATES": (["UNITED STATES", "UNITED STATES OF AMERICA", "USA", "US", "U S A", "U S"],
+                      ["NORTH AMERICA", "US AND CANADA", "US & CANADA", "USA AND CANADA", "USA & CANADA"]),
+}
+
+def filas_claves():
+    filas = []
+    for pais, (alias, regiones) in CLAVES.items():
+        n = 0
+        for a in alias:
+            n += 1; filas.append((pais, "P", a, n))
+        for r in regiones:
+            n += 1; filas.append((pais, "R", r, n))
+    return filas
+
+def sql_claves():
+    valores = ",\n".join(f"    ('{p}', '{t}', '{c}', {o})" for p, t, c, o in filas_claves())
+    return f"""CREATE TABLE IF NOT EXISTS {TABLA_CLAVES} (
+    pais   VARCHAR(100),
+    tipo   VARCHAR(1),
+    clave  VARCHAR(200),
+    orden  INTEGER
+);
+DELETE FROM {TABLA_CLAVES};
+INSERT INTO {TABLA_CLAVES} (pais, tipo, clave, orden) VALUES
+{valores};
+"""
 RANGO_TODO = "BETWEEN 0 AND 999999999999"
 PREFIJO_S3 = "s3://dw-export-prod/7000042560/obras_controladas_pais_"
 
@@ -115,58 +155,70 @@ def texto_dinamico(cuerpo):
     """La query como literal de plpgsql: comillas duplicadas y el rango tomado de las variables."""
     q = cuerpo_sin_orden(cuerpo).replace("'", "''")
     assert q.count(RANGO_TODO) >= 1
+    marca = MARCA_PAIS.replace("'", "''")
+    assert q.count(marca) >= 1, "falta el filtro de país en la query"
+    q = q.replace(marca, "pais = ' || QUOTE_LITERAL(p_pais) || '")
+    assert "CHILE" not in q, "quedó un país escrito en la query del procedimiento"
     return q.replace(RANGO_TODO, "BETWEEN ' || CAST(v_desde AS VARCHAR(20)) || ' AND ' || CAST(v_hasta AS VARCHAR(20)) || '")
 
 def procedimiento(cuerpo, sp="public.sp_obras_controladas_pais", tabla=TABLA, tabla_log=TABLA_LOG,
                   columnas=None, titulo="obras controladas en un país (todo el catálogo, por tandas)",
                   fuente="obras_controladas_pais_v1.sql", prefijo="obras_controladas_pais_",
-                  previo_tablas="", previo_inicio="", previo_texto="", tope_sql=None):
+                  previo_texto="", tope_sql=None):
     columnas = columnas or COLUMNAS
     cols = ",\n".join(f"    {c} {t}" for c, t in columnas)
     lista = ", ".join(c for c, _ in columnas)
     dinamico = texto_dinamico(cuerpo)
     tope_sql = tope_sql or "SELECT CAST(MAX(song_id) AS BIGINT) INTO v_max FROM dp_song_metadata.contract_territories;"
-    orden = "song_id, pais" if " pais," in " " + lista + "," and "regla_territorial" in lista else "song_id"
+    paises = ", ".join(f"'{p}'" for p in CLAVES)
     return f"""-- =====================================================================
 -- PROCEDIMIENTO: {titulo}
 --
 -- No editar acá: se genera desde {fuente} con
 --   python3 control_pais/tools/generar_unload.py
--- País: bloque "claves" de esa query (hoy CHILE).
 {previo_texto}--
--- PASO 1 (una sola vez, y cada vez que cambie la query): ejecutar TODO este
---   archivo. Crea {tabla} (resultado), {tabla_log}
---   (avance por tanda) y el procedimiento.
--- PASO 2: correr
---     CALL {sp}(500000, 0);
---   (tanda de 500.000 Tempo ID, desde el 0: vacía el resultado y empieza de cero).
---   Cada tanda se confirma (COMMIT) al terminar y queda anotada en el log.
---   Avance:  SELECT * FROM {tabla_log} ORDER BY tanda;
--- PASO 3: el archivo, un solo CSV:
---     UNLOAD ('SELECT * FROM {tabla} ORDER BY {orden}')
---     TO 's3://dw-export-prod/7000042560/{prefijo}'
+-- PASO 1 (una vez, y cada vez que te pase una versión nueva): ejecutar TODO este
+--   archivo. Crea o actualiza {TABLA_CLAVES} (formas de escritura de
+--   cada país), {tabla} (resultado), {tabla_log}
+--   (avance) y el procedimiento. NO borra resultados ya guardados.
+--   Países disponibles: {paises}.
+-- PASO 2: correr, con el país entre comillas:
+--     CALL {sp}('CHILE', 500000, 0);
+--   (tandas de 500.000 Tempo ID; desde 0 = borra solo lo de ese país y empieza
+--   de cero). Cada país queda guardado aparte (columna pais).
+--   Avance:  SELECT * FROM {tabla_log} WHERE pais = 'CHILE' ORDER BY tanda;
+-- PASO 3: el archivo de ese país:
+--     UNLOAD ('SELECT * FROM {tabla} WHERE pais = ''CHILE'' ORDER BY song_id')
+--     TO 's3://dw-export-prod/7000042560/{prefijo}chile_'
 --     IAM_ROLE 'arn:aws:iam::991042281579:role/DataWarehouse/RedShift-S3-Unload'
 --     FORMAT AS CSV HEADER EXTENSION 'csv' PARALLEL OFF MAXFILESIZE 1 GB ALLOWOVERWRITE;
 --
 -- Si se corta: lo ya confirmado queda guardado. Ver en el log el "hasta" de la
--- última tanda y seguir desde el siguiente Tempo ID, sin vaciar:
---     CALL {sp}(500000, <hasta + 1>);
+-- última tanda y seguir desde el siguiente Tempo ID, sin borrar:
+--     CALL {sp}('CHILE', 500000, <hasta + 1>);
 -- Si una tanda tarda demasiado, usar un tamaño menor (ej. 250000).
 -- =====================================================================
+{sql_claves()}
 CREATE TABLE IF NOT EXISTS {tabla} (
 {cols}
 );
 
-CREATE TABLE IF NOT EXISTS {tabla_log} (
+-- El log se rehace (ahora lleva el país); el resultado no se toca.
+DROP TABLE IF EXISTS {tabla_log};
+CREATE TABLE {tabla_log} (
+    pais      VARCHAR(100),
     tanda     INTEGER,
     desde     BIGINT,
     hasta     BIGINT,
-    obras     BIGINT,
+    filas     BIGINT,
     inicio    VARCHAR(60),
     fin       VARCHAR(60)
 );
-{previo_tablas}
-CREATE OR REPLACE PROCEDURE {sp}(p_tamano BIGINT, p_desde BIGINT)
+
+-- Versión anterior (sin país), si estaba creada.
+DROP PROCEDURE IF EXISTS {sp}(BIGINT, BIGINT);
+
+CREATE OR REPLACE PROCEDURE {sp}(p_pais VARCHAR(100), p_tamano BIGINT, p_desde BIGINT)
 AS $$
 DECLARE
     v_max    BIGINT;
@@ -174,17 +226,23 @@ DECLARE
     v_hasta  BIGINT;
     v_filas  BIGINT;
     v_tanda  INTEGER;
+    v_claves INTEGER;
     v_inicio VARCHAR(60);
 BEGIN
     IF p_tamano IS NULL OR p_tamano < 1 THEN
         RAISE EXCEPTION 'El tamaño de tanda tiene que ser mayor que 0';
     END IF;
+    SELECT COUNT(*) INTO v_claves FROM {TABLA_CLAVES} WHERE pais = p_pais;
+    IF v_claves = 0 THEN
+        RAISE EXCEPTION 'País % sin formas de escritura en {TABLA_CLAVES}', p_pais;
+    END IF;
     IF p_desde = 0 THEN
-        TRUNCATE {tabla};
-        TRUNCATE {tabla_log};{previo_inicio}
+        DELETE FROM {tabla} WHERE pais = p_pais;
+        DELETE FROM {tabla_log} WHERE pais = p_pais;
+        COMMIT;
     END IF;
     {tope_sql}
-    SELECT COALESCE(MAX(tanda), 0) INTO v_tanda FROM {tabla_log};
+    SELECT COALESCE(MAX(tanda), 0) INTO v_tanda FROM {tabla_log} WHERE pais = p_pais;
     v_desde := p_desde;
     WHILE v_desde <= v_max LOOP
         v_hasta  := v_desde + p_tamano - 1;
@@ -193,12 +251,12 @@ BEGIN
         EXECUTE 'INSERT INTO {tabla} ({lista})
 {dinamico}';
         GET DIAGNOSTICS v_filas := ROW_COUNT;
-        INSERT INTO {tabla_log} VALUES (v_tanda, v_desde, v_hasta, v_filas, v_inicio, TIMEOFDAY());
+        INSERT INTO {tabla_log} VALUES (p_pais, v_tanda, v_desde, v_hasta, v_filas, v_inicio, TIMEOFDAY());
         COMMIT;
-        RAISE INFO 'Tanda %: Tempo ID % a %: % filas', v_tanda, v_desde, v_hasta, v_filas;
+        RAISE INFO '% - tanda %: Tempo ID % a %: % filas', p_pais, v_tanda, v_desde, v_hasta, v_filas;
         v_desde := v_hasta + 1;
     END LOOP;
-    RAISE INFO 'Listo. Máximo Tempo ID recorrido: %', v_max;
+    RAISE INFO '% listo. Máximo Tempo ID recorrido: %', p_pais, v_max;
 END;
 $$ LANGUAGE plpgsql;
 """
@@ -208,7 +266,6 @@ $$ LANGUAGE plpgsql;
 # resultado, por tandas. Se genera desde reporte_cwr/reporte_cwr_x_territorio_v8.sql
 # para que la lógica sea exactamente la misma.
 FUENTE_CWR = ROOT.parent / "reporte_cwr" / "reporte_cwr_x_territorio_v8.sql"
-PAIS_CWR = "CHILE"   # EDITABLE: país del reporte (tiene que estar en alias_pais/regiones de la v8)
 DESTINO_CWR = ROOT / "reporte_cwr_pais_v1.sql"
 DESTINO_PROC_CWR = ROOT / "procedimiento_reporte_cwr_pais.sql"
 TABLA_CWR = "public.reporte_cwr_pais_resultado"
@@ -235,11 +292,16 @@ def cuerpo_cwr():
         cuerpo = cuerpo.replace(a, b)
     # obras: las de la tabla de resultado del procedimiento de control por país, por rango
     rep("FROM public.rankingdigital_song_id t\n    WHERE t.song_id IS NOT NULL",
-        f"FROM {TABLA} t\n    WHERE t.song_id {RANGO_TODO}")
-    # un solo país
-    i = cuerpo.index("paises AS (")
-    j = cuerpo.index("\n),", i) + 3
-    cuerpo = cuerpo[:i] + f"paises AS (\n    SELECT '{PAIS_CWR}' AS pais\n)," + cuerpo[j:]
+        f"FROM {TABLA} t\n    WHERE t.{MARCA_PAIS} AND t.song_id {RANGO_TODO}")
+    def bloque(nombre, nuevo):
+        nonlocal cuerpo
+        i = cuerpo.index(nombre + " AS (")
+        j = cuerpo.index("\n),", i) + 3
+        cuerpo = cuerpo[:i] + nombre + " AS (\n" + nuevo + "\n)," + cuerpo[j:]
+    # un solo país; formas de escritura y regiones desde la tabla de claves (misma lista que la v8)
+    bloque("paises", f"    SELECT c.pais FROM {TABLA_CLAVES} c WHERE c.{MARCA_PAIS} AND c.orden = 1")
+    bloque("alias_pais", f"    SELECT c.pais, c.clave AS alias FROM {TABLA_CLAVES} c WHERE c.tipo = 'P'")
+    bloque("regiones", f"    SELECT c.clave AS region, c.pais FROM {TABLA_CLAVES} c WHERE c.tipo = 'R'")
     # el rango también en cada lectura filtrada por las obras (mismo resultado; ayuda a Redshift a saltear bloques)
     cuerpo, n = re.subn(r"WHERE (\w+\.)?(song_id|tempo_song_id) IN \(SELECT song_id FROM ids\)",
                         lambda m: f"WHERE {m.group(1) or ''}{m.group(2)} {RANGO_TODO} AND {m.group(1) or ''}{m.group(2)} IN (SELECT song_id FROM ids)",
@@ -253,7 +315,7 @@ def cuerpo_cwr():
 def generar_cwr():
     cuerpo = cuerpo_cwr()
     DESTINO_CWR.write_text(f"""-- =====================================================================
--- REPORTE CWR v8 PARA UN PAÍS ({PAIS_CWR}) sobre las obras de {TABLA}
+-- REPORTE CWR v8 PARA UN PAÍS (ejemplo: CHILE) sobre las obras de {TABLA}
 --
 -- Generado desde reporte_cwr/reporte_cwr_x_territorio_v8.sql (misma lógica y
 -- mismas columnas, un solo país). No editar a mano:
@@ -264,10 +326,10 @@ def generar_cwr():
 """ + cuerpo + ";\n", encoding="utf-8")
     DESTINO_PROC_CWR.write_text(procedimiento(
         cuerpo, sp="public.sp_reporte_cwr_pais", tabla=TABLA_CWR, tabla_log=TABLA_CWR_LOG, columnas=COLUMNAS_CWR,
-        titulo=f"reporte CWR v8 para {PAIS_CWR} sobre las obras controladas (por tandas)",
+        titulo="reporte CWR v8 para un país, sobre sus obras controladas (por tandas)",
         fuente="reporte_cwr/reporte_cwr_x_territorio_v8.sql", prefijo="reporte_cwr_pais_",
-        previo_texto=f"-- ANTES: tiene que estar cargada {TABLA} (CALL public.sp_obras_controladas_pais).\n",
-        tope_sql=f"SELECT CAST(MAX(song_id) AS BIGINT) INTO v_max FROM {TABLA};"), encoding="utf-8")
+        previo_texto=f"-- ANTES: tiene que estar cargado el país en {TABLA}\n-- (CALL public.sp_obras_controladas_pais('PAIS', 500000, 0)).\n",
+        tope_sql=f"SELECT CAST(MAX(song_id) AS BIGINT) INTO v_max FROM {TABLA} WHERE pais = p_pais;"), encoding="utf-8")
 
 def generar():
     cuerpo = cuerpo_sin_comentarios(FUENTE.read_text(encoding="utf-8"))

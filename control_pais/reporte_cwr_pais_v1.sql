@@ -1,5 +1,5 @@
 -- =====================================================================
--- REPORTE CWR v8 PARA UN PAÍS (CHILE) sobre las obras de public.obras_controladas_pais_resultado
+-- REPORTE CWR v8 PARA UN PAÍS (ejemplo: CHILE) sobre las obras de public.obras_controladas_pais_resultado
 --
 -- Generado desde reporte_cwr/reporte_cwr_x_territorio_v8.sql (misma lógica y
 -- mismas columnas, un solo país). No editar a mano:
@@ -12,40 +12,16 @@ WITH
 ids AS (
     SELECT DISTINCT CAST(t.song_id AS BIGINT) AS song_id
     FROM public.obras_controladas_pais_resultado t
-    WHERE t.song_id BETWEEN 0 AND 999999999999
+    WHERE t.pais = 'CHILE' AND t.song_id BETWEEN 0 AND 999999999999
 ),
 paises AS (
-    SELECT 'CHILE' AS pais
+    SELECT c.pais FROM public.control_pais_claves c WHERE c.pais = 'CHILE' AND c.orden = 1
 ),
 alias_pais AS (
-              SELECT 'ARGENTINA' AS pais, 'ARGENTINA' AS alias
-    UNION ALL SELECT 'CHILE',         'CHILE'
-    UNION ALL SELECT 'PERU',          'PERU'
-    UNION ALL SELECT 'URUGUAY',       'URUGUAY'
-    UNION ALL SELECT 'COLOMBIA',      'COLOMBIA'
-    UNION ALL SELECT 'UNITED STATES', 'UNITED STATES'
-    UNION ALL SELECT 'UNITED STATES', 'UNITED STATES OF AMERICA'
-    UNION ALL SELECT 'UNITED STATES', 'USA'
-    UNION ALL SELECT 'UNITED STATES', 'US'
-    UNION ALL SELECT 'UNITED STATES', 'U S A'
-    UNION ALL SELECT 'UNITED STATES', 'U S'
+    SELECT c.pais, c.clave AS alias FROM public.control_pais_claves c WHERE c.tipo = 'P'
 ),
 regiones AS (
-              SELECT 'LATIN AMERICA' AS region, 'ARGENTINA' AS pais
-    UNION ALL SELECT 'LATIN AMERICA', 'CHILE'
-    UNION ALL SELECT 'LATIN AMERICA', 'PERU'
-    UNION ALL SELECT 'LATIN AMERICA', 'URUGUAY'
-    UNION ALL SELECT 'LATIN AMERICA', 'COLOMBIA'
-    UNION ALL SELECT 'SOUTH AMERICA', 'ARGENTINA'
-    UNION ALL SELECT 'SOUTH AMERICA', 'CHILE'
-    UNION ALL SELECT 'SOUTH AMERICA', 'PERU'
-    UNION ALL SELECT 'SOUTH AMERICA', 'URUGUAY'
-    UNION ALL SELECT 'SOUTH AMERICA', 'COLOMBIA'
-    UNION ALL SELECT 'NORTH AMERICA', 'UNITED STATES'
-    UNION ALL SELECT 'US AND CANADA', 'UNITED STATES'
-    UNION ALL SELECT 'US & CANADA',   'UNITED STATES'
-    UNION ALL SELECT 'USA AND CANADA','UNITED STATES'
-    UNION ALL SELECT 'USA & CANADA',  'UNITED STATES'
+    SELECT c.clave AS region, c.pais FROM public.control_pais_claves c WHERE c.tipo = 'R'
 ),
 
 mv_raw AS (

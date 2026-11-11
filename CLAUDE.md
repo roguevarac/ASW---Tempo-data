@@ -88,6 +88,10 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   Después, el reporte de control v8 completo para ese país: `procedimiento_reporte_cwr_pais.sql` (generado desde la
   v8; `CALL public.sp_reporte_cwr_pais(500000, 0)`, resultado en `public.reporte_cwr_pais_resultado`). El usuario
   quiere ese reporte (no solo editoriales), primero Chile y después país por país (cada país necesita antes su lista).
+  Chile terminado (11/11/2026; UNLOAD en 127 archivos). Desde entonces el país es parámetro de los dos procedimientos
+  (`CALL ...('ARGENTINA', 500000, 0)`): cada país queda aparte (columna `pais`, se borra solo el que se corre) y las
+  formas de escritura salen de `public.control_pais_claves` (`CLAVES` en `control_pais/tools/generar_unload.py`;
+  BRASIL = BRAZIL/BRASIL, agregado). Próximos: Colombia, Argentina, Perú, Uruguay y Brasil (Estados Unidos no).
   Test: `python3 control_pais/tests/test_control_pais.py` (compara contra la v8).
 - `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO y UNITED STATES). Una sola
   sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.

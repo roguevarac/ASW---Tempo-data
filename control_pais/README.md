@@ -28,6 +28,13 @@ generador). Las obras salen de `public.obras_controladas_pais_resultado`, por ra
 `CALL public.sp_reporte_cwr_pais(500000, 0)` deja una fila por obra en `public.reporte_cwr_pais_resultado`.
 La prueba verifica que da fila por fila lo mismo que la v8 filtrada a Chile, y que las tandas dan lo mismo.
 
+## País como parámetro
+Los dos procedimientos reciben el país: `CALL public.sp_obras_controladas_pais('ARGENTINA', 500000, 0)` y después
+`CALL public.sp_reporte_cwr_pais('ARGENTINA', 500000, 0)`. Cada país queda en las mismas tablas con su valor en la
+columna `pais`; `desde = 0` borra solo ese país. Las formas de escritura y regiones de cada país están en
+`public.control_pais_claves` (la crean los archivos de procedimiento desde `CLAVES` del generador). Países: ARGENTINA,
+CHILE, PERU, URUGUAY, COLOMBIA, BRASIL (BRAZIL/BRASIL) y UNITED STATES.
+
 ## Regla (la misma de la v8 del reporte CWR)
 - Un solo grupo IP por obra: el que nombra al país; si no, el que nombra una región que lo incluye; si no, el mundial.
   Un grupo que excluye al país ("WORLD EX CHILE") no cuenta.
