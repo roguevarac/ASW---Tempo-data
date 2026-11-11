@@ -154,6 +154,11 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
       y `USUARIOS.bat`; tabla `auth.codigos_clave`). `tempo-client.js` renueva a mitad
       de vigencia. Si una tabla nueva apunta a `auth.users`, agregarla a los TRUNCATE de `restaurar` y `importar.py`
       (hoy `auth.sesiones` y `auth.codigos_clave`).
+    - **Ingreso recordado (11/11/2026, pedido del usuario: no volver a escribir la contraseña):** el login es un `<form>`
+      con `autocomplete=username/current-password` (el navegador ofrece guardar la contraseña; nunca guardarla en el
+      sistema ni en localStorage). Casilla "Mantener la sesión iniciada en esta computadora" (marcada por defecto,
+      `rk_recordar`): token con `rec` y 30 días (`RECORDAR_DIAS`), `auth.sesiones.recordar`, inactividad de 30 días;
+      sin ella la sesión va a `sessionStorage` y termina al cerrar el navegador.
     - El freno de ingreso cuenta solo intentos fallidos.
     - Cargas: `fn_cargar_archivo` (filas + `csv_uploads` en una transacción; el archivo se guarda antes). El front ya no
       manda tandas de 250. Chart sin semana en el nombre: no se carga (como `importar_charts.py`).
