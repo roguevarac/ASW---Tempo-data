@@ -141,6 +141,11 @@ with sync_playwright() as p:
           filas == [""] and "Tema Sin Tempo" in pag.inner_text("tbody") and "Sin Tempo ID" in pag.inner_text("#filtroActivo"),
           (filas, pag.inner_text("tbody")[:300]))
     pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    def aceptar_filtro():
+        pag.wait_for_selector("#okFiltro", timeout=15000)
+        texto = pag.inner_text(".aviso-filtro")
+        pag.click("#okFiltro"); pag.wait_for_selector("#okFiltro", state="detached")
+        return texto
     pag.select_option("#tempoFilter", "vacios")
     aviso = aceptar_filtro()
     filas = pag.evaluate("[...document.querySelectorAll('[data-field-master]')].map(i => i.value)")
@@ -177,11 +182,6 @@ with sync_playwright() as p:
     check("con todos los países pide elegir uno para ver la fecha",
           ultima_carga() == "Seleccionar país para ver fecha de última carga", ultima_carga())
     check("el pie de página ya no menciona Supabase", "Supabase" not in pag.inner_text("footer"), pag.inner_text("footer"))
-    def aceptar_filtro():
-        pag.wait_for_selector("#okFiltro", timeout=15000)
-        texto = pag.inner_text(".aviso-filtro")
-        pag.click("#okFiltro"); pag.wait_for_selector("#okFiltro", state="detached")
-        return texto
     total_todas = int(sqlq("select count(*) from tracks_master where deleted_at is null"))
     total_ar = int(sqlq("select count(distinct track_master_id) from territory_tracks where pais_code = 'AR' and deleted_at is null"))
     pag.select_option("#masterCountry", "AR")

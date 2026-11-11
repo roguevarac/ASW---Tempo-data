@@ -229,6 +229,10 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   - **Filtros por pestaña:** cada tabla tiene su búsqueda (`searchMaster`, `searchTerritory`) y sus fechas
     (`dateFrom/dateTo`, `dateFromT/dateToT`); cambiar de pestaña no los borra. La tabla por territorio tiene
     "Limpiar" (`#clearFiltersT`) para todos sus filtros. Buscar "-" = sin Tempo ID (`fn_coincide_busqueda`, 03).
+  - **Filtro Tempo ID de la tabla principal (11/11/2026):** selector en el encabezado de la columna (Todos / Vacíos /
+    Con Tempo ID, `#tempoFilter`), combinable con la búsqueda por artista; reemplaza al guion en la indicación (el guion
+    sigue funcionando). `fn_coincide_tempo` y `p_tempo` en `fn_master_pagina`, `fn_master_conteo`, `fn_envio_conteo` y
+    `fn_preparar_envio` (las descargas lo respetan, igual que la búsqueda).
   - **Acceso desde otras computadoras (pedido del usuario: "la PWA tiene que poder usarse desde la laptop de cada
     uno"):** `bash ranking.sh compartir` → **Tailscale Funnel** (29/10/2026), servicio `tunel` de compose.
     - Enlace fijo `https://auditor-rankings.<red>.ts.net/`; `--apagar` deja de compartir.
