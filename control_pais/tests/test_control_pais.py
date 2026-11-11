@@ -155,6 +155,26 @@ bloques = (AQUI / "unload_obras_controladas_pais_tandas.sql").read_text(encoding
 check("archivo de tandas: un UNLOAD por rango de rangos_tandas.txt", len(bloques) == len(gu.leer_rangos()), len(bloques))
 primera = bloques[0].rsplit("\n')\nTO", 1)[0].replace("''", "'")
 check("archivo de tandas: la tanda 1 corre", isinstance(correr(primera), list))
+# Procedimiento: se simula el EXECUTE de cada tanda (comillas des-duplicadas y rango reemplazado)
+proc = (AQUI / "procedimiento_obras_controladas_pais.sql").read_text(encoding="utf-8")
+assert "TIMESTAMP;" not in proc.split("DECLARE", 1)[1].split("BEGIN", 1)[0].replace("v_inicio VARCHAR", "")
+dinamico = proc.split("EXECUTE '", 1)[1].split("';\n        GET DIAGNOSTICS", 1)[0]
+con.execute("create table obras_controladas_pais_resultado (" + ", ".join(f"{c} {t}" for c, t in gu.COLUMNAS) + ")")
+for desde, hasta in [(0, 499), (500, 999999), (1000000, 1999999), (2000000, 2999999)]:
+    sql_tanda = (dinamico.replace("' || CAST(v_desde AS VARCHAR(20)) || '", str(desde))
+                         .replace("' || CAST(v_hasta AS VARCHAR(20)) || '", str(hasta))
+                         .replace("''", "'")
+                         .replace("public.obras_controladas_pais_resultado", "obras_controladas_pais_resultado"))
+    con.execute(_duck(sql_tanda))
+cur = con.execute("select * from obras_controladas_pais_resultado order by song_id")
+cols_p = [d[0] for d in cur.description]
+res_proc = [dict(zip(cols_p, r)) for r in cur.fetchall()]
+# el vencimiento se guarda como TIMESTAMP (en Redshift ya lo es); se compara el día
+norm = lambda filas: [{k: (None if v is None else str(v)[:10] if k.startswith("contrato_venc") else str(v))
+                       for k, v in r.items()} for r in filas]
+check("procedimiento: las tandas guardadas en la tabla dan lo mismo que la corrida completa", norm(res_proc) == norm(res),
+      (len(res_proc), len(res)))
+check("procedimiento: columnas de la tabla = columnas de la query", cols_p == list(res[0].keys()), (cols_p, list(res[0].keys())))
 check("orden por obra", [r["song_id"] for r in res] == sorted(r["song_id"] for r in res))
 print("\nTodo OK" if not fallas else f"\n{len(fallas)} fallas")
 sys.exit(1 if fallas else 0)

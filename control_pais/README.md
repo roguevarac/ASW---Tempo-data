@@ -13,6 +13,14 @@ Tempo ID de `rangos_tandas.txt` (10 tramos de 1.000.000; el último toma el rest
 Si una tanda no termina, partir su rango en `rangos_tandas.txt` y regenerar. La prueba verifica que la unión de las
 tandas dé lo mismo que la corrida completa.
 
+## Procedimiento (recomendado para el catálogo completo)
+El usuario tiene permiso CREATE en `public` (`has_schema_privilege` = true, 11/11/2026).
+`procedimiento_obras_controladas_pais.sql` (generado; no editar a mano) crea `public.obras_controladas_pais_resultado`,
+`public.obras_controladas_pais_log` y `public.sp_obras_controladas_pais(tamaño, desde)`: recorre rangos de Tempo ID
+hasta el máximo de `contract_territories`, inserta cada tanda con la misma query (EXECUTE) y hace COMMIT por tanda.
+`desde = 0` vacía y empieza de cero; otro valor retoma sin vaciar. Después, un `UNLOAD` simple de la tabla deja un CSV.
+La prueba simula el EXECUTE de cada tanda en DuckDB y compara con la corrida completa.
+
 ## Regla (la misma de la v8 del reporte CWR)
 - Un solo grupo IP por obra: el que nombra al país; si no, el que nombra una región que lo incluye; si no, el mundial.
   Un grupo que excluye al país ("WORLD EX CHILE") no cuenta.

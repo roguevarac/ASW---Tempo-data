@@ -81,6 +81,9 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   Catálogo: ~6,8 M obras con línea de control, ~5,8 M con control Yes (conteo del 11/11/2026): en una pasada no
   termina. Se corre por tandas de Tempo ID: `unload_obras_controladas_pais_tandas.sql` (rangos en
   `rangos_tandas.txt`, filtros marcados `TANDA` en la query). Redshift no tiene loops en un SELECT.
+  Forma recomendada: `procedimiento_obras_controladas_pais.sql` (generado) con `CALL public.sp_obras_controladas_pais(500000, 0)`:
+  loop por tandas con COMMIT, resultado en `public.obras_controladas_pais_resultado`, avance en `..._log`. El usuario
+  tiene CREATE en `public` (probado el 11/11/2026).
   Test: `python3 control_pais/tests/test_control_pais.py` (compara contra la v8).
 - `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO y UNITED STATES). Una sola
   sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.
