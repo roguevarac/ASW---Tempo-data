@@ -215,9 +215,6 @@ CREATE TABLE {tabla_log} (
     fin       VARCHAR(60)
 );
 
--- Versión anterior (sin país), si estaba creada.
-DROP PROCEDURE IF EXISTS {sp}(BIGINT, BIGINT);
-
 CREATE OR REPLACE PROCEDURE {sp}(p_pais VARCHAR(100), p_tamano BIGINT, p_desde BIGINT)
 AS $$
 DECLARE

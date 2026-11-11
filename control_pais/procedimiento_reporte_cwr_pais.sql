@@ -109,9 +109,6 @@ CREATE TABLE public.reporte_cwr_pais_log (
     fin       VARCHAR(60)
 );
 
--- Versión anterior (sin país), si estaba creada.
-DROP PROCEDURE IF EXISTS public.sp_reporte_cwr_pais(BIGINT, BIGINT);
-
 CREATE OR REPLACE PROCEDURE public.sp_reporte_cwr_pais(p_pais VARCHAR(100), p_tamano BIGINT, p_desde BIGINT)
 AS $$
 DECLARE

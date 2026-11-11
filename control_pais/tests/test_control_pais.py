@@ -249,6 +249,9 @@ br = con.execute("select song_id, performance_pc_total, como_se_eligio_grupo fro
 check("Brasil: grupo BRAZIL de SMP con linea que incluye BRAZIL -> 60, pais = BRASIL", br and float(br[0][1]) == 60 and br[0][2] == "Grupo nombra al país", br)
 check("Brasil: Te Encontre (ARGENTINA;CHILE;MEXICO) no cubre Brasil",
       con.execute("select count(*) from public.obras_controladas_pais_resultado where pais = 'BRASIL' and song_id = 300").fetchone()[0] == 0)
+for f in ("procedimiento_obras_controladas_pais.sql", "procedimiento_reporte_cwr_pais.sql"):
+    check(f"{f}: sin DROP ... IF EXISTS de procedimiento (Redshift no lo acepta)",
+          "DROP PROCEDURE IF EXISTS" not in (AQUI / f).read_text(encoding="utf-8"))
 check("orden por obra", [r["song_id"] for r in res] == sorted(r["song_id"] for r in res))
 print("\nTodo OK" if not fallas else f"\n{len(fallas)} fallas")
 sys.exit(1 if fallas else 0)

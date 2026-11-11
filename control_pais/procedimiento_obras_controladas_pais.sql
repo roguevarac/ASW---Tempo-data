@@ -97,9 +97,6 @@ CREATE TABLE public.obras_controladas_pais_log (
     fin       VARCHAR(60)
 );
 
--- Versión anterior (sin país), si estaba creada.
-DROP PROCEDURE IF EXISTS public.sp_obras_controladas_pais(BIGINT, BIGINT);
-
 CREATE OR REPLACE PROCEDURE public.sp_obras_controladas_pais(p_pais VARCHAR(100), p_tamano BIGINT, p_desde BIGINT)
 AS $$
 DECLARE
