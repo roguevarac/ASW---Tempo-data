@@ -50,7 +50,7 @@ ct_norm AS (
                        ''^[[:space:]]*EXCLUDE:[[:space:]]*'', '''')),
                    ''[[:space:]]*;[[:space:]]*'', '';'') || '';'' AS excl
     FROM dp_song_metadata.contract_territories ct
-    WHERE ct.song_id IS NOT NULL
+    WHERE ct.song_id BETWEEN 0 AND 999999999999
       AND ct.contract_id IS NOT NULL
 ),
 lineas_ok AS (
@@ -86,7 +86,8 @@ mv_raw AS (
         '' '' || TRIM(REGEXP_REPLACE(TRANSLATE(UPPER(TRIM(COALESCE(s.song_ip_territory_nm, ''''))), ''ÁÉÍÓÚÜÑ'', ''AEIOUUN''),
                                    ''[^A-Z0-9]+'', '' '')) || '' '' AS tok
     FROM dp_song_metadata.song_share_detail_mv s
-    WHERE s.song_id IN (SELECT song_id FROM lineas_ok)
+    WHERE s.song_id BETWEEN 0 AND 999999999999
+      AND s.song_id IN (SELECT song_id FROM lineas_ok)
 ),
 mv_tok AS (
     SELECT
@@ -122,7 +123,9 @@ mv_grupo AS (
 vinfo AS (
     SELECT contract_id, MAX(contract_expiration_dt) AS contract_expiration_dt
     FROM dp_deal_metadata.contract_v
-    WHERE contract_id IN (SELECT contract_id FROM lineas_ok)
+    WHERE contract_id IN (SELECT ct.contract_id
+                          FROM dp_song_metadata.contract_territories ct
+                          WHERE ct.song_id BETWEEN 0 AND 999999999999)
     GROUP BY contract_id
 ),
 u0 AS (
@@ -239,7 +242,7 @@ iswc AS (
         tempo_song_id AS song_id,
         COALESCE(MAX(CASE WHEN preferred_indicator = ''Y'' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
-    WHERE tempo_song_id IN (SELECT song_id FROM lineas_ok)
+    WHERE tempo_song_id BETWEEN 0 AND 999999999999
       AND ident_iswc_cd IS NOT NULL
     GROUP BY tempo_song_id
 )

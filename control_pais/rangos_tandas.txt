@@ -1,0 +1,14 @@
+# Rangos de Tempo ID por tanda: "desde hasta" (inclusive), uno por línea.
+# Después de editar: python3 control_pais/tools/generar_unload.py
+# Rango inicial: tramos de 1.000.000 de Tempo ID; el último toma todo lo que sigue.
+# Si una tanda no termina, partirla en dos (ej. 3000000 3499999 y 3500000 3999999).
+0 999999
+1000000 1999999
+2000000 2999999
+3000000 3999999
+4000000 4999999
+5000000 5999999
+6000000 6999999
+7000000 7999999
+8000000 8999999
+9000000 999999999999

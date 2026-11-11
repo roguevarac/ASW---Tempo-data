@@ -142,6 +142,19 @@ check("vencimientos: MIXTO / TODOS VENCIDOS / VIGENTE",
       (R[500]["estado_contrato"], R[501]["estado_contrato"], R[502]["estado_contrato"]))
 check("duplicados de contract_territories no duplican lineas", R[1500]["cantidad_lineas"] == 1, R[1500]["cantidad_lineas"])
 check("UNLOAD da exactamente lo mismo", res_unload == res)
+# Tandas: la union de los rangos (sin superponerse) da exactamente el resultado completo
+sys.path.insert(0, str(AQUI / "tools"))
+import generar_unload as gu
+cuerpo = gu.cuerpo_sin_comentarios(texto)
+por_tandas = []
+for desde, hasta in [(0, 999), (1000, 274219), (274220, 2701308), (2701309, 999999999999)]:
+    por_tandas += correr(gu.cuerpo_tanda(cuerpo, desde, hasta))
+check("tandas: la union da lo mismo que la corrida completa", sorted(por_tandas, key=lambda r: r["song_id"]) == res,
+      (len(por_tandas), len(res)))
+bloques = (AQUI / "unload_obras_controladas_pais_tandas.sql").read_text(encoding="utf-8").split("UNLOAD ('\n")[1:]
+check("archivo de tandas: un UNLOAD por rango de rangos_tandas.txt", len(bloques) == len(gu.leer_rangos()), len(bloques))
+primera = bloques[0].rsplit("\n')\nTO", 1)[0].replace("''", "'")
+check("archivo de tandas: la tanda 1 corre", isinstance(correr(primera), list))
 check("orden por obra", [r["song_id"] for r in res] == sorted(r["song_id"] for r in res))
 print("\nTodo OK" if not fallas else f"\n{len(fallas)} fallas")
 sys.exit(1 if fallas else 0)

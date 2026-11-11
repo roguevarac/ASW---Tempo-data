@@ -28,10 +28,16 @@
 -- unload_obras_controladas_pais_v1.sql (generado con
 -- python3 control_pais/tools/generar_unload.py; no editarlo a mano).
 --
--- Rendimiento: song_share_detail_mv se lee UNA vez, filtrada a las obras con
--- alguna línea que cubre el país. contract_territories (tabla) se lee 4 veces
--- (líneas, filtro de la MV, filtro de contract_v e ISWC). contract_v se lee una
--- vez, filtrada. Todos los LISTAGG del bloque final ordenan por "orden".
+-- TANDAS (11/11/2026): el catálogo tiene ~6,8 millones de obras con línea de
+-- control y ~5,8 millones con control Yes; en una sola pasada no termina. Cada
+-- lectura se filtra por un rango de Tempo ID (líneas marcadas "TANDA"); en esta
+-- versión el rango abarca todo. control_pais/tools/generar_unload.py arma un
+-- UNLOAD por tanda (un archivo por tanda) con los rangos de rangos_tandas.txt.
+--
+-- Rendimiento: song_share_detail_mv se lee UNA vez, filtrada al rango y a las
+-- obras con alguna línea que cubre el país. La normalización de textos
+-- (lineas_ok) se calcula 2 veces; contract_v e ISWC se filtran por el rango sin
+-- recalcularla. Todos los LISTAGG del bloque final ordenan por "orden".
 -- =====================================================================
 WITH
 
@@ -70,7 +76,7 @@ ct_norm AS (
                        '^[[:space:]]*EXCLUDE:[[:space:]]*', '')),
                    '[[:space:]]*;[[:space:]]*', ';') || ';' AS excl
     FROM dp_song_metadata.contract_territories ct
-    WHERE ct.song_id IS NOT NULL
+    WHERE ct.song_id BETWEEN 0 AND 999999999999   -- TANDA: rango de Tempo ID
       AND ct.contract_id IS NOT NULL
 ),
 -- Una fila por obra + contrato (contract_territories puede repetirla con otro
@@ -111,7 +117,8 @@ mv_raw AS (
         ' ' || TRIM(REGEXP_REPLACE(TRANSLATE(UPPER(TRIM(COALESCE(s.song_ip_territory_nm, ''))), 'ÁÉÍÓÚÜÑ', 'AEIOUUN'),
                                    '[^A-Z0-9]+', ' ')) || ' ' AS tok
     FROM dp_song_metadata.song_share_detail_mv s
-    WHERE s.song_id IN (SELECT song_id FROM lineas_ok)
+    WHERE s.song_id BETWEEN 0 AND 999999999999   -- TANDA: rango de Tempo ID
+      AND s.song_id IN (SELECT song_id FROM lineas_ok)
 ),
 -- Grupo IP: parte incluida y parte excluida ("WORLD EX CHILE").
 mv_tok AS (
@@ -154,7 +161,9 @@ mv_grupo AS (
 vinfo AS (
     SELECT contract_id, MAX(contract_expiration_dt) AS contract_expiration_dt
     FROM dp_deal_metadata.contract_v
-    WHERE contract_id IN (SELECT contract_id FROM lineas_ok)
+    WHERE contract_id IN (SELECT ct.contract_id
+                          FROM dp_song_metadata.contract_territories ct
+                          WHERE ct.song_id BETWEEN 0 AND 999999999999)   -- TANDA: rango de Tempo ID
     GROUP BY contract_id
 ),
 u0 AS (
@@ -274,7 +283,7 @@ iswc AS (
         tempo_song_id AS song_id,
         COALESCE(MAX(CASE WHEN preferred_indicator = 'Y' THEN ident_iswc_cd END), MIN(ident_iswc_cd)) AS iswc
     FROM dp_song_metadata.identifiers_iswc_v
-    WHERE tempo_song_id IN (SELECT song_id FROM lineas_ok)
+    WHERE tempo_song_id BETWEEN 0 AND 999999999999   -- TANDA: rango de Tempo ID
       AND ident_iswc_cd IS NOT NULL
     GROUP BY tempo_song_id
 )
