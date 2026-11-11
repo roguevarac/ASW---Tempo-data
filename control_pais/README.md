@@ -21,6 +21,13 @@ hasta el máximo de `contract_territories`, inserta cada tanda con la misma quer
 `desde = 0` vacía y empieza de cero; otro valor retoma sin vaciar. Después, un `UNLOAD` simple de la tabla deja un CSV.
 La prueba simula el EXECUTE de cada tanda en DuckDB y compara con la corrida completa.
 
+## Reporte CWR v8 para el país, sobre esas obras
+`reporte_cwr_pais_v1.sql` y `procedimiento_reporte_cwr_pais.sql` se generan desde
+`reporte_cwr/reporte_cwr_x_territorio_v8.sql` (misma lógica y mismas 28 columnas; un solo país, `PAIS_CWR` en el
+generador). Las obras salen de `public.obras_controladas_pais_resultado`, por rango de Tempo ID.
+`CALL public.sp_reporte_cwr_pais(500000, 0)` deja una fila por obra en `public.reporte_cwr_pais_resultado`.
+La prueba verifica que da fila por fila lo mismo que la v8 filtrada a Chile, y que las tandas dan lo mismo.
+
 ## Regla (la misma de la v8 del reporte CWR)
 - Un solo grupo IP por obra: el que nombra al país; si no, el que nombra una región que lo incluye; si no, el mundial.
   Un grupo que excluye al país ("WORLD EX CHILE") no cuenta.

@@ -61,7 +61,7 @@ con.executemany("insert into dp_song_metadata.contract_territories values (?,?,?
     (274220, 155812, "Afanasieff, Walter", "Include: World", ""),
 ])
 con.executemany("insert into dp_deal_metadata.contract_v values (?,?,?,?)",
-                [(300, "C300", "London", None), (301, "C301", "London", None), (302, "C302", "London", None), (166692, "Fabian Lara And Allison Rick", "United States", None), (155812, "Afanasieff, Walter", "United States", None)])
+                [(300, "C300", "London", None), (301, "C301", "London", None), (302, "C302", "London", None), (166692, "Fabian Lara And Allison Rick", "United States", None), (155812, "Afanasieff, Walter", "United States", "2013-08-13")])
 # Linea que cubre Chile en una obra sin participaciones: no debe salir
 con.execute("insert into dp_song_metadata.contract_territories values (3999, 399, 'C399', 'Include: CHILE', NULL)")
 # Tabla de obras para la v8 (todas, incluidas las extra)
@@ -175,6 +175,33 @@ norm = lambda filas: [{k: (None if v is None else str(v)[:10] if k.startswith("c
 check("procedimiento: las tandas guardadas en la tabla dan lo mismo que la corrida completa", norm(res_proc) == norm(res),
       (len(res_proc), len(res)))
 check("procedimiento: columnas de la tabla = columnas de la query", cols_p == list(res[0].keys()), (cols_p, list(res[0].keys())))
+# ---------------------------------------------------------------------------
+# Reporte CWR v8 para Chile sobre las obras de la tabla de resultado
+con.execute("create table public.obras_controladas_pais_resultado as select * from obras_controladas_pais_resultado")
+cwr = correr((AQUI / "reporte_cwr_pais_v1.sql").read_text(encoding="utf-8").rstrip().rstrip(";"))
+lista = {r["song_id"] for r in res}
+v8_cl_lista = [r for r in v8 if r["pais"] == "CHILE" and r["song_id"] in lista]
+clave = lambda r: (r["song_id"], r["pais"])
+check("reporte CWR Chile: una fila por obra de la lista, solo CHILE", sorted(r["song_id"] for r in cwr) == sorted(lista)
+      and all(r["pais"] == "CHILE" for r in cwr), (len(cwr), len(lista)))
+check("reporte CWR Chile: columnas iguales a la v8", list(cwr[0].keys()) == list(v8[0].keys()) == [c for c, _ in gu.COLUMNAS_CWR])
+check("reporte CWR Chile: identico a la v8 (fila por fila, todas las columnas)",
+      sorted(cwr, key=clave) == sorted(v8_cl_lista, key=clave),
+      [(a["song_id"], k) for a, b in zip(sorted(cwr, key=clave), sorted(v8_cl_lista, key=clave)) for k in a if a[k] != b[k]][:5])
+proc_cwr = (AQUI / "procedimiento_reporte_cwr_pais.sql").read_text(encoding="utf-8")
+din = proc_cwr.split("EXECUTE '", 1)[1].split("';\n        GET DIAGNOSTICS", 1)[0]
+con.execute("create table cwr_res (" + ", ".join(f"{c} {t}" for c, t in gu.COLUMNAS_CWR) + ")")
+for desde, hasta in [(0, 999), (1000, 274219), (274220, 2701308), (2701309, 9999999)]:
+    con.execute(_duck(din.replace("' || CAST(v_desde AS VARCHAR(20)) || '", str(desde))
+                         .replace("' || CAST(v_hasta AS VARCHAR(20)) || '", str(hasta)).replace("''", "'")
+                         .replace("public.reporte_cwr_pais_resultado", "cwr_res")))
+cur = con.execute("select * from cwr_res order by song_id")
+res_cwr = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
+norm2 = lambda filas: sorted([{k: (None if v is None else str(v)[:10] if k.endswith(("_dt", "_date", "proximo", "lejano")) else str(v))
+                              for k, v in r.items()} for r in filas], key=lambda r: int(r["song_id"]))
+check("procedimiento reporte CWR: tandas guardadas = corrida completa", norm2(res_cwr) == norm2(cwr), (len(res_cwr), len(cwr)))
+check("procedimiento reporte CWR: recorre hasta el maximo Tempo ID de la lista",
+      "INTO v_max FROM public.obras_controladas_pais_resultado;" in proc_cwr)
 check("orden por obra", [r["song_id"] for r in res] == sorted(r["song_id"] for r in res))
 print("\nTodo OK" if not fallas else f"\n{len(fallas)} fallas")
 sys.exit(1 if fallas else 0)

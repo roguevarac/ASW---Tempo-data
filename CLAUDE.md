@@ -84,6 +84,10 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   Forma recomendada: `procedimiento_obras_controladas_pais.sql` (generado) con `CALL public.sp_obras_controladas_pais(500000, 0)`:
   loop por tandas con COMMIT, resultado en `public.obras_controladas_pais_resultado`, avance en `..._log`. El usuario
   tiene CREATE en `public` (probado el 11/11/2026).
+  Resultado real (11/11/2026): 10 tandas, 4.930.168 obras controladas en Chile.
+  Después, el reporte de control v8 completo para ese país: `procedimiento_reporte_cwr_pais.sql` (generado desde la
+  v8; `CALL public.sp_reporte_cwr_pais(500000, 0)`, resultado en `public.reporte_cwr_pais_resultado`). El usuario
+  quiere ese reporte (no solo editoriales), primero Chile y después país por país (cada país necesita antes su lista).
   Test: `python3 control_pais/tests/test_control_pais.py` (compara contra la v8).
 - `reporte_cwr/reporte_cwr_x_territorio_v8.sql`: reporte CWR por obra y país (AR, CL, PE, UY, CO y UNITED STATES). Una sola
   sentencia; las obras se leen de `public.rankingdigital_song_id` (columna `song_id`). Ver `reporte_cwr/README.md`.
