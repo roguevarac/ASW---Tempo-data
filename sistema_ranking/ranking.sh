@@ -677,7 +677,7 @@ cmd_restaurar() {
                        public.territory_bo_report, public.territory_tempo_report, public.csv_uploads, public.audit_logs,
                        public.bo_export_counter, public.staging_tempo_historico, public.resultado_tempo_historico,
                        public.envio_identificadas, public.envio_obras, public.envios, public.obra_alias,
-                       public.territory_tracks_partes, public.territory_seguimiento, public.tickets,
+                       public.territory_tracks_partes, public.compilado_partes, public.territory_seguimiento, public.tickets,
                        auth.sesiones, auth.codigos_clave, auth.users, storage.objects, storage.buckets" > /dev/null || fallar "No se pudo vaciar la base."
     dc exec -T db pg_restore -U postgres -d ranking --data-only --disable-triggers --single-transaction \
         -n public -n auth -n storage < "$RESPALDOS/$f.dump" || fallar "No se pudo restaurar la base (quedó vacía: volvé a intentar)."
@@ -730,7 +730,7 @@ cmd_empezar_de_cero() {
     titulo "Vaciando"
     consulta "BEGIN;
               TRUNCATE public.envio_identificadas, public.envio_obras, public.envios, public.obra_alias,
-                       public.territory_tracks_partes, public.territory_seguimiento, public.tickets, public.territory_tracks, public.territory_control,
+                       public.territory_tracks_partes, public.compilado_partes, public.territory_seguimiento, public.tickets, public.territory_tracks, public.territory_control,
                        public.territory_bo_report, public.territory_tempo_report, public.tracks_master, public.audit_logs,
                        public.csv_uploads, public.staging_tempo_historico, public.resultado_tempo_historico;
               DELETE FROM storage.objects WHERE bucket_id = 'csv-uploads';

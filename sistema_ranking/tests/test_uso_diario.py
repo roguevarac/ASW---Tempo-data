@@ -254,6 +254,38 @@ check("'Á' e 'Í' mayúsculas mal codificadas: misma obra que la bien escrita, 
       and sqlq("select track_artist_concat from tracks_master where track_name_raw like 'FAN%TICO'") == "FANATICO - Lali"
       and sqlq("select track_artist_concat from tracks_master where track_name_raw like 'M%O' and artist_name_raw = 'Banda Mia'") == "MIO - Banda Mia")
 
+# ------------------------------------------------------------------ compilados ("A / B - Artista" con 123/456)
+chart("Compilado Uno / Compilado Dos", "2025-04-17", 20, 1001, "Banda Comp")
+chart("Compilado Dos", "2025-04-17", 30, 500, "Banda Comp")
+comp = sqlq("select id from tracks_master where track_name_raw = 'Compilado Uno / Compilado Dos'")
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": comp, "p_tempo_id": "4440201 / 4440202"})
+comp_obras = lambda: sqlq("select string_agg(tm.track_artist_concat || '=' || coalesce(tm.tempo_id, '-') || '=' || tt.snapshot_date || '=' || tt.streams, '|' "
+                          "order by tm.track_artist_concat, tt.snapshot_date) from tracks_master tm join territory_tracks tt on tt.track_master_id = tm.id "
+                          "where tm.artist_name_raw = 'Banda Comp' and tm.track_name_raw like 'Compilado%'")
+check("compilado: se separa en una obra por canción; los streams se dividen en partes iguales y la que ya existía no se repite",
+      r.status_code == 200 and r.json() == 2 and sqlq(f"select count(*) from tracks_master where id = '{comp}'") == "0"
+      and comp_obras() == "Compilado Dos - Banda Comp=4440202=2025-04-17=1000|Compilado Uno - Banda Comp=4440201=2025-04-17=501", (r.text, comp_obras()))
+chart("Compilado Uno / Compilado Dos", "2025-04-24", 18, 300, "Banda Comp")
+chart("Compilado Uno / Compilado Dos", "2025-04-17", 20, 1001, "Banda Comp")
+check("las cargas siguientes con el nombre del compilado se reparten entre sus canciones (sin crear la obra ni sumar dos veces)",
+      sqlq("select count(*) from tracks_master where track_name_raw like 'Compilado Uno /%'") == "0"
+      and comp_obras() == ("Compilado Dos - Banda Comp=4440202=2025-04-17=1000|Compilado Dos - Banda Comp=4440202=2025-04-24=150|"
+                           "Compilado Uno - Banda Comp=4440201=2025-04-17=501|Compilado Uno - Banda Comp=4440201=2025-04-24=150"), comp_obras())
+chart("Tres / Partes / Juntas", "2025-04-17", 40, 10, "Banda Comp")
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": sqlq("select id from tracks_master where track_name_raw = 'Tres / Partes / Juntas'"), "p_tempo_id": "4440301/4440302"})
+check("compilado con distinta cantidad de canciones que de Tempo ID: no cambia nada y lo explica",
+      r.status_code >= 400 and "tiene 3 y se ingresaron 2" in r.json().get("message", "")
+      and sqlq("select count(*) from tracks_master where track_name_raw = 'Tres / Partes / Juntas'") == "1", r.text)
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": sqlq("select id from tracks_master where track_name_raw = 'Tres / Partes / Juntas'"), "p_tempo_id": "4440301/4440301/4440303"})
+check("compilado con un Tempo ID repetido: lo rechaza", r.status_code >= 400 and "dos veces" in r.json().get("message", ""), r.text)
+chart("Otro A / Otro B", "2025-04-17", 41, 11, "Banda Comp")
+r = rpc(h, "fn_upsert_master_tempo_batch", {"p_rows": [{"track_artist": "Otro A / Otro B - Banda Comp", "tempo_id": "4440401/UNCONTROLLED"}]})
+check("la carga CSV de Tempo IDs también separa compilados (una canción puede quedar UNCONTROLLED)",
+      r.status_code == 200 and r.json()[0]["error_message"] is None
+      and sqlq("select string_agg(tm.track_artist_concat || '=' || tm.tempo_id || '=' || tt.streams, '|' order by tm.track_artist_concat) from tracks_master tm "
+               "join territory_tracks tt on tt.track_master_id = tm.id where tm.track_name_raw in ('Otro A', 'Otro B')")
+      == "Otro A - Banda Comp=4440401=6|Otro B - Banda Comp=UNCONTROLLED=5", r.text)
+
 # ------------------------------------------------------------------ Tempo ID: número o valores estándar
 r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": tres, "p_tempo_id": "COMPILADO"})
 check("Tempo ID: un valor fuera de la lista no se guarda y el mensaje los nombra",

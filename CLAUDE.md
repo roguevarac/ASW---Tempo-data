@@ -264,7 +264,13 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
       - `test_acceso_directo.py` (`sin-suspension.ps1`).
     - La red de esta sesión bloquea Tailscale (403) y el clasificador no deja abrir un Funnel desde acá: el enlace real
       se prueba en la PC.
-  - **Tempo ID en la tabla principal:** solo se tipean números; UNCONTROLLED/PENDING se eligen de la lista (`oninput`).
+  - **Tempo ID en la tabla principal:** solo se tipean números y "/"; UNCONTROLLED/PENDING se eligen de la lista (`oninput`).
+  - **Compilados (11/11/2026, `db/mejoras/14_compilados.sql`):** "A / B - Artista" con Tempo ID `123/456` (en la tabla
+    principal, `fn_asignar_tempo_id`, o en la carga CSV de Tempo IDs) se separa en una obra por canción
+    (`separar_compilado`): usa la obra que ya tenga ese número o ese título y artista, reparte los streams en partes
+    iguales (el resto, de a uno, a las primeras) como partes en `territory_tracks_partes` y borra el compilado. Su nombre
+    (y sus alias) queda en `compilado_partes` (tabla en 04, va en los TRUNCATE); `fn_upsert_ranking_row` reparte las
+    cargas siguientes con ese nombre y nunca recrea la obra. La cantidad de títulos tiene que coincidir con la de IDs.
   - **Estado de trabajo (28/10/2026, `db/mejoras/10_estado_trabajo.sql`, reemplaza `trg_bo_report_auto_revisar`):**
     problemas RECLAMO ACTIVO (`fn_reclamo_activo`: Reclamos con valor que no sea vacío/No/None/0/N/A/resuelto),
     REVISAR NOT WORK (`bo_status` informado y distinto de WORK) y REVISAR % (ex "REVISAR"); sin problemas, OK BO-Tempo /

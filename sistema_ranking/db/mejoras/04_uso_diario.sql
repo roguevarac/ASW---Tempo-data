@@ -279,8 +279,8 @@ declare
     v text := fn_tempo_estandar(p_valor);
 begin
     if v is null then
-        raise exception 'Tempo ID no válido: "%". Ingresá el número o uno de estos valores: %.', trim(p_valor),
-            array_to_string(fn_marcadores_tempo(), ', ') using errcode = '22023';
+        raise exception 'Tempo ID no válido: "%". Ingresá el número, uno de estos valores: %, o, para un compilado, los Tempo ID de cada canción separados por "/" (por ejemplo 123/456).',
+            trim(p_valor), array_to_string(fn_marcadores_tempo(), ', ') using errcode = '22023';
     end if;
     return nullif(v, '');
 end;
@@ -306,6 +306,26 @@ CREATE TABLE IF NOT EXISTS public.territory_tracks_partes (
     streams bigint,
     PRIMARY KEY (territory_track_id, clave)
 );
+-- Compilados (pedido del usuario, 11/11/2026): un nombre de chart con varias canciones ("A / B - Artista") que se
+-- separó en una obra por canción al ingresar sus Tempo ID con "/" (123/456). Las cargas con ese nombre reparten los
+-- streams en partes iguales entre esas obras (db/mejoras/14_compilados.sql).
+CREATE TABLE IF NOT EXISTS public.compilado_partes (
+    clave text NOT NULL,                         -- lower(track_artist_concat) del nombre del compilado
+    parte integer NOT NULL,                      -- orden de la canción en el título
+    track_master_id uuid NOT NULL REFERENCES public.tracks_master(id) ON DELETE CASCADE,
+    track_raw text NOT NULL,
+    artist_raw text NOT NULL,
+    tempo_ids text NOT NULL,                     -- lo que se ingresó, por ejemplo "123/456"
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    created_by text NOT NULL DEFAULT COALESCE((auth.uid())::text, (CURRENT_USER)::text),
+    PRIMARY KEY (clave, parte)
+);
+CREATE INDEX IF NOT EXISTS ix_compilado_partes_track ON public.compilado_partes (track_master_id);
+ALTER TABLE public.compilado_partes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS compilado_partes_select ON public.compilado_partes;
+CREATE POLICY compilado_partes_select ON public.compilado_partes AS PERMISSIVE FOR SELECT TO authenticated USING (true);
+GRANT SELECT ON public.compilado_partes TO authenticated;
+GRANT ALL ON public.compilado_partes TO service_role;
 ALTER TABLE public.obra_alias ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.territory_tracks_partes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS obra_alias_select ON public.obra_alias;
@@ -348,6 +368,7 @@ begin
     select lower(track_artist_concat), track_name_raw, artist_name_raw, p_destino from tracks_master where id = p_origen
     on conflict (clave) do update set track_master_id = excluded.track_master_id;
     update obra_alias set track_master_id = p_destino where track_master_id = p_origen;
+    update compilado_partes set track_master_id = p_destino where track_master_id = p_origen;
     -- Charts: streams por nombre; la misma semana, país y plataforma se juntan en la fila de p_destino.
     perform fn_partes_iniciales(p_destino);
     perform fn_partes_iniciales(p_origen);
@@ -421,35 +442,23 @@ end;
 $function$;
 REVOKE ALL ON FUNCTION public.fusionar_obras(uuid, uuid) FROM PUBLIC;
 
--- Carga de una fila de chart (reemplaza a la original): el nombre de una obra unificada va a la obra que quedó, y en
--- las obras con alias los streams de cada nombre se guardan por separado y se suman.
-CREATE OR REPLACE FUNCTION public.fn_upsert_ranking_row(p_track_name text, p_artist_names text, p_pais_code pais_code_enum, p_rank integer, p_peak_rank integer, p_previous_rank integer, p_weeks_on_chart integer, p_streams bigint, p_source text, p_uri text, p_platform text DEFAULT 'spotify'::text, p_weekly_growth numeric DEFAULT NULL::numeric, p_snapshot_date date DEFAULT CURRENT_DATE)
- RETURNS TABLE(territory_id uuid, track_created boolean)
+-- Una fila de chart en una obra: la fila de esa semana, país y plataforma. Con p_partes (obras unificadas o partes de
+-- un compilado), los streams de cada nombre (p_clave) se guardan por separado y la fila tiene la suma y el mejor puesto;
+-- volver a cargar el mismo nombre reemplaza su parte, no la suma dos veces.
+CREATE OR REPLACE FUNCTION public.fn_cargar_chart_obra(p_obra uuid, p_clave text, p_partes boolean, p_pais_code pais_code_enum,
+    p_rank integer, p_peak_rank integer, p_previous_rank integer, p_weeks_on_chart integer, p_streams bigint, p_source text,
+    p_uri text, p_platform text, p_weekly_growth numeric, p_snapshot_date date)
+ RETURNS uuid
  LANGUAGE plpgsql
 AS $function$
 declare
-    v_master_id uuid; v_tempo_id text; v_created boolean := false; v_territory_id uuid;
-    v_artist text := coalesce(nullif(trim(p_artist_names), ''), 'Sin artista');
-    v_clave text := lower(fn_normalize_text(p_track_name) || ' - ' || fn_normalize_text(v_artist));
-    v_partes boolean;
+    v_territory_id uuid;
 begin
-    select a.track_master_id, tm.tempo_id into v_master_id, v_tempo_id
-    from obra_alias a join tracks_master tm on tm.id = a.track_master_id and tm.deleted_at is null
-    where a.clave = v_clave;
-    if v_master_id is null then
-        insert into tracks_master (track_name_raw, artist_name_raw, tempo_id, bo_id, estado_bo)
-        values (p_track_name, v_artist, null, null, 'uncontrolled')
-        on conflict (lower(track_name_clean), lower(artist_name_clean)) where deleted_at is null
-        do update set updated_at = tracks_master.updated_at
-        returning id, tempo_id, (xmax = 0) into v_master_id, v_tempo_id, v_created;
-    end if;
-    v_partes := exists (select 1 from obra_alias a where a.track_master_id = v_master_id);
-
     insert into territory_tracks (
         track_master_id, tempo_id, pais_code, rank, peak_rank, previous_rank,
         weeks_on_chart, streams, source, uri, platform, weekly_growth, snapshot_date
     ) values (
-        v_master_id, v_tempo_id, p_pais_code, p_rank, p_peak_rank, p_previous_rank,
+        p_obra, (select tempo_id from tracks_master where id = p_obra), p_pais_code, p_rank, p_peak_rank, p_previous_rank,
         p_weeks_on_chart, p_streams, p_source, p_uri, p_platform, p_weekly_growth, p_snapshot_date
     )
     on conflict (track_master_id, pais_code, snapshot_date, platform)
@@ -460,16 +469,65 @@ begin
         deleted_at = null, updated_at = now()
     returning id into v_territory_id;
 
-    if v_partes then
+    if p_partes then
         insert into territory_tracks_partes (territory_track_id, clave, rank, streams)
-        values (v_territory_id, v_clave, p_rank, p_streams)
+        values (v_territory_id, p_clave, p_rank, p_streams)
         on conflict (territory_track_id, clave) do update set rank = excluded.rank, streams = excluded.streams;
         update territory_tracks tt set streams = x.streams, rank = x.rank
         from (select sum(p.streams) as streams, min(p.rank) as rank from territory_tracks_partes p
               where p.territory_track_id = v_territory_id) x
         where tt.id = v_territory_id;
     end if;
+    return v_territory_id;
+end;
+$function$;
 
+-- Carga de una fila de chart (reemplaza a la original): el nombre de una obra unificada va a la obra que quedó; el de un
+-- compilado se reparte en partes iguales entre las obras de sus canciones; en las obras con alias o que son parte de
+-- un compilado, los streams de cada nombre se guardan por separado y se suman.
+CREATE OR REPLACE FUNCTION public.fn_upsert_ranking_row(p_track_name text, p_artist_names text, p_pais_code pais_code_enum, p_rank integer, p_peak_rank integer, p_previous_rank integer, p_weeks_on_chart integer, p_streams bigint, p_source text, p_uri text, p_platform text DEFAULT 'spotify'::text, p_weekly_growth numeric DEFAULT NULL::numeric, p_snapshot_date date DEFAULT CURRENT_DATE)
+ RETURNS TABLE(territory_id uuid, track_created boolean)
+ LANGUAGE plpgsql
+AS $function$
+declare
+    v_master_id uuid; v_tempo_id text; v_created boolean := false; v_territory_id uuid; v_primera uuid;
+    v_artist text := coalesce(nullif(trim(p_artist_names), ''), 'Sin artista');
+    v_clave text := lower(fn_normalize_text(p_track_name) || ' - ' || fn_normalize_text(v_artist));
+    v_partes boolean;
+    v_obras uuid[];
+    v_n integer;
+begin
+    -- Compilado: los streams se reparten en partes iguales (el resto, de a uno, a las primeras canciones).
+    select array_agg(cp.track_master_id order by cp.parte) into v_obras
+    from compilado_partes cp join tracks_master tm on tm.id = cp.track_master_id and tm.deleted_at is null
+    where cp.clave = v_clave;
+    v_n := coalesce(cardinality(v_obras), 0);
+    if v_n > 0 then
+        for i in 1 .. v_n loop
+            v_territory_id := fn_cargar_chart_obra(v_obras[i], v_clave, true, p_pais_code, p_rank, p_peak_rank, p_previous_rank,
+                p_weeks_on_chart, p_streams / v_n + case when i <= p_streams % v_n then 1 else 0 end, p_source, p_uri,
+                p_platform, p_weekly_growth, p_snapshot_date);
+            v_primera := coalesce(v_primera, v_territory_id);
+        end loop;
+        return query select v_primera, false;
+        return;
+    end if;
+
+    select a.track_master_id, tm.tempo_id into v_master_id, v_tempo_id
+    from obra_alias a join tracks_master tm on tm.id = a.track_master_id and tm.deleted_at is null
+    where a.clave = v_clave;
+    if v_master_id is null then
+        insert into tracks_master (track_name_raw, artist_name_raw, tempo_id, bo_id, estado_bo)
+        values (p_track_name, v_artist, null, null, 'uncontrolled')
+        on conflict (lower(track_name_clean), lower(artist_name_clean)) where deleted_at is null
+        do update set updated_at = tracks_master.updated_at
+        returning id, tempo_id, (xmax = 0) into v_master_id, v_tempo_id, v_created;
+    end if;
+    v_partes := exists (select 1 from obra_alias a where a.track_master_id = v_master_id)
+             or exists (select 1 from compilado_partes cp where cp.track_master_id = v_master_id);
+
+    v_territory_id := fn_cargar_chart_obra(v_master_id, v_clave, v_partes, p_pais_code, p_rank, p_peak_rank, p_previous_rank,
+        p_weeks_on_chart, p_streams, p_source, p_uri, p_platform, p_weekly_growth, p_snapshot_date);
     return query select v_territory_id, v_created;
 end;
 $function$;
@@ -495,7 +553,7 @@ begin
     for r in select * from jsonb_array_elements(p_rows) loop
         i := i + 1;
         begin
-            v_valor := fn_valor_tempo(r->>'tempo_id');
+            v_obra := null; v_otra := null;
             select tm.id into v_obra from tracks_master tm
             where lower(tm.track_artist_concat) = lower(trim(r->>'track_artist')) and tm.deleted_at is null;
             if v_obra is null then
@@ -507,6 +565,14 @@ begin
                 return next;
                 continue;
             end if;
+            -- Compilado (123/456): la obra se separa en una por canción (db/mejoras/14_compilados.sql).
+            if position('/' in coalesce(r->>'tempo_id', '')) > 0 then
+                perform separar_compilado(v_obra, r->>'tempo_id');
+                idx := i; error_message := null;
+                return next;
+                continue;
+            end if;
+            v_valor := fn_valor_tempo(r->>'tempo_id');
             select tm.id into v_otra from tracks_master tm
             where v_valor ~ '^[0-9]+$' and tm.tempo_id = v_valor and tm.id <> v_obra and tm.deleted_at is null;
             if v_otra is not null then
@@ -538,18 +604,24 @@ $function$;
 --    deja de existir. Devuelve 1.
 --  * Si no: error que nombra la obra que lo tiene.
 -- Sin conflicto, asigna el Tempo ID como fn_set_tempo_id y devuelve 0.
+-- Con varios Tempo ID separados por "/" (123/456), la obra es un compilado: se separa en una obra por canción y
+-- devuelve cuántas son (2 o más; db/mejoras/14_compilados.sql).
 CREATE OR REPLACE FUNCTION public.fn_asignar_tempo_id(p_track_id uuid, p_tempo_id text, p_unificar boolean DEFAULT false)
  RETURNS integer
  LANGUAGE plpgsql
  SET search_path TO 'public'
 AS $function$
 declare
-    v_clean text := fn_valor_tempo(p_tempo_id);   -- número o marcador estándar; error si no es válido
+    v_clean text;
     v_otra record;
 begin
     if coalesce(fn_app_role(), '') not in ('admin', 'usuario_estandar') then
         raise exception 'Sin permiso para modificar obras.' using errcode = 'insufficient_privilege';
     end if;
+    if position('/' in coalesce(p_tempo_id, '')) > 0 then
+        return separar_compilado(p_track_id, p_tempo_id);
+    end if;
+    v_clean := fn_valor_tempo(p_tempo_id);   -- número o marcador estándar; error si no es válido
     if not exists (select 1 from tracks_master where id = p_track_id and deleted_at is null) then
         raise exception 'La obra no existe o fue eliminada.';
     end if;

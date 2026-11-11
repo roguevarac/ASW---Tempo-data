@@ -455,7 +455,40 @@ function tempoEstandar(valor){
   return MARCADORES_TEMPO.find(m => sinTildes(m) === sinTildes(v.replace(/^PENDIENTE /, 'PENDING '))) || null;
 }
 
+// Compilado: varios Tempo ID separados por "/" (123/456), uno por canción del título ("A / B - Artista").
+function tempoCompilado(value){
+  if(!String(value || '').includes('/')) return null;
+  const partes = String(value).split('/').map(v => tempoEstandar(v));
+  return partes.length >= 2 && partes.every(v => v) ? partes : [];
+}
+
 async function updateMasterField(id, field, value){
+  if(field === 'tempo_id' && tempoCompilado(value) !== null){
+    // El compilado se separa en una obra por canción: los streams se dividen en partes iguales y el nombre del
+    // compilado queda registrado para las próximas cargas.
+    const partes = tempoCompilado(value);
+    const obra = state.master.find(r => r.id === id);
+    const titulos = String(obra?.track_name_clean || '').split('/').map(s => s.trim());
+    const artista = String(obra?.track_artist_concat || '').slice(String(obra?.track_name_clean || '').length).replace(/^ - /, '');
+    if(!partes.length){
+      alert(`Compilado no válido: "${String(value).trim()}". Ingresá el Tempo ID de cada canción separados por "/", por ejemplo 123/456.`);
+      loadAll(); return;
+    }
+    if(titulos.length !== partes.length){
+      alert(`Para separar un compilado, el título tiene que tener una canción por cada Tempo ID, separadas por "/": `
+        + `"${obra?.track_artist_concat || ''}" tiene ${titulos.length} y se ingresaron ${partes.length}.`);
+      loadAll(); return;
+    }
+    const detalle = titulos.map((t, i) => `• ${t} - ${artista} (${partes[i]})`).join('\n');
+    if(!confirm(`"${obra.track_artist_concat}" es un compilado y se va a separar en ${partes.length} obras:\n\n${detalle}\n\n`
+        + `Los charts y streams del compilado se dividen en partes iguales entre las canciones, y las próximas cargas con `
+        + `este nombre también. Si alguna canción ya existe, se suma a esa obra.`)){ loadAll(); return; }
+    const { data, error } = await sb.rpc('fn_asignar_tempo_id', { p_track_id: id, p_tempo_id: partes.join('/'), p_unificar: false });
+    if(error) alert('No se separó el compilado. ' + error.message);
+    else alert(`El compilado quedó separado en ${data} obras.`);
+    loadAll();
+    return;
+  }
   if(field === 'tempo_id'){
     // Si otra obra ya tiene ese Tempo ID, es la misma canción escrita de otra forma: con la confirmación de la
     // persona, las dos obras se fusionan en la que ya lo tenía (charts, streams, reportes y envíos de ambas).
@@ -1372,7 +1405,7 @@ function renderMaster(){
   <tbody>${rows.length ? rows.map(r=>`
     <tr class="${r.deleted_at?'is-deleted':''}">
       <td>${r.track_artist_concat}</td>
-      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—" list="marcadoresTempo" inputmode="numeric" title="Número de Tempo ID, o elegí UNCONTROLLED / PENDING de la lista">` : (r.tempo_id||'—')}</td>
+      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—" list="marcadoresTempo" inputmode="numeric" title="Número de Tempo ID, o elegí UNCONTROLLED / PENDING de la lista. Compilado: un Tempo ID por canción separados por /">` : (r.tempo_id||'—')}</td>
     </tr>`).join('') : `<tr><td colspan="2"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
   </tbody></table>
   ${renderPager('master', state.masterTotal, state.masterPage)}`;
@@ -2189,10 +2222,10 @@ function attachAppEvents(){
 
 
   document.querySelectorAll('[data-field-master="tempo_id"]').forEach(el => {
-    // Solo se escriben números; UNCONTROLLED y PENDING se eligen de la lista (llegan completos, tal cual).
+    // Solo se escriben números (y "/" para un compilado: 123/456); UNCONTROLLED y PENDING se eligen de la lista.
     el.oninput = () => {
       if(MARCADORES_TEMPO.includes(el.value)) return;
-      const numero = el.value.replace(/[^0-9]/g, '');
+      const numero = el.value.replace(/[^0-9\/]/g, '');
       if(numero !== el.value) el.value = numero;
     };
   });

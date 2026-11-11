@@ -285,6 +285,22 @@ de la misma canción (por ejemplo, escrita de otra forma en Spotify y en YouTube
     se registran directamente en la obra que quedó.</li>
   <li><b>Cancelar:</b> no se modifica nada.</li>
 </ul>
+<h3>Compilado</h3>
+<p>Algunos charts registran varias canciones en un solo nombre, separadas por "/", por ejemplo
+<i>A Un Milimetro De Mi / Tan Natural - Q' Lokura, Sergio Torres</i>. En ese caso, ingresá el Tempo ID de cada canción
+en el mismo orden del título, separados por "/": <code>123/456</code>. Cada parte puede ser también uno de los valores
+admitidos (por ejemplo <code>123/UNCONTROLLED</code>). El sistema muestra cómo queda separado y solicita confirmación:</p>
+<ul>
+  <li>El compilado se separa en una obra por canción: título + " - " + artista, cada una con su Tempo ID
+    (<i>A Un Milimetro De Mi - Q' Lokura, Sergio Torres</i> con 123 y <i>Tan Natural - Q' Lokura, Sergio Torres</i> con
+    456). Si alguna canción ya existe en la tabla, se utiliza esa obra y no se repite.</li>
+  <li>Los streams del compilado se dividen en partes iguales entre las canciones, en cada territorio y semana. La tabla
+    principal y la tabla por territorio muestran las canciones en lugar del compilado.</li>
+  <li>Las próximas cargas de charts con el nombre del compilado se registran directamente en sus canciones, con los
+    streams divididos: el compilado no vuelve a aparecer.</li>
+</ul>
+<p>La cantidad de Tempo ID tiene que coincidir con la cantidad de canciones del título. El mismo formato se admite en
+la columna tempo_id del archivo de Tempo IDs que se carga en Carga CSV.</p>
 <h3>Botones de descarga</h3>
 <ul>
   <li><b>Descargar CSV:</b> "Track - Artista" y Tempo ID, para completar los Tempo ID en Excel o consultarlos en Tempo.</li>
@@ -573,6 +589,9 @@ habilitado, el <b>Panel de control</b> (Estado del sistema) muestra el enlace pa
     (ver <a href="#carga">Carga CSV</a>). Verificá que sea el archivo original y que esté guardado como CSV.</td></tr>
   <tr><td>"El Tempo ID … ya está asignado a …"</td><td>Si es la misma canción, volvé a ingresarlo y aceptá la
     unificación. Si no, verificá el Tempo ID en Tempo.</td></tr>
+  <tr><td>"Para separar un compilado, el título tiene que tener una canción por cada Tempo ID…"</td><td>La cantidad de
+    Tempo ID ingresados no coincide con las canciones del título separadas por "/". Ingresá un Tempo ID por canción,
+    en el mismo orden (ver <a href="#principal">Compilado</a>).</td></tr>
   <tr><td>"No se cargó: falta cargar la semana del …"</td><td>Entre la última semana cargada de ese territorio y
     plataforma y la del archivo falta al menos una. Cargá primero la semana indicada y después el archivo.</td></tr>
   <tr><td>"… no indica la semana del chart"</td><td>El nombre del chart no incluye la fecha. Descargalo nuevamente o

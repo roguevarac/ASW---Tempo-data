@@ -166,6 +166,30 @@ with sync_playwright() as p:
     check("Limpiar quita también el filtro Tempo ID", pag.input_value("#tempoFilter") == "")
     sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from tracks_master where track_name_raw = 'Tema Sin Tempo'")
 
+    # ---- compilado: un Tempo ID por canción separados por "/" separa la obra en una por canción
+    sqlq("select fn_upsert_ranking_row('Uno Comp / Dos Comp', 'Banda Nav', 'AR', 3, 3, 3, 1, 1001, 'x', 'u', 'spotify', null, '2026-10-08')")
+    comp_id = sqlq("select id from tracks_master where track_name_raw = 'Uno Comp / Dos Comp'")
+    pag.fill("#searchMaster", "Comp"); pag.wait_for_timeout(1500)
+    dialogos = []
+    def responder(d):
+        dialogos.append(d.message); d.accept()
+    pag.on("dialog", responder)
+    campo = pag.locator(f'[data-field-master="tempo_id"][data-id="{comp_id}"]')
+    campo.click(); pag.keyboard.type("777101/777102"); campo.press("Tab"); pag.wait_for_timeout(3000)
+    pag.remove_listener("dialog", responder)
+    check("compilado: se escribe 123/456, se confirma y la obra queda separada en una por canción, con los streams divididos",
+          len(dialogos) == 2 and "se va a separar en 2 obras" in dialogos[0] and "Uno Comp - Banda Nav (777101)" in dialogos[0]
+          and "quedó separado en 2 obras" in dialogos[1]
+          and sqlq("select string_agg(tm.track_artist_concat || '=' || tm.tempo_id || '=' || tt.streams, '|' order by tm.track_artist_concat) from tracks_master tm "
+                   "join territory_tracks tt on tt.track_master_id = tm.id where tm.track_name_raw like '%Comp%'")
+          == "Dos Comp - Banda Nav=777102=500|Uno Comp - Banda Nav=777101=501", (dialogos, sqlq("select string_agg(track_artist_concat, '|') from tracks_master where track_name_raw like '%Comp%'")))
+    check("...y la tabla muestra las dos obras en lugar del compilado",
+          "Uno Comp - Banda Nav" in pag.inner_text("tbody") and "Uno Comp / Dos Comp" not in pag.inner_text("tbody"), pag.inner_text("tbody")[:300])
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from territory_tracks where track_master_id in "
+         "(select id from tracks_master where track_name_raw in ('Uno Comp', 'Dos Comp')); "
+         "delete from tracks_master where track_name_raw in ('Uno Comp', 'Dos Comp')")
+
     pag.click('[data-tab="upload"]')
     # YouTube se carga a mano, igual que Spotify (no hay carga automática)
     pag.set_input_files("#fileInput", [str(youtube)])
@@ -389,7 +413,7 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Mantener la sesión iniciada", "Con Tempo ID", "Tickets enviados",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Mantener la sesión iniciada", "Con Tempo ID", "Compilado", "Tickets enviados",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
                                           "Respaldo en OneDrive", "no altera la información",
                                           "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))
