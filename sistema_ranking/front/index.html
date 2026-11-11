@@ -80,6 +80,7 @@ tbody tr.is-deleted{opacity:0.45;}
 .badge.pct{background:var(--red-bg);color:var(--red);}
 .estados{display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
 .estados .marcar{margin-top:2px;padding:2px 8px;font-size:11px;}
+th select.filtro-th{margin-left:8px;font-size:11px;padding:2px 4px;text-transform:none;letter-spacing:0;}
 .badge.estado-tr{background:var(--red-bg);color:var(--red);}
 .badge.ticket{background:rgba(217,164,65,0.18);color:#B07D12;}
 .rowbtn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:11.5px;padding:3px 6px;}
@@ -246,7 +247,7 @@ const ESTADOS = ['ok','duplicada','uncontrolled','porcentaje_incorrecto'];
 
 let state = {
   session: null, profile: null, loginError: '',
-  activeTab: 'master', searchMaster: '', searchTerritory: '', territoryCountry: '', estadoFilter: '', reclamosFilter: '', estadoTrabajoFilter: '',
+  activeTab: 'master', searchMaster: '', tempoFilter: '', searchTerritory: '', territoryCountry: '', estadoFilter: '', reclamosFilter: '', estadoTrabajoFilter: '',
   dateFromT: '', dateToT: '',
   dateFrom: '', dateTo: '', masterCountry: '', history: null, historyLoading: false,
   master: [], territoryControl: [], uploads: [], loading: true,
@@ -314,7 +315,7 @@ async function loadMaster(){
   const seq = ++state.seqMaster;
   const filtros = {
     ...filtrosFechas(), p_pais: state.masterCountry || null, p_include_deleted: incluyeEliminados(),
-    p_buscar: state.searchMaster || null,
+    p_buscar: state.searchMaster || null, p_tempo: state.tempoFilter || null,
   };
   // Obras identificadas (con Tempo ID o marcador) y sin identificar: se vuelven a contar solo si cambian los filtros
   // (al pasar de página no) o después de un cambio (se borra state.masterConteoClave).
@@ -361,6 +362,9 @@ async function loadTerritory(){
 
 // Filtros aplicados en la pestaña activa, para mostrarlos ("País: AR · Desde: 01/01/2025").
 function fechaCorta(f){ const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(f || ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : f; }
+// Filtro Tempo ID de la tabla principal (en el encabezado de la columna).
+const TEMPO_FILTRO = { vacios: 'Vacíos', con: 'Con Tempo ID' };
+const TEMPO_FILTRO_TEXTO = { vacios: 'vacíos', con: 'con valor' };
 function filtrosActivos(){
   const t = state.activeTab === 'territory';
   const pais = t ? state.territoryCountry : state.masterCountry;
@@ -368,6 +372,7 @@ function filtrosActivos(){
   const busqueda = (t ? state.searchTerritory : state.searchMaster).trim();
   const f = [];
   if(busqueda) f.push(busqueda === '-' ? 'Sin Tempo ID' : `Búsqueda: "${esc(busqueda)}"`);
+  if(!t && state.tempoFilter) f.push(`Tempo ID: ${TEMPO_FILTRO_TEXTO[state.tempoFilter]}`);
   if(pais) f.push(`País: ${pais}`);
   if(desde) f.push(`Desde: ${fechaCorta(desde)}`);
   if(hasta) f.push(`Hasta: ${fechaCorta(hasta)}`);
@@ -688,7 +693,7 @@ const ENVIO_TIPOS = {
 
 function envioFiltros(){
   return { p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null, p_pais: state.masterCountry || null,
-           p_buscar: state.searchMaster.trim() || null };
+           p_buscar: state.searchMaster.trim() || null, p_tempo: state.tempoFilter || null };
 }
 
 async function openEnvioDialog(tipo){
@@ -720,6 +725,7 @@ function renderEnvioDialog(){
   const c = d.conteo;
   const busqueda = state.searchMaster.trim();
   const filtros = [busqueda && (busqueda === '-' ? 'sin Tempo ID' : `búsqueda "${esc(busqueda)}"`),
+                   state.tempoFilter && `Tempo ID ${TEMPO_FILTRO_TEXTO[state.tempoFilter]}`,
                    state.masterCountry && `país ${state.masterCountry}`, state.dateFrom && `desde ${fechaCorta(state.dateFrom)}`,
                    state.dateTo && `hasta ${fechaCorta(state.dateTo)}`].filter(Boolean).join(', ');
   const u = d.ultimo;
@@ -1341,14 +1347,14 @@ function renderMaster(){
   return `
   <div class="toolbar">
     <div class="toolbar-left">
-      <input class="search ${state.searchMaster.trim() ? 'filtro-on' : ''}" placeholder="Buscar track, artista o Tempo ID (- = sin Tempo ID)" value="${esc(state.searchMaster)}" id="searchMaster">
+      <input class="search ${state.searchMaster.trim() ? 'filtro-on' : ''}" placeholder="Buscar track, artista o Tempo ID" value="${esc(state.searchMaster)}" id="searchMaster">
       <select id="masterCountry" class="${state.masterCountry ? 'filtro-on' : ''}">
         <option value="">Todos los países</option>
         ${COUNTRIES.map(c=>`<option value="${c}" ${state.masterCountry===c?'selected':''}>${c}</option>`).join('')}
       </select>
       <label class="check">Desde <input type="date" class="edit-field ${state.dateFrom ? 'filtro-on' : ''}" style="width:auto" id="dateFrom" value="${state.dateFrom}"></label>
       <label class="check">Hasta <input type="date" class="edit-field ${state.dateTo ? 'filtro-on' : ''}" style="width:auto" id="dateTo" value="${state.dateTo}"></label>
-      ${(state.dateFrom||state.dateTo||state.masterCountry||state.searchMaster.trim())?`<button class="btn" id="clearFilters">Limpiar</button>`:''}
+      ${(state.dateFrom||state.dateTo||state.masterCountry||state.tempoFilter||state.searchMaster.trim())?`<button class="btn" id="clearFilters">Limpiar</button>`:''}
     </div>
     <div style="display:flex;gap:10px;align-items:center;">
       <button class="btn" id="exportBo">Descargar reporte BO</button>
@@ -1358,7 +1364,11 @@ function renderMaster(){
   ${filtrosActivos().length ? `<div class="filtro-activo" id="filtroActivo">Filtros aplicados: ${filtrosActivos().join(' · ')} · <b>${fmtNum(state.masterTotal)} ${state.masterTotal === 1 ? 'obra' : 'obras'}</b></div>` : ''}
   ${state.masterConteo ? `<div class="conteo-id">Identificadas: ${fmtNum(state.masterConteo.identificadas)} · Sin identificar: ${fmtNum(state.masterConteo.sin)}</div>` : ''}
   <datalist id="marcadoresTempo">${MARCADORES_TEMPO.map(m => `<option value="${m}">`).join('')}</datalist>
-  <table><thead><tr><th style="width:70%">Track - Artista</th><th>Tempo ID</th></tr></thead>
+  <table><thead><tr><th style="width:70%">Track - Artista</th><th>Tempo ID
+    <select id="tempoFilter" class="filtro-th ${state.tempoFilter ? 'filtro-on' : ''}" title="Filtrar por Tempo ID">
+      <option value="">Todos</option>
+      ${Object.entries(TEMPO_FILTRO).map(([v, l]) => `<option value="${v}" ${state.tempoFilter===v?'selected':''}>${l}</option>`).join('')}
+    </select></th></tr></thead>
   <tbody>${rows.length ? rows.map(r=>`
     <tr class="${r.deleted_at?'is-deleted':''}">
       <td>${r.track_artist_concat}</td>
@@ -2152,7 +2162,9 @@ function attachAppEvents(){
   campo('dateFromT', v => { state.dateFromT = v; }, soloTerritorio);
   campo('dateToT', v => { state.dateToT = v; }, soloTerritorio);
   const lm = document.getElementById('clearFilters');
-  if(lm) lm.onclick = () => aplicarFiltro(() => { state.dateFrom=''; state.dateTo=''; state.masterCountry=''; state.searchMaster=''; });
+  if(lm) lm.onclick = () => aplicarFiltro(() => { state.dateFrom=''; state.dateTo=''; state.masterCountry=''; state.searchMaster=''; state.tempoFilter=''; });
+  const tfl = document.getElementById('tempoFilter');
+  if(tfl) tfl.onchange = (e) => aplicarFiltro(() => { state.tempoFilter = e.target.value; });
   const lt = document.getElementById('clearFiltersT');
   if(lt) lt.onclick = () => aplicarFiltro(() => {
     state.dateFromT=''; state.dateToT=''; state.territoryCountry=''; state.estadoFilter=''; state.reclamosFilter=''; state.estadoTrabajoFilter='';

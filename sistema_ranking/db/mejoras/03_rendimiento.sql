@@ -38,11 +38,24 @@ AS $function$
                 else lower(coalesce(p_texto, '') || ' ' || coalesce(p_tempo_id, '')) like fn_patron_busqueda(p_buscar) end;
 $function$;
 
+-- Filtro Tempo ID de la tabla principal (pedido del usuario, 11/11/2026: filtrar vacíos junto con la búsqueda por artista):
+-- 'vacios' = sin Tempo ID, 'con' = con Tempo ID (número o marcador), NULL = todas.
+CREATE OR REPLACE FUNCTION public.fn_coincide_tempo(p_tempo text, p_tempo_id text)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+    select case p_tempo when 'vacios' then coalesce(trim(p_tempo_id), '') = ''
+                        when 'con' then coalesce(trim(p_tempo_id), '') <> ''
+                        else true end;
+$function$;
+
 -- Tabla principal: una página (p_limite filas desde p_offset), con los mismos filtros que fn_master_view, la búsqueda
--- por título, artista o Tempo ID, el seguimiento de envíos de cada obra y el total de filas que cumplen el filtro.
+-- por título, artista o Tempo ID, el filtro Tempo ID, el seguimiento de envíos de cada obra y el total de filas.
+DROP FUNCTION IF EXISTS public.fn_master_pagina(date, date, pais_code_enum, boolean, text, integer, integer);
 CREATE OR REPLACE FUNCTION public.fn_master_pagina(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
     p_pais pais_code_enum DEFAULT NULL::pais_code_enum, p_include_deleted boolean DEFAULT false, p_buscar text DEFAULT NULL::text,
-    p_limite integer DEFAULT 100, p_offset integer DEFAULT 0)
+    p_limite integer DEFAULT 100, p_offset integer DEFAULT 0, p_tempo text DEFAULT NULL::text)
  RETURNS TABLE(id uuid, track_artist_concat text, track_name_clean text, tempo_id text, last_chart_date date,
                deleted_at timestamp with time zone, ult_bo_at timestamp with time zone, ult_bo_carga integer,
                ult_csv_at timestamp with time zone, total bigint)
@@ -64,6 +77,7 @@ AS $function$
         where (p_include_deleted or tm.deleted_at is null)
           and ((p_pais is null and p_date_from is null and p_date_to is null) or f.track_master_id is not null)
           and fn_coincide_busqueda(p_buscar, tm.tempo_id, tm.track_artist_concat)
+          and fn_coincide_tempo(p_tempo, tm.tempo_id)
     ), pagina as (
         select b.*, count(*) over () as total
         from base b
@@ -85,8 +99,10 @@ $function$;
 
 -- Tabla principal: cuántas obras tienen Tempo ID (número o marcador, como UNCONTROLLED) y cuántas no, con los mismos
 -- filtros y búsqueda que fn_master_pagina (las dos cantidades suman su total).
+DROP FUNCTION IF EXISTS public.fn_master_conteo(date, date, pais_code_enum, boolean, text);
 CREATE OR REPLACE FUNCTION public.fn_master_conteo(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
-    p_pais pais_code_enum DEFAULT NULL::pais_code_enum, p_include_deleted boolean DEFAULT false, p_buscar text DEFAULT NULL::text)
+    p_pais pais_code_enum DEFAULT NULL::pais_code_enum, p_include_deleted boolean DEFAULT false, p_buscar text DEFAULT NULL::text,
+    p_tempo text DEFAULT NULL::text)
  RETURNS TABLE(identificadas bigint, sin_identificar bigint)
  LANGUAGE sql
  STABLE
@@ -105,7 +121,8 @@ AS $function$
     where (p_include_deleted or tm.deleted_at is null)
       and ((p_pais is null and p_date_from is null and p_date_to is null)
            or tm.id in (select f.track_master_id from filtrado f))
-      and fn_coincide_busqueda(p_buscar, tm.tempo_id, tm.track_artist_concat);
+      and fn_coincide_busqueda(p_buscar, tm.tempo_id, tm.track_artist_concat)
+      and fn_coincide_tempo(p_tempo, tm.tempo_id);
 $function$;
 
 -- Ticket y fecha por obra y territorio (los escribe la persona en la tabla por territorio, con fn_guardar_seguimiento):
@@ -198,9 +215,10 @@ $function$;
 
 -- Cantidad de obras de cada opción de descarga (reporte BO o CSV) con los filtros y la búsqueda de la tabla principal:
 -- las mismas que tomaría fn_preparar_envio.
-DROP FUNCTION IF EXISTS public.fn_envio_conteo(text, date, date, pais_code_enum);   -- antes no tenía la búsqueda
+DROP FUNCTION IF EXISTS public.fn_envio_conteo(text, date, date, pais_code_enum);         -- antes no tenía la búsqueda
+DROP FUNCTION IF EXISTS public.fn_envio_conteo(text, date, date, pais_code_enum, text);   -- ni el filtro Tempo ID
 CREATE OR REPLACE FUNCTION public.fn_envio_conteo(p_tipo text, p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date,
-    p_pais pais_code_enum DEFAULT NULL::pais_code_enum, p_buscar text DEFAULT NULL::text)
+    p_pais pais_code_enum DEFAULT NULL::pais_code_enum, p_buscar text DEFAULT NULL::text, p_tempo text DEFAULT NULL::text)
  RETURNS TABLE(todas bigint, identificadas bigint)
  LANGUAGE sql
  STABLE
@@ -210,7 +228,8 @@ AS $function$
                select 1 from envio_identificadas ei where ei.tipo = p_tipo and ei.track_master_id = v.id))
     from fn_master_view(p_date_from, p_date_to, p_pais, false) v
     where (p_tipo <> 'reporte_bo' or fn_envio_identificada(p_tipo, v.tempo_id))
-      and fn_coincide_busqueda(p_buscar, v.tempo_id, v.track_artist_concat);
+      and fn_coincide_busqueda(p_buscar, v.tempo_id, v.track_artist_concat)
+      and fn_coincide_tempo(p_tempo, v.tempo_id);
 $function$;
 
 -- Semana del último chart cargado, por territorio y plataforma (un acceso al índice por combinación).

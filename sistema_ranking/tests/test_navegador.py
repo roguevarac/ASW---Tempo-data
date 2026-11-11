@@ -141,6 +141,24 @@ with sync_playwright() as p:
           filas == [""] and "Tema Sin Tempo" in pag.inner_text("tbody") and "Sin Tempo ID" in pag.inner_text("#filtroActivo"),
           (filas, pag.inner_text("tbody")[:300]))
     pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    pag.select_option("#tempoFilter", "vacios")
+    aviso = aceptar_filtro()
+    filas = pag.evaluate("[...document.querySelectorAll('[data-field-master]')].map(i => i.value)")
+    check("filtro Tempo ID 'Vacíos' en el encabezado de la columna: solo obras sin Tempo ID",
+          filas == [""] and "Tempo ID: vacíos" in aviso and "Tema Sin Tempo" in pag.inner_text("tbody"), (filas, aviso))
+    pag.fill("#searchMaster", "Guion"); pag.wait_for_timeout(1500)
+    vacias_artista = pag.inner_text("tbody")
+    pag.fill("#searchMaster", "Navegador"); pag.wait_for_timeout(1500)
+    check("...se combina con la búsqueda por artista (vacíos de ese artista)",
+          "Tema Sin Tempo" in vacias_artista and "Tema Sin Tempo" not in pag.inner_text("tbody")
+          and pag.locator("[data-field-master]").count() == 0, (vacias_artista[:200], pag.inner_text("tbody")[:200]))
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    pag.select_option("#tempoFilter", "con")
+    aceptar_filtro()
+    filas = pag.evaluate("[...document.querySelectorAll('[data-field-master]')].map(i => i.value)")
+    check("filtro Tempo ID 'Con Tempo ID': solo obras identificadas", filas and all(filas), filas)
+    pag.click("#clearFilters"); aceptar_filtro()
+    check("Limpiar quita también el filtro Tempo ID", pag.input_value("#tempoFilter") == "")
     sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from tracks_master where track_name_raw = 'Tema Sin Tempo'")
 
     pag.click('[data-tab="upload"]')
@@ -371,7 +389,7 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Mantener la sesión iniciada", "Tickets enviados",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Mantener la sesión iniciada", "Con Tempo ID", "Tickets enviados",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
                                           "Respaldo en OneDrive", "no altera la información",
                                           "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))

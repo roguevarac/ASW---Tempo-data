@@ -318,6 +318,14 @@ obras = rpc(h, "fn_envio_obras", {"p_envio_id": envio}).json()
 check("el CSV sale con las obras de la búsqueda (y queda registrada en el envío)",
       r.json()[0]["obras"] == int(esperadas) and all("fusion" in o["track_artist_concat"].lower() for o in obras)
       and sqlq(f"select buscar from envios where id = {envio}") == "fusion", (r.text, obras[:3]))
+vacias = rpc(h, "fn_master_pagina", {"p_tempo": "vacios", "p_limite": 500}).json()
+con = rpc(h, "fn_master_pagina", {"p_tempo": "con", "p_limite": 500}).json()
+total = int(sqlq("select count(*) from tracks_master where deleted_at is null"))
+check("filtro Tempo ID: vacíos y con Tempo ID se reparten todas las obras",
+      vacias and con and all(not x["tempo_id"] for x in vacias) and all(x["tempo_id"] for x in con)
+      and len(vacias) + len(con) == total and rpc(h, "fn_master_conteo", {"p_tempo": "vacios"}).json()[0]["identificadas"] == 0)
+r = rpc(h, "fn_envio_conteo", {"p_tipo": "csv_principal", "p_tempo": "vacios"})
+check("la descarga respeta el filtro Tempo ID", r.json()[0]["todas"] == len(vacias), r.text)
 nombres = [x["track_artist_concat"] for x in rpc(h, "fn_master_pagina", {"p_limite": 500}).json()]
 check("tabla principal en orden alfabético", len(nombres) > 3 and nombres == sorted(nombres, key=str.lower), nombres[:8])
 territorio = [x["track_artist_concat"] for x in rpc(h, "fn_territory_pagina", {"p_limite": 500}).json()]
