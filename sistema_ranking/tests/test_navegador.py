@@ -73,9 +73,15 @@ with sync_playwright() as p:
     errores_js.clear()
     check("login incorrecto muestra el error", "El email o la contraseña no son correctos." in pag.content())
 
-    pag.fill("#loginEmail", "admin@prueba.local"); pag.fill("#loginPass", "clave-admin-123"); pag.click("#loginBtn")
+    check("el ingreso es un formulario con usuario y contraseña (el navegador ofrece guardarla) y 'Mantener la sesión' marcada",
+          pag.locator("form#loginForm input[autocomplete=username]#loginEmail").count() == 1
+          and pag.locator("form#loginForm input[autocomplete=current-password]#loginPass").count() == 1
+          and pag.locator("form#loginForm button[type=submit]#loginBtn").count() == 1 and pag.is_checked("#loginRecordar"))
+    pag.fill("#loginEmail", "admin@prueba.local"); pag.fill("#loginPass", "clave-admin-123"); pag.press("#loginPass", "Enter")
     pag.wait_for_selector("#logoutBtn", timeout=10000)
     check("login correcto entra al sistema", pag.is_visible("#logoutBtn"))
+    check("con 'Mantener la sesión iniciada', la sesión queda guardada en la computadora (sobrevive a cerrar el navegador)",
+          pag.evaluate("JSON.parse(localStorage.getItem('rk_session') || '{}').recordar === true && !sessionStorage.getItem('rk_session')"))
 
     # ---- carga de CSV (Spotify y Tempo IDs), en secuencia como el front
     pag.click('[data-tab="upload"]')
@@ -365,7 +371,7 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Tickets enviados",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Mantener la sesión iniciada", "Tickets enviados",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
                                           "Respaldo en OneDrive", "no altera la información",
                                           "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))

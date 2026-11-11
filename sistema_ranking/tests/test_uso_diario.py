@@ -76,6 +76,22 @@ r = httpx.get(f"{BASE}/rest/app_users", headers=h_nuevo)
 check("vence tras SESSION_HOURS sin uso, con mensaje claro",
       r.status_code == 401 and "venció" in r.json()["message"], r.text)
 check("una sesión vencida no se puede renovar", httpx.post(f"{BASE}/auth/renovar", headers=h_nuevo).status_code == 401)
+# "Mantener la sesión iniciada en esta computadora": vence tras 30 días sin uso, no tras SESSION_HOURS.
+r = httpx.post(f"{BASE}/auth/login", json={"email": "diario@prueba.local", "password": "clave-diario-123", "recordar": True})
+h_rec = {"Authorization": "Bearer " + r.json()["access_token"]}
+sid_rec = sqlq("select s.id from auth.sesiones s join auth.users u on u.id = s.user_id where u.email = 'diario@prueba.local' "
+               "order by creada desc limit 1")
+check("mantener la sesión iniciada: el token dura 30 días y la sesión queda marcada",
+      r.status_code == 200 and r.json()["recordar"] is True and r.json()["expires_in"] == 30 * 86400
+      and sqlq(f"select recordar from auth.sesiones where id = '{sid_rec}'") == "t", r.text)
+sqlq(f"update auth.sesiones set ultimo_uso = now() - interval '9 days' where id = '{sid_rec}'")
+r = httpx.post(f"{BASE}/auth/renovar", headers=h_rec)
+check("...sigue abierta después de días sin uso, y al renovarla conserva la opción",
+      leer(h_rec) == 200 and r.status_code == 200 and r.json()["recordar"] is True and r.json()["expires_in"] == 30 * 86400, r.text)
+sqlq(f"update auth.sesiones set ultimo_uso = now() - interval '31 days' where id = '{sid_rec}'")
+check("...y vence tras 30 días sin uso", leer(h_rec) == 401)
+r = httpx.post(f"{BASE}/auth/login", json={"email": "diario@prueba.local", "password": "clave-diario-123"})
+check("sin la opción, la sesión es la de siempre (horas)", r.json()["recordar"] is False and r.json()["expires_in"] < 86400, r.text)
 _, h = ingresar()
 check("cerrar sesión responde", httpx.post(f"{BASE}/auth/salir", headers=h).status_code == 204)
 check("después de cerrar sesión el token ya no sirve", leer(h) == 401)

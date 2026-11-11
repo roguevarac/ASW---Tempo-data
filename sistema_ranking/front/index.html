@@ -28,6 +28,8 @@ body{margin:0;background:var(--void);color:var(--text-primary);font-family:'IBM 
 .login-card label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:5px;}
 .login-card input{width:100%;background:var(--panel-raised);border:1px solid var(--line);border-radius:3px;padding:9px 10px;color:var(--text-primary);font-size:13px;margin-bottom:14px;}
 .login-card input:focus{outline:none;border-color:var(--brass-dim);}
+.login-card label.recordar{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:12px;margin:-4px 0 14px;cursor:pointer;}
+.login-card label.recordar input{width:auto;margin:0;padding:0;}
 .login-card .err{color:var(--red);font-size:12px;margin:-6px 0 12px;min-height:14px;}
 
 .topbar{display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:20px;border-bottom:1px solid var(--line);}
@@ -1204,9 +1206,12 @@ function lastLoadCountry(){
 }
 
 // ---------- Login ----------
-async function doLogin(email, password){
+// "Mantener la sesión iniciada en esta computadora": la elección se recuerda en este navegador (por defecto, marcada).
+function recordarPreferido(){ try { return localStorage.getItem('rk_recordar') !== '0'; } catch(e){ return true; } }
+async function doLogin(email, password, recordar = false){
   Object.assign(state, { loginError: '', loginAviso: '', loginEmailValor: email });
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  try { localStorage.setItem('rk_recordar', recordar ? '1' : '0'); } catch(e){ /* sin storage */ }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password, recordar });
   if(error){ state.loginError = error.message; render(); return; }
   state.session = data.session;
   await loadProfile();
@@ -1226,13 +1231,13 @@ async function doLogout(){
 function renderLogin(){
   const m = state.loginModo;
   const email = `<label>Email</label>
-      <input type="email" id="loginEmail" placeholder="usuario@oficina.com" value="${(state.loginEmailValor || '').replace(/"/g, '&quot;')}">`;
+      <input type="email" id="loginEmail" name="email" autocomplete="username" placeholder="usuario@oficina.com" value="${(state.loginEmailValor || '').replace(/"/g, '&quot;')}">`;
   const nuevas = `<label>Contraseña nueva (mínimo 10 caracteres)</label>
       <input type="password" id="claveNueva" autocomplete="new-password">
       <label>Repetir la contraseña nueva</label>
       <input type="password" id="claveRepetir" autocomplete="new-password">`;
   const boton = (id, texto) => `<div class="err" id="loginErr">${state.loginError}</div>
-      <button class="btn primary" style="width:100%;justify-content:center" id="${id}">${texto}</button>`;
+      <button type="submit" class="btn primary" style="width:100%;justify-content:center" id="${id}">${texto}</button>`;
   const volver = `<div class="login-links"><a class="login-volver" data-login-modo="ingresar">Volver al ingreso</a></div>`;
   let cuerpo;
   if(m === 'cambiar'){
@@ -1250,7 +1255,9 @@ function renderLogin(){
   } else {
     cuerpo = `<p>Acceso sólo para usuarios verificados</p>${email}
       <label>Contraseña</label>
-      <input type="password" id="loginPass" autocomplete="current-password">
+      <input type="password" id="loginPass" name="password" autocomplete="current-password">
+      <label class="check recordar"><input type="checkbox" id="loginRecordar" ${recordarPreferido() ? 'checked' : ''}>
+        Mantener la sesión iniciada en esta computadora</label>
       ${state.loginAviso ? `<div class="ok" id="loginOk">${state.loginAviso}</div>` : ''}
       ${boton('loginBtn', 'Ingresar')}
       <div class="login-links"><a data-login-modo="cambiar" id="linkCambiar">Cambiar contraseña</a>
@@ -1260,7 +1267,7 @@ function renderLogin(){
   <div class="login-wrap">
     <div class="login-card">
       <h1 class="display">Auditor de Rankings Digitales</h1>
-      ${cuerpo}
+      <form id="loginForm" autocomplete="on" novalidate>${cuerpo}</form>
     </div>
   </div>`;
 }
@@ -2088,12 +2095,15 @@ function rows_count(){
 }
 
 function attachLoginEvents(){
-  const ingresar = document.getElementById('loginBtn');
-  if(ingresar) ingresar.onclick = () => {
-    doLogin(document.getElementById('loginEmail').value, document.getElementById('loginPass').value);
+  // Un formulario con usuario y contraseña: Edge y Chrome ofrecen guardar la contraseña y la completan al volver.
+  const form = document.getElementById('loginForm');
+  if(form) form.onsubmit = (e) => {
+    e.preventDefault();
+    if(document.getElementById('loginBtn')){
+      doLogin(document.getElementById('loginEmail').value, document.getElementById('loginPass').value,
+              !!document.getElementById('loginRecordar')?.checked);
+    } else if(document.getElementById('claveGuardar')) guardarClaveIngreso();
   };
-  const guardar = document.getElementById('claveGuardar');
-  if(guardar) guardar.onclick = guardarClaveIngreso;
   document.querySelectorAll('[data-login-modo]').forEach(a => a.onclick = () => {
     Object.assign(state, { loginModo: a.dataset.loginModo, loginError: '', loginAviso: '',
                            loginEmailValor: document.getElementById('loginEmail').value });

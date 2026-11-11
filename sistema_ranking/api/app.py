@@ -188,21 +188,27 @@ def _valor_db(v):
 # el front lo renueva mientras se usa la aplicación (/auth/renovar); la sesión vence tras SESSION_HOURS sin uso, al
 # cerrarla (/auth/salir), al cambiar o restablecer la contraseña (/auth/clave, /auth/restablecer) o al bloquear al
 # usuario.
+# "Mantener la sesión iniciada en esta computadora" (pedido del usuario, 11/11/2026): la sesión vence tras RECORDAR_DIAS
+# sin uso en lugar de SESSION_HOURS; se cierra igual al salir, al cambiar la contraseña o al bloquear al usuario.
 INACTIVIDAD = f"{SESSION_HOURS} hours"
+RECORDAR_DIAS = int(os.environ.get("RECORDAR_DIAS", "30"))
+INACTIVIDAD_RECORDAR = f"{RECORDAR_DIAS} days"
 
 
-def emitir_token(user_id, email, sesion):
+def emitir_token(user_id, email, sesion, recordar=False):
     ahora = int(time.time())
-    exp = ahora + int(SESSION_HOURS * 3600)
-    token = jwt.encode({"sub": str(user_id), "email": email, "role": "authenticated", "sid": str(sesion),
-                        "iat": ahora, "exp": exp}, JWT_SECRET, algorithm="HS256")
-    return token, exp
+    duracion = RECORDAR_DIAS * 86400 if recordar else int(SESSION_HOURS * 3600)
+    datos = {"sub": str(user_id), "email": email, "role": "authenticated", "sid": str(sesion), "iat": ahora,
+             "exp": ahora + duracion}
+    if recordar:
+        datos["rec"] = True
+    return jwt.encode(datos, JWT_SECRET, algorithm="HS256"), ahora + duracion, duracion
 
 
-def respuesta_sesion(user_id, email, sesion):
-    token, exp = emitir_token(user_id, email, sesion)
-    return respuesta_json({"access_token": token, "token_type": "bearer", "expires_at": exp,
-                           "expires_in": int(SESSION_HOURS * 3600), "user": {"id": str(user_id), "email": email}})
+def respuesta_sesion(user_id, email, sesion, recordar=False):
+    token, exp, duracion = emitir_token(user_id, email, sesion, recordar)
+    return respuesta_json({"access_token": token, "token_type": "bearer", "expires_at": exp, "expires_in": duracion,
+                           "recordar": bool(recordar), "user": {"id": str(user_id), "email": email}})
 
 
 def usuario_del_pedido(request: Request):
@@ -234,7 +240,7 @@ def transaccion(claims=None, rol="authenticated", limite=None):
                     if rol == "authenticated":
                         # Sesión cerrada o vencida, o usuario bloqueado o borrado: deja de valer en el acto.
                         cur.execute("SELECT auth.sesion_valida(%s::uuid, %s::uuid, %s::interval) AS activo",
-                                    (claims.get("sid"), claims["sub"], INACTIVIDAD))
+                                    (claims.get("sid"), claims["sub"], INACTIVIDAD_RECORDAR if claims.get("rec") else INACTIVIDAD))
                         if not cur.fetchone()["activo"]:
                             raise ErrorApi(401, "La sesión venció. Volvé a ingresar.")
                 yield cur
@@ -265,6 +271,7 @@ async def login(request: Request):
     body = await request.json()
     email = str(body.get("email") or "").strip().lower()
     password = str(body.get("password") or "")
+    recordar = body.get("recordar") is True
     clave = f"{request.client.host if request.client else '-'}|{email}"
     _frenar_fuerza_bruta(clave)
     with pool.connection() as conn, conn.cursor() as cur:
@@ -273,9 +280,9 @@ async def login(request: Request):
         if not uid:
             _intento_fallido(clave)
             raise ErrorApi(400, "El email o la contraseña no son correctos.")
-        cur.execute("SELECT auth.abrir_sesion(%s)", (uid,))
+        cur.execute("SELECT auth.abrir_sesion(%s, %s)", (uid, recordar))
         sesion = cur.fetchone()[0]
-    return respuesta_sesion(uid, email, sesion)
+    return respuesta_sesion(uid, email, sesion, recordar)
 
 
 @app.post("/auth/renovar")
@@ -284,7 +291,7 @@ def renovar(request: Request):
     c = usuario_del_pedido(request)
     with transaccion(c):
         pass
-    return respuesta_sesion(c["sub"], c.get("email"), c.get("sid"))
+    return respuesta_sesion(c["sub"], c.get("email"), c.get("sid"), bool(c.get("rec")))
 
 
 @app.post("/auth/salir")

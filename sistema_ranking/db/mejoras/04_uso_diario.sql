@@ -23,15 +23,18 @@ CREATE TABLE IF NOT EXISTS auth.sesiones (
     cerrada    timestamptz
 );
 CREATE INDEX IF NOT EXISTS ix_sesiones_usuario ON auth.sesiones (user_id) WHERE cerrada IS NULL;
+-- "Mantener la sesión iniciada en esta computadora": vence tras 30 días sin uso en lugar de las horas de SESSION_HOURS.
+ALTER TABLE auth.sesiones ADD COLUMN IF NOT EXISTS recordar boolean NOT NULL DEFAULT false;
 COMMENT ON TABLE auth.sesiones IS 'Sesiones abiertas de la aplicación. La API valida cada pedido contra esta tabla.';
 
 -- Abre una sesión para un usuario recién validado (la llama la API al ingresar). Limpia las sesiones viejas.
-CREATE OR REPLACE FUNCTION auth.abrir_sesion(p_user uuid) RETURNS uuid
+DROP FUNCTION IF EXISTS auth.abrir_sesion(uuid);
+CREATE OR REPLACE FUNCTION auth.abrir_sesion(p_user uuid, p_recordar boolean DEFAULT false) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_id uuid;
 BEGIN
-    DELETE FROM auth.sesiones WHERE coalesce(cerrada, ultimo_uso) < now() - interval '30 days';
-    INSERT INTO auth.sesiones (user_id) VALUES (p_user) RETURNING id INTO v_id;
+    DELETE FROM auth.sesiones WHERE coalesce(cerrada, ultimo_uso) < now() - interval '31 days';
+    INSERT INTO auth.sesiones (user_id, recordar) VALUES (p_user, coalesce(p_recordar, false)) RETURNING id INTO v_id;
     RETURN v_id;
 END $$;
 
@@ -150,10 +153,10 @@ BEGIN
     RETURN true;
 END $$;
 
-REVOKE ALL ON FUNCTION auth.abrir_sesion(uuid), auth.sesion_valida(uuid, uuid, interval), auth.cerrar_sesion(uuid),
+REVOKE ALL ON FUNCTION auth.abrir_sesion(uuid, boolean), auth.sesion_valida(uuid, uuid, interval), auth.cerrar_sesion(uuid),
     auth.cambiar_clave(text, text, text), auth.generar_codigo_clave(text, integer), auth.restablecer_clave(text, text, text)
     FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION auth.abrir_sesion(uuid), auth.cerrar_sesion(uuid), auth.cambiar_clave(text, text, text),
+GRANT EXECUTE ON FUNCTION auth.abrir_sesion(uuid, boolean), auth.cerrar_sesion(uuid), auth.cambiar_clave(text, text, text),
     auth.restablecer_clave(text, text, text) TO authenticator;
 GRANT EXECUTE ON FUNCTION auth.sesion_valida(uuid, uuid, interval) TO authenticated, service_role;
 

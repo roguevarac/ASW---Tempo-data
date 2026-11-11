@@ -15,22 +15,33 @@
  *
  * La sesión se renueva sola mientras se usa la aplicación: cuando pasó la mitad de la vigencia del token, el pedido
  * siguiente pide uno nuevo (/auth/renovar). Vence después de SESSION_HOURS sin uso o al cerrar sesión.
+ * Con "Mantener la sesión iniciada en esta computadora" (recordar) se guarda en localStorage y vence tras 30 días sin
+ * uso; sin esa opción se guarda en sessionStorage y termina al cerrar el navegador.
  */
 (function () {
   const CLAVE_SESION = 'rk_session';
 
+  function borrarSesion() {
+    for (const almacen of [localStorage, sessionStorage]) {
+      try { almacen.removeItem(CLAVE_SESION); } catch (e) { /* sin storage */ }
+    }
+  }
+
   function leerSesion() {
-    try {
-      const s = JSON.parse(localStorage.getItem(CLAVE_SESION) || 'null');
-      if (s && s.expires_at * 1000 > Date.now() + 5000) return s;
-    } catch (e) { /* sesión corrupta */ }
-    try { localStorage.removeItem(CLAVE_SESION); } catch (e) { /* sin storage */ }
+    for (const almacen of [localStorage, sessionStorage]) {
+      try {
+        const s = JSON.parse(almacen.getItem(CLAVE_SESION) || 'null');
+        if (s && s.expires_at * 1000 > Date.now() + 5000) return s;
+      } catch (e) { /* sesión corrupta o sin storage */ }
+    }
+    borrarSesion();
     return null;
   }
 
   function guardarSesion(datos) {
     datos.renovar_desde = Math.floor(Date.now() / 1000) + Math.floor((datos.expires_in || 0) / 2);
-    localStorage.setItem(CLAVE_SESION, JSON.stringify(datos));
+    borrarSesion();
+    (datos.recordar ? localStorage : sessionStorage).setItem(CLAVE_SESION, JSON.stringify(datos));
   }
 
   function createClient(baseUrl) {
@@ -68,7 +79,7 @@
       }
       if (res.status === 401 && s) {
         // La sesión venció: se limpia y se vuelve a la pantalla de login.
-        localStorage.removeItem(CLAVE_SESION);
+        borrarSesion();
         setTimeout(() => location.reload(), 50);
       }
       if (res.status === 204 || res.status === 201 && !(res.headers.get('content-type') || '').includes('json')) {
@@ -146,8 +157,8 @@
 
     // ---------------------------------------------------------------- sesión
     const auth = {
-      async signInWithPassword({ email, password }) {
-        const r = await pedir('POST', '/auth/login', { body: { email, password } });
+      async signInWithPassword({ email, password, recordar }) {
+        const r = await pedir('POST', '/auth/login', { body: { email, password, recordar: recordar === true } });
         if (r.error) return { data: { session: null, user: null }, error: r.error };
         guardarSesion(r.data);
         return { data: { session: r.data, user: r.data.user }, error: null };
@@ -158,7 +169,7 @@
       async signOut() {
         // Anula la sesión en el servidor: el token deja de servir aunque alguien lo haya copiado.
         if (leerSesion()) await pedir('POST', '/auth/salir');
-        localStorage.removeItem(CLAVE_SESION);
+        borrarSesion();
         return { error: null };
       },
       async cambiarClave(email, actual, nueva) {
