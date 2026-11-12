@@ -17,7 +17,9 @@
 --                        < 1 multiplica).
 --   * SMP Latin (como financials/song_financials_el.sql, verificado al centavo con
 --     el front en la obra 6101269): dp_earnings_lines.earnings_lines_v, oficina
---     United States, fuente SMP Latin. Montos en USD:
+--     United States, fuente exacta "SMP Latin" / sub fuente "BackOffice - Latin"
+--     (confirmado por el usuario el 12/11/2026; no otras intercompany como SMP UK,
+--     SMP Mexico o SMP LATINA). Montos en USD:
 --       smp_latin_gross_income = gross_client_share_of_income_amt (Gross Income)
 --       affiliate_nps / domestic_nps / client_royalty como en el front
 --       smp_latin_converted_net = converted_net_am una vez por línea de statement
@@ -82,7 +84,7 @@ stmt AS (
         FROM (
             SELECT
                 s.song_id, s.processing_office_name, s.semiannual_statement_period, s.lc_gross_stmt_am, s.converted_net_am,
-                CASE WHEN UPPER(s.source_name) LIKE 'SMP LATIN%' THEN 'L' ELSE 'E' END AS tipo,
+                CASE WHEN s.source_name = 'SMP Latin' AND s.sub_source_name = 'BackOffice - Latin' THEN 'L' ELSE 'E' END AS tipo,
                 CASE
                     WHEN s.exchange_to_us_currency IS NULL OR s.exchange_to_us_currency = 0 THEN NULL
                     WHEN s.exchange_to_us_currency > 1 THEN 1 / s.exchange_to_us_currency
@@ -94,10 +96,11 @@ stmt AS (
               AND (
                     -- EMMAC: oficina México, cualquier variante de EMMAC en fuente o sub fuente     -- EDITABLE
                     (s.processing_office_name LIKE 'Mexico%'
-                     AND UPPER(s.source_name) NOT LIKE 'SMP LATIN%'
+                     AND s.source_name <> 'SMP Latin'
                      AND (UPPER(s.source_name) LIKE '%EMMAC%' OR UPPER(s.sub_source_name) LIKE '%EMMAC%'))
                     -- SMP Latin en las demás oficinas (Estados Unidos sale de las líneas de ganancia) -- EDITABLE
-                 OR (UPPER(s.source_name) LIKE 'SMP LATIN%' AND s.processing_office_name <> 'United States')
+                 OR (s.source_name = 'SMP Latin' AND s.sub_source_name = 'BackOffice - Latin'
+                     AND s.processing_office_name <> 'United States')
                   )
               -- AND s.semiannual_statement_period BETWEEN DATE '2024-01-01' AND DATE '2026-12-31'   -- EDITABLE: período
         ) y
@@ -125,7 +128,8 @@ latin AS (
                                ORDER BY e.earnings_line_id) AS rn_linea
         FROM dp_earnings_lines.earnings_lines_v e
         WHERE e.processing_office_name = 'United States'                               -- EDITABLE: oficina
-          AND e.source_name LIKE 'SMP Latin%'                                          -- EDITABLE: fuente SMP Latin
+          AND e.source_name = 'SMP Latin'                                              -- EDITABLE: fuente SMP Latin
+          AND e.sub_source_name = 'BackOffice - Latin'                                 --   (no SMP UK, SMP Mexico, SMP LATINA...)
           AND e.song_id IS NOT NULL
           -- AND e.accounting_period_dt BETWEEN DATE '2024-01-01' AND DATE '2026-12-31'          -- EDITABLE: período
     ) x

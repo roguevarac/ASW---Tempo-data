@@ -74,6 +74,7 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 - `financials/recaudacion_emmac_smp_latin_v1.sql`: una fila por obra controlada (de `obras_controladas_pais_resultado`)
   con lo recaudado en EMMAC (statement lines, oficina México; criterio de `mexico_emmac.sql`) y SMP Latin (earnings
   lines, oficina US; otras oficinas desde statement lines) y totales en USD. El usuario dijo SACM pero era EMMAC.
+  SMP Latin = `source_name = 'SMP Latin'` y `sub_source_name = 'BackOffice - Latin'` exactos (confirmado por el usuario).
   EMMAC se escribe de varias formas ("Emmac", "EMMAC/SACM"...): comparar con UPPER (LIKE distingue mayúsculas).
   El sentido de `exchange_to_us_currency` solo está claro para el peso; para GBP/EUR falta confirmar. Test:
   `python3 financials/tests/test_recaudacion_emmac_smp_latin.py`.

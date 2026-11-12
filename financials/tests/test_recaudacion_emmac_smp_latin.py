@@ -32,18 +32,22 @@ con.executemany("insert into dp_statement_lines.statement_lines_v values (?,?,?,
     (6101269, "Mexico", "SMP Latin", "BackOffice - Latin", "Finalized", "2025-12-31", 3700.0, 3330.0, 18.5),
     (6101269, "United States", "SMP Latin", "BackOffice - Latin", "Finalized", "2025-12-31", 5555.0, 5555.0, 1.0),  # US sale de ganancias
     (6101269, "UK", "SMP Latin", "BackOffice - Latin", "Pending", "2025-12-31", 99999.0, 99999.0, 0.8),           # no finalizada
+    (6101269, "Spain", "SMP LATINA", " ", "Finalized", "2025-12-31", 4444.0, 4444.0, 0.9),                         # no es SMP Latin
+    (6101269, "UK", "SMP UK", "BackOffice - UK", "Finalized", "2025-12-31", 3333.0, 3333.0, 0.8),                  # otra intercompany
 ])
-con.execute("""create table dp_earnings_lines.earnings_lines_v(song_id bigint, processing_office_name varchar, source_name varchar,
+con.execute("""create table dp_earnings_lines.earnings_lines_v(song_id bigint, processing_office_name varchar, source_name varchar, sub_source_name varchar,
     accounting_period_dt date, statement_header_id bigint, processing_office_id bigint, statement_line_id bigint,
     earnings_line_id bigint, gross_client_share_of_income_amt double, foreign_nps_am double, gross_nps double,
     gross_royalty_payable double, converted_net_am double)""")
 # 6101269 SMP Latin: dos lineas de statement, la primera genera dos lineas de ganancia (converted_net se suma una vez)
-con.executemany("insert into dp_earnings_lines.earnings_lines_v values (?,?,?,?,?,?,?,?,?,?,?,?,?)", [
-    (6101269, "United States", "SMP Latin", "2025-03-31", 1, 1, 10, 100, 20000.00, 1200.00, 2000.00, 16800.00, 18000.00),
-    (6101269, "United States", "SMP Latin", "2025-03-31", 1, 1, 10, 101, 4636.78, 983.33, 705.94, 2947.51, 18000.00),
-    (6101269, "United States", "SMP Latin", "2025-09-30", 2, 1, 11, 102, 10000.00, 0.00, 1000.00, 9320.27, 14773.72),
-    (6101269, "United States", "YouTube - USA", "2025-09-30", 3, 1, 12, 103, 500.0, 0, 50, 450, 500),   # otra fuente
-    (6101269, "Mexico", "SMP Latin", "2025-09-30", 4, 2, 13, 104, 900.0, 0, 90, 810, 900),            # otra oficina
+con.executemany("insert into dp_earnings_lines.earnings_lines_v values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
+    (6101269, "United States", "SMP Latin", "BackOffice - Latin", "2025-03-31", 1, 1, 10, 100, 20000.00, 1200.00, 2000.00, 16800.00, 18000.00),
+    (6101269, "United States", "SMP Latin", "BackOffice - Latin", "2025-03-31", 1, 1, 10, 101, 4636.78, 983.33, 705.94, 2947.51, 18000.00),
+    (6101269, "United States", "SMP Latin", "BackOffice - Latin", "2025-09-30", 2, 1, 11, 102, 10000.00, 0.00, 1000.00, 9320.27, 14773.72),
+    (6101269, "United States", "YouTube - USA", "X", "2025-09-30", 3, 1, 12, 103, 500.0, 0, 50, 450, 500),   # otra fuente
+    (6101269, "Mexico", "SMP Latin", "BackOffice - Latin", "2025-09-30", 4, 2, 13, 104, 900.0, 0, 90, 810, 900),            # otra oficina
+    (6101269, "United States", "SMP UK", "BackOffice - UK", "2025-09-30", 5, 1, 14, 105, 700.0, 0, 70, 630, 700),          # otra intercompany
+    (6101269, "United States", "SMP Latin", "Otra", "2025-09-30", 6, 1, 15, 106, 300.0, 0, 30, 270, 300),                  # otra sub fuente
 ])
 con.execute("create table dp_song_metadata.identifiers_iswc_v(tempo_song_id bigint, ident_iswc_cd varchar, preferred_indicator varchar, conflict_indicator varchar)")
 con.executemany("insert into dp_song_metadata.identifiers_iswc_v values (?,?,?,?)", [

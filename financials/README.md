@@ -46,6 +46,8 @@ Una fila por obra de `public.obras_controladas_pais_resultado` (todos los paíse
   (nombres reales del 12/11/2026: "EMMAC A EN P", "Emmac", "EMMAC/SACM", "Emmac / Maquilas", "Emmac / Musica Impresa",
   "Emmac / Cosmic Juego Elect", "Emmac / Ediciones Pentagrama"). MXN y USD. `mexico_emmac.sql` tenía `LIKE '%EMMAC%'`
   y perdía las variantes "Emmac"; corregido.
+- SMP Latin = fuente exacta `SMP Latin` + sub fuente `BackOffice - Latin` (confirmado por el usuario el 12/11/2026;
+  no otras intercompany como SMP UK, SMP Mexico ni SMP LATINA).
 - SMP Latin Estados Unidos: `earnings_lines_v` (columnas del front, USD). SMP Latin llega además a UK, México, Holanda,
   Corea, Argentina, Colombia, España, Japón, Brasil... (102 M líneas en US, 29 M en UK): esas salen de
   `statement_lines_v` convertidas a USD con `exchange_to_us_currency` (sentido **sin confirmar** para monedas más
