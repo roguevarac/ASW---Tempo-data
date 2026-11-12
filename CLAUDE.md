@@ -77,7 +77,8 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
   SMP Latin = `source_name = 'SMP Latin'` y `sub_source_name = 'BackOffice - Latin'` exactos (confirmado por el usuario).
   EMMAC se escribe de varias formas ("Emmac", "EMMAC/SACM"...): comparar con UPPER (LIKE distingue mayúsculas).
   El sentido de `exchange_to_us_currency` solo está claro para el peso; para GBP/EUR falta confirmar. Test:
-  `python3 financials/tests/test_recaudacion_emmac_smp_latin.py`.
+  `python3 financials/tests/test_recaudacion_emmac_smp_latin.py`. UNLOAD: `financials/unload_recaudacion_emmac_smp_latin_v1.sql`
+  (generado con `python3 financials/tools/generar_unload.py`; no editarlo a mano).
 - `editoriales_control/editoriales_controladas_v1.sql`: editoriales con control Yes (`smp_controlled_ind='Y'`) por obra
   y territorio IP, con IPI, contrato asociado y todas las líneas de control (Include/Exclude). Los Tempo ID van en un
   único `IN` dentro de la query (pedido del usuario, excepción a la regla de la tabla). IPI = `dp_writer_data.publisher_v.cae_num` (LEFT JOIN). El

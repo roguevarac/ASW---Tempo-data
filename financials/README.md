@@ -65,4 +65,5 @@ WHERE source_name = 'SMP Latin' AND statement_line_status = 'Finalized'
   AND semiannual_statement_period >= DATE '2025-01-01'
 GROUP BY 1 ORDER BY lineas DESC;
 ```
-Prueba: `python3 financials/tests/test_recaudacion_emmac_smp_latin.py`.
+Para el resultado completo: `unload_recaudacion_emmac_smp_latin_v1.sql` (generado con
+`python3 financials/tools/generar_unload.py`). Prueba: `python3 financials/tests/test_recaudacion_emmac_smp_latin.py`.

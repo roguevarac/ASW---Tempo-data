@@ -85,5 +85,10 @@ check("total validado (EMMAC + SMP Latin US) y total con otras oficinas", f(b["t
       and f(b["total_con_otras_oficinas_usd"]) == round(34636.78 + 30.0 + 1000.0, 2), b)
 check("total 274220 = EMMAC gross USD", f(y["total_recaudado_usd"]) == 150.0, y)
 check("orden por total descendente", list(R) == [6101269, 274220], list(R))
+unl = (SQL.parent / "unload_recaudacion_emmac_smp_latin_v1.sql").read_text(encoding="utf-8")
+cuerpo = unl.split("UNLOAD ('\n", 1)[1].rsplit("\n')\nTO", 1)[0].replace("''", "'")
+cur = con.execute(sqlglot.parse_one(cuerpo, read="redshift").sql(dialect="duckdb"))
+R2 = {r[0]: dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()}
+check("UNLOAD da exactamente lo mismo (regenerar con financials/tools/generar_unload.py)", R2 == R)
 print("\nTodo OK" if not fallas else f"\n{fallas} fallas")
 sys.exit(1 if fallas else 0)
