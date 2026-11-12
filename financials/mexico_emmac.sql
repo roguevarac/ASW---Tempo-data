@@ -49,7 +49,7 @@ sl AS (
     FROM dp_statement_lines.statement_lines_v s
     WHERE s.song_id IN (SELECT song_id FROM public.rankingdigital_song_id WHERE song_id IS NOT NULL)
       AND s.processing_office_name LIKE 'Mexico%'
-      AND (s.source_name LIKE '%EMMAC%' OR s.sub_source_name LIKE '%EMMAC%')
+      AND (UPPER(s.source_name) LIKE '%EMMAC%' OR UPPER(s.sub_source_name) LIKE '%EMMAC%')   -- en mayúsculas: Tempo escribe EMMAC, Emmac, EMMAC/SACM...
       AND s.statement_line_status = 'Finalized'
       -- Filtro opcional por período (sacar el -- para usarlo):
       -- AND s.semiannual_statement_period BETWEEN DATE '2024-01-01' AND DATE '2026-12-31'

@@ -40,15 +40,27 @@ oficina `Mexico%`, fuente `%EMMAC%` y líneas Finalized; obras desde `public.ran
 - Pendiente de confirmar con la primera corrida: que la oficina se llame `Mexico...` y la fuente contenga `EMMAC`.
 
 ## Recaudación EMMAC + SMP Latin de las obras controladas: `recaudacion_emmac_smp_latin_v1.sql`
-Una fila por obra de `public.obras_controladas_pais_resultado` (todos los países ya corridos; lista de países en
-`paises_controlados`) con importe en alguna de las dos fuentes. EMMAC sale de `statement_lines_v` (oficina México,
-Finalized, MXN y USD, mismo criterio que `mexico_emmac.sql`); SMP Latin de `earnings_lines_v` (oficina United States,
-USD, columnas del front como `song_financials_el.sql`). `total_recaudado_usd` = EMMAC gross USD + SMP Latin Gross Income.
-Nombres de oficina y fuente a confirmar en la primera corrida:
+Una fila por obra de `public.obras_controladas_pais_resultado` (todos los países ya corridos; lista en
+`paises_controlados`) con importe en EMMAC o SMP Latin.
+- EMMAC: `statement_lines_v`, oficina México, Finalized, fuente o sub fuente con EMMAC **comparado en mayúsculas**
+  (nombres reales del 12/11/2026: "EMMAC A EN P", "Emmac", "EMMAC/SACM", "Emmac / Maquilas", "Emmac / Musica Impresa",
+  "Emmac / Cosmic Juego Elect", "Emmac / Ediciones Pentagrama"). MXN y USD. `mexico_emmac.sql` tenía `LIKE '%EMMAC%'`
+  y perdía las variantes "Emmac"; corregido.
+- SMP Latin Estados Unidos: `earnings_lines_v` (columnas del front, USD). SMP Latin llega además a UK, México, Holanda,
+  Corea, Argentina, Colombia, España, Japón, Brasil... (102 M líneas en US, 29 M en UK): esas salen de
+  `statement_lines_v` convertidas a USD con `exchange_to_us_currency` (sentido **sin confirmar** para monedas más
+  fuertes que el dólar).
+- `total_recaudado_usd` = EMMAC gross USD + SMP Latin US Gross Income; `total_con_otras_oficinas_usd` suma además las
+  otras oficinas.
+- No se cuenta "SMP Mexico" (lo que México gira a otras oficinas): duplicaría EMMAC.
+
+Tipo de cambio por oficina (para confirmar el sentido antes de usar otras oficinas):
 ```sql
-SELECT processing_office_name, source_name, sub_source_name, COUNT(*) AS lineas
+SELECT processing_office_name, MIN(exchange_to_us_currency) AS tc_min, MAX(exchange_to_us_currency) AS tc_max,
+       AVG(exchange_to_us_currency) AS tc_prom, COUNT(*) AS lineas
 FROM dp_statement_lines.statement_lines_v
-WHERE source_name ILIKE '%EMMAC%' OR sub_source_name ILIKE '%EMMAC%' OR source_name ILIKE 'SMP Latin%'
-GROUP BY 1, 2, 3 ORDER BY lineas DESC;
+WHERE source_name = 'SMP Latin' AND statement_line_status = 'Finalized'
+  AND semiannual_statement_period >= DATE '2025-01-01'
+GROUP BY 1 ORDER BY lineas DESC;
 ```
 Prueba: `python3 financials/tests/test_recaudacion_emmac_smp_latin.py`.

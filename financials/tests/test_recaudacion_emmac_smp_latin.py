@@ -24,6 +24,14 @@ con.executemany("insert into dp_statement_lines.statement_lines_v values (?,?,?,
     (274220, "Mexico", "SACM", "SACM", "Finalized", "2025-12-31", 5000.0, 4000.0, 18.5),           # otra fuente
     (274220, "United States", "SMP Mexico", "EMMAC", "Finalized", "2025-12-31", 7777.0, 7777.0, 1.0),     # otra oficina
     (999, "Mexico", "EMMAC", "EMMAC", "Finalized", "2025-12-31", 100.0, 80.0, 18.5),                 # obra no controlada
+    # nombres reales con otras mayusculas (antes LIKE '%EMMAC%' los dejaba afuera)
+    (6101269, "Mexico", "Emmac", "SPOTIFY - Mexico", "Finalized", "2025-12-31", 370.0, 300.0, 18.5),
+    (6101269, "Mexico", "EMMAC/SACM", "SACM - Mexico", "Finalized", "2025-12-31", 185.0, 150.0, 18.5),
+    # SMP Latin en otras oficinas: UK (tc 0.8 = multiplica) y Mexico (tc 18.5); en Mexico no es EMMAC
+    (6101269, "UK", "SMP Latin", "BackOffice - Latin", "Finalized", "2025-12-31", 1000.0, 900.0, 0.8),
+    (6101269, "Mexico", "SMP Latin", "BackOffice - Latin", "Finalized", "2025-12-31", 3700.0, 3330.0, 18.5),
+    (6101269, "United States", "SMP Latin", "BackOffice - Latin", "Finalized", "2025-12-31", 5555.0, 5555.0, 1.0),  # US sale de ganancias
+    (6101269, "UK", "SMP Latin", "BackOffice - Latin", "Pending", "2025-12-31", 99999.0, 99999.0, 0.8),           # no finalizada
 ])
 con.execute("""create table dp_earnings_lines.earnings_lines_v(song_id bigint, processing_office_name varchar, source_name varchar,
     accounting_period_dt date, statement_header_id bigint, processing_office_id bigint, statement_line_id bigint,
@@ -64,7 +72,14 @@ y = R[274220]
 check("EMMAC: solo oficina Mexico, fuente EMMAC, Finalized; MXN y USD con tc que divide o multiplica",
       (f(y["emmac_gross_mxn"]), f(y["emmac_neto_mxn"]), f(y["emmac_gross_usd"]), f(y["emmac_neto_usd"]), y["emmac_lineas"])
       == (2775.0, 2250.0, 150.0, 121.62, 2), y)
-check("total = EMMAC gross USD + SMP Latin gross", f(y["total_recaudado_usd"]) == 150.0 and f(b["total_recaudado_usd"]) == 34636.78, (y, b))
+check("EMMAC toma Emmac y EMMAC/SACM (mayusculas distintas), no SMP Latin de Mexico",
+      (f(b["emmac_gross_mxn"]), f(b["emmac_gross_usd"]), b["emmac_lineas"]) == (555.0, 30.0, 2), b)
+check("SMP Latin otras oficinas: UK y Mexico en USD, sin Estados Unidos ni pendientes",
+      (f(b["smp_latin_otras_oficinas_gross_usd"]), f(b["smp_latin_otras_oficinas_neto_usd"]), b["smp_latin_otras_oficinas"],
+       b["smp_latin_otras_oficinas_lineas"]) == (1000.0, 900.0, "Mexico, UK", 2), b)
+check("total validado (EMMAC + SMP Latin US) y total con otras oficinas", f(b["total_recaudado_usd"]) == round(34636.78 + 30.0, 2)
+      and f(b["total_con_otras_oficinas_usd"]) == round(34636.78 + 30.0 + 1000.0, 2), b)
+check("total 274220 = EMMAC gross USD", f(y["total_recaudado_usd"]) == 150.0, y)
 check("orden por total descendente", list(R) == [6101269, 274220], list(R))
 print("\nTodo OK" if not fallas else f"\n{fallas} fallas")
 sys.exit(1 if fallas else 0)
