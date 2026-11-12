@@ -38,3 +38,17 @@ oficina `Mexico%`, fuente `%EMMAC%` y líneas Finalized; obras desde `public.ran
 - `mexico_emmac_validacion_usa.sql`: lo que llegó a Estados Unidos (fuente SMP Mexico / sub fuente EMMAC) en USD,
   desde líneas de ganancia. Es solo la parte de clientes de Estados Unidos: debe ser ≤ al neto USD de México.
 - Pendiente de confirmar con la primera corrida: que la oficina se llame `Mexico...` y la fuente contenga `EMMAC`.
+
+## Recaudación SACM + SMP Latin de las obras controladas: `recaudacion_sacm_smp_latin_v1.sql`
+Una fila por obra de `public.obras_controladas_pais_resultado` (todos los países ya corridos; lista de países en
+`paises_controlados`) con importe en alguna de las dos fuentes. SACM sale de `statement_lines_v` (oficina México,
+Finalized, MXN y USD con el criterio de `mexico_emmac.sql`); SMP Latin de `earnings_lines_v` (oficina United States,
+USD, columnas del front como `song_financials_el.sql`). `total_recaudado_usd` = SACM gross USD + SMP Latin Gross Income.
+El nombre de la fuente SACM no está confirmado: antes de la primera corrida, ver los nombres con
+```sql
+SELECT processing_office_name, source_name, sub_source_name, COUNT(*) AS lineas
+FROM dp_statement_lines.statement_lines_v
+WHERE source_name ILIKE '%SACM%' OR sub_source_name ILIKE '%SACM%' OR source_name ILIKE 'SMP Latin%'
+GROUP BY 1, 2, 3 ORDER BY lineas DESC;
+```
+Prueba: `python3 financials/tests/test_recaudacion.py`.
