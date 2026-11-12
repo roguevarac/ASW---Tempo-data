@@ -1,12 +1,12 @@
 """
-Prueba recaudacion_sacm_smp_latin_v1.sql con DuckDB (transpilado desde Redshift).
+Prueba recaudacion_emmac_smp_latin_v1.sql con DuckDB (transpilado desde Redshift).
 Caso SMP Latin: obra 6101269 con los montos del front (34.636,78 / 2.183,33 / 3.705,94 / 29.067,78).
-Uso:  python3 financials/tests/test_recaudacion.py
+Uso:  python3 financials/tests/test_recaudacion_emmac_smp_latin.py
 """
 import pathlib, sys
 import duckdb, sqlglot
 
-SQL = pathlib.Path(__file__).resolve().parent.parent / "recaudacion_sacm_smp_latin_v1.sql"
+SQL = pathlib.Path(__file__).resolve().parent.parent / "recaudacion_emmac_smp_latin_v1.sql"
 con = duckdb.connect()
 for esq in ("public", "dp_statement_lines", "dp_earnings_lines", "dp_song_metadata"):
     con.execute(f"create schema if not exists {esq}")
@@ -18,12 +18,12 @@ con.execute("""create table dp_statement_lines.statement_lines_v(song_id bigint,
     sub_source_name varchar, statement_line_status varchar, semiannual_statement_period date, lc_gross_stmt_am double,
     converted_net_am double, exchange_to_us_currency double)""")
 con.executemany("insert into dp_statement_lines.statement_lines_v values (?,?,?,?,?,?,?,?,?)", [
-    (274220, "Mexico", "SACM", "SACM PERF", "Finalized", "2025-06-30", 1850.0, 1500.0, 18.5),
-    (274220, "Mexico", "SACM", "SACM PERF", "Finalized", "2025-12-31", 925.0, 750.0, 0.054054054),
-    (274220, "Mexico", "SACM", "SACM PERF", "Pending", "2025-12-31", 99999.0, 99999.0, 18.5),      # no finalizada
-    (274220, "Mexico", "EMMAC", "EMMAC", "Finalized", "2025-12-31", 5000.0, 4000.0, 18.5),         # otra fuente
-    (274220, "United States", "SACM", "SACM", "Finalized", "2025-12-31", 7777.0, 7777.0, 1.0),     # otra oficina
-    (999, "Mexico", "SACM", "SACM", "Finalized", "2025-12-31", 100.0, 80.0, 18.5),                 # obra no controlada
+    (274220, "Mexico", "EMMAC", "EMMAC A EN P", "Finalized", "2025-06-30", 1850.0, 1500.0, 18.5),
+    (274220, "Mexico", "EMMAC", "EMMAC A EN P", "Finalized", "2025-12-31", 925.0, 750.0, 0.054054054),
+    (274220, "Mexico", "EMMAC", "EMMAC A EN P", "Pending", "2025-12-31", 99999.0, 99999.0, 18.5),      # no finalizada
+    (274220, "Mexico", "SACM", "SACM", "Finalized", "2025-12-31", 5000.0, 4000.0, 18.5),           # otra fuente
+    (274220, "United States", "SMP Mexico", "EMMAC", "Finalized", "2025-12-31", 7777.0, 7777.0, 1.0),     # otra oficina
+    (999, "Mexico", "EMMAC", "EMMAC", "Finalized", "2025-12-31", 100.0, 80.0, 18.5),                 # obra no controlada
 ])
 con.execute("""create table dp_earnings_lines.earnings_lines_v(song_id bigint, processing_office_name varchar, source_name varchar,
     accounting_period_dt date, statement_header_id bigint, processing_office_id bigint, statement_line_id bigint,
@@ -61,10 +61,10 @@ check("SMP Latin converted net una vez por linea de statement (32.773,72)", f(b[
 check("obra en dos paises: una fila con la lista", b["paises_controlados"] == "CHILE, COLOMBIA" and b["cantidad_paises"] == 2, b)
 check("ISWC preferido Yes", (b["iswc"], b["iswc_preferido"]) == ("T3333333333", "Yes"), b)
 y = R[274220]
-check("SACM: solo oficina Mexico, fuente SACM, Finalized; MXN y USD con tc que divide o multiplica",
-      (f(y["sacm_gross_mxn"]), f(y["sacm_neto_mxn"]), f(y["sacm_gross_usd"]), f(y["sacm_neto_usd"]), y["sacm_lineas"])
+check("EMMAC: solo oficina Mexico, fuente EMMAC, Finalized; MXN y USD con tc que divide o multiplica",
+      (f(y["emmac_gross_mxn"]), f(y["emmac_neto_mxn"]), f(y["emmac_gross_usd"]), f(y["emmac_neto_usd"]), y["emmac_lineas"])
       == (2775.0, 2250.0, 150.0, 121.62, 2), y)
-check("total = SACM gross USD + SMP Latin gross", f(y["total_recaudado_usd"]) == 150.0 and f(b["total_recaudado_usd"]) == 34636.78, (y, b))
+check("total = EMMAC gross USD + SMP Latin gross", f(y["total_recaudado_usd"]) == 150.0 and f(b["total_recaudado_usd"]) == 34636.78, (y, b))
 check("orden por total descendente", list(R) == [6101269, 274220], list(R))
 print("\nTodo OK" if not fallas else f"\n{fallas} fallas")
 sys.exit(1 if fallas else 0)

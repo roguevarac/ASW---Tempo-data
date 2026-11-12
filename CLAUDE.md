@@ -71,10 +71,10 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
 ## Queries existentes
 - `financials/song_financials_el.sql`: Song Financials por obra/fuente/income type para las obras de la tabla.
 - `financials/mexico_emmac.sql`: lo generado en México (fuente EMMAC) por obra, en moneda local y USD.
-- `financials/recaudacion_sacm_smp_latin_v1.sql`: una fila por obra controlada (de `obras_controladas_pais_resultado`)
-  con lo recaudado en SACM (statement lines, oficina México) y SMP Latin (earnings lines, oficina US) y el total en USD.
-  En el repo no había query de SACM (sí EMMAC); el nombre de la fuente SACM falta confirmarlo. Test:
-  `python3 financials/tests/test_recaudacion.py`.
+- `financials/recaudacion_emmac_smp_latin_v1.sql`: una fila por obra controlada (de `obras_controladas_pais_resultado`)
+  con lo recaudado en EMMAC (statement lines, oficina México; criterio de `mexico_emmac.sql`) y SMP Latin (earnings
+  lines, oficina US) y el total en USD. El usuario dijo SACM pero era EMMAC. Test:
+  `python3 financials/tests/test_recaudacion_emmac_smp_latin.py`.
 - `editoriales_control/editoriales_controladas_v1.sql`: editoriales con control Yes (`smp_controlled_ind='Y'`) por obra
   y territorio IP, con IPI, contrato asociado y todas las líneas de control (Include/Exclude). Los Tempo ID van en un
   único `IN` dentro de la query (pedido del usuario, excepción a la regla de la tabla). IPI = `dp_writer_data.publisher_v.cae_num` (LEFT JOIN). El

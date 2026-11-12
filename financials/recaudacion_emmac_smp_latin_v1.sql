@@ -1,16 +1,16 @@
 -- =====================================================================
--- RECAUDACIÓN SACM + SMP LATIN DE LAS OBRAS CONTROLADAS EN LOS PAÍSES — v1
+-- RECAUDACIÓN EMMAC + SMP LATIN DE LAS OBRAS CONTROLADAS EN LOS PAÍSES — v1
 --
 -- Una fila por obra de public.obras_controladas_pais_resultado (las obras
 -- controladas en los países ya corridos con sp_obras_controladas_pais; si una obra
 -- está en varios países, sale una sola vez con la lista de países) que tenga
--- importe en SACM o en SMP Latin.
+-- importe en EMMAC o en SMP Latin.
 --
 -- De dónde sale cada dato (mismo criterio que las queries ya validadas):
---   * SACM (como financials/mexico_emmac.sql): dp_statement_lines.statement_lines_v,
---     oficina que procesó México, fuente o sub fuente SACM, líneas Finalized.
---       sacm_gross_mxn = lc_gross_stmt_am (lo informado, antes de retención/comisión)
---       sacm_neto_mxn  = converted_net_am (lo que quedó en la oficina México)
+--   * EMMAC (como financials/mexico_emmac.sql): dp_statement_lines.statement_lines_v,
+--     oficina que procesó México, fuente o sub fuente EMMAC, líneas Finalized.
+--       emmac_gross_mxn = lc_gross_stmt_am (lo informado, antes de retención/comisión)
+--       emmac_neto_mxn  = converted_net_am (lo que quedó en la oficina México)
 --       *_usd          = con exchange_to_us_currency de cada statement (> 1 divide,
 --                        < 1 multiplica).
 --   * SMP Latin (como financials/song_financials_el.sql, verificado al centavo con
@@ -20,13 +20,14 @@
 --       affiliate_nps / domestic_nps / client_royalty como en el front
 --       smp_latin_converted_net = converted_net_am una vez por línea de statement
 --                                 (lo que llegó a Estados Unidos).
---   * total_recaudado_usd = sacm_gross_usd + smp_latin_gross_income.
---     Son dos flujos distintos: SACM es lo cobrado en México (fuente local) y SMP
+--   * total_recaudado_usd = emmac_gross_usd + smp_latin_gross_income.
+--     Son dos flujos distintos: EMMAC es lo cobrado en México (fuente local) y SMP
 --     Latin lo que las afiliadas de Latinoamérica giraron a Estados Unidos
 --     (México llega a Estados Unidos como "SMP Mexico", no como SMP Latin).
 --
 -- EDITABLE (líneas marcadas): nombres de fuente, oficina y período. Confirmar
--- antes los nombres con la consulta de fuentes de financials/README.md.
+-- antes los nombres con la consulta de fuentes de financials/README.md
+-- (mexico_emmac.sql dejó pendiente confirmar 'Mexico...' y 'EMMAC').
 -- Rendimiento: cada vista de montos se lee una vez, filtrada por fuente y oficina.
 -- =====================================================================
 WITH
@@ -41,18 +42,18 @@ obras AS (
     GROUP BY r.song_id
 ),
 
--- 2. SACM: líneas de statement de la oficina México.
-sacm AS (
+-- 2. EMMAC: líneas de statement de la oficina México.
+emmac AS (
     SELECT
         CAST(song_id AS BIGINT)                                    AS song_id,
-        COUNT(*)                                                   AS sacm_lineas,
-        MIN(semiannual_statement_period)                           AS sacm_primer_periodo,
-        MAX(semiannual_statement_period)                           AS sacm_ultimo_periodo,
-        SUM(lc_gross_stmt_am)                                      AS sacm_gross_mxn,
-        SUM(converted_net_am)                                      AS sacm_neto_mxn,
-        SUM(lc_gross_stmt_am * factor_usd)                         AS sacm_gross_usd,
-        SUM(converted_net_am * factor_usd)                         AS sacm_neto_usd,
-        SUM(CASE WHEN factor_usd IS NULL THEN 1 ELSE 0 END)        AS sacm_lineas_sin_tc
+        COUNT(*)                                                   AS emmac_lineas,
+        MIN(semiannual_statement_period)                           AS emmac_primer_periodo,
+        MAX(semiannual_statement_period)                           AS emmac_ultimo_periodo,
+        SUM(lc_gross_stmt_am)                                      AS emmac_gross_mxn,
+        SUM(converted_net_am)                                      AS emmac_neto_mxn,
+        SUM(lc_gross_stmt_am * factor_usd)                         AS emmac_gross_usd,
+        SUM(converted_net_am * factor_usd)                         AS emmac_neto_usd,
+        SUM(CASE WHEN factor_usd IS NULL THEN 1 ELSE 0 END)        AS emmac_lineas_sin_tc
     FROM (
         SELECT
             s.song_id, s.semiannual_statement_period, s.lc_gross_stmt_am, s.converted_net_am,
@@ -63,7 +64,7 @@ sacm AS (
             END AS factor_usd
         FROM dp_statement_lines.statement_lines_v s
         WHERE s.processing_office_name LIKE 'Mexico%'                                  -- EDITABLE: oficina
-          AND (s.source_name LIKE '%SACM%' OR s.sub_source_name LIKE '%SACM%')         -- EDITABLE: fuente SACM
+          AND (s.source_name LIKE '%EMMAC%' OR s.sub_source_name LIKE '%EMMAC%')         -- EDITABLE: fuente EMMAC
           AND s.statement_line_status = 'Finalized'
           AND s.song_id IS NOT NULL
           -- AND s.semiannual_statement_period BETWEEN DATE '2024-01-01' AND DATE '2026-12-31'   -- EDITABLE: período
@@ -125,16 +126,16 @@ SELECT
     iw.iswc_preferido,
     o.paises_controlados,
     o.cantidad_paises,
-    CAST(COALESCE(s.sacm_gross_usd, 0) + COALESCE(l.smp_latin_gross_income, 0) AS NUMERIC(18,2)) AS total_recaudado_usd,
-    -- SACM (oficina México)
-    CAST(s.sacm_gross_mxn AS NUMERIC(18,2))          AS sacm_gross_mxn,
-    CAST(s.sacm_neto_mxn  AS NUMERIC(18,2))          AS sacm_neto_mxn,
-    CAST(s.sacm_gross_usd AS NUMERIC(18,2))          AS sacm_gross_usd,
-    CAST(s.sacm_neto_usd  AS NUMERIC(18,2))          AS sacm_neto_usd,
-    s.sacm_lineas,
-    s.sacm_lineas_sin_tc,
-    s.sacm_primer_periodo,
-    s.sacm_ultimo_periodo,
+    CAST(COALESCE(s.emmac_gross_usd, 0) + COALESCE(l.smp_latin_gross_income, 0) AS NUMERIC(18,2)) AS total_recaudado_usd,
+    -- EMMAC (oficina México)
+    CAST(s.emmac_gross_mxn AS NUMERIC(18,2))          AS emmac_gross_mxn,
+    CAST(s.emmac_neto_mxn  AS NUMERIC(18,2))          AS emmac_neto_mxn,
+    CAST(s.emmac_gross_usd AS NUMERIC(18,2))          AS emmac_gross_usd,
+    CAST(s.emmac_neto_usd  AS NUMERIC(18,2))          AS emmac_neto_usd,
+    s.emmac_lineas,
+    s.emmac_lineas_sin_tc,
+    s.emmac_primer_periodo,
+    s.emmac_ultimo_periodo,
     -- SMP Latin (oficina Estados Unidos, USD)
     CAST(l.smp_latin_gross_income   AS NUMERIC(18,2)) AS smp_latin_gross_income_usd,
     CAST(l.smp_latin_affiliate_nps  AS NUMERIC(18,2)) AS smp_latin_affiliate_nps_usd,
@@ -145,7 +146,7 @@ SELECT
     l.smp_latin_primer_periodo,
     l.smp_latin_ultimo_periodo
 FROM obras o
-LEFT JOIN sacm s  ON s.song_id = o.song_id
+LEFT JOIN emmac s  ON s.song_id = o.song_id
 LEFT JOIN latin l ON l.song_id = o.song_id
 LEFT JOIN iswc iw ON iw.song_id = o.song_id
 WHERE s.song_id IS NOT NULL OR l.song_id IS NOT NULL
