@@ -559,8 +559,10 @@ volumes:
     check("vaciar-historial --automatico: se niega (lo confirma una persona) y no borra nada",
           r.returncode != 0 and base_nueva("select count(*) from storage.objects") == str(len(registrados)), r.stdout + r.stderr)
     p = ranking("vaciar-historial")
+    p.expect(r"¿Vaciar el historial\? .*\(S/N\)"); p.sendline("")
+    p.expect("Escribí S y Enter para continuar")
     p.expect(r"¿Vaciar el historial\? .*\(S/N\)"); p.sendline("N")
-    check("vaciar-historial: si se contesta que no, no borra nada",
+    check("vaciar-historial: un Enter sin respuesta vuelve a preguntar; si se contesta que no, no borra nada",
           fin(p) != 0 and base_nueva("select count(*) from storage.objects") == str(len(registrados)))
     obras = base_nueva("select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from tracks_master x")
     territorio = base_nueva("select count(*) || md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from territory_tracks x")

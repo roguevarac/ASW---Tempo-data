@@ -45,10 +45,23 @@ fallar() { printf '\n%s%s%s\n' "$R" "$*" "$N" >&2; unset SUPABASE_SERVICE_KEY; e
 # defecto; sin respuesta por defecto, en automático es "no" (nunca se borra ni se reemplaza nada sin una persona).
 AUTOMATICO=0
 si() {
-    local r
-    if [ "$AUTOMATICO" = 1 ]; then r="${2:-N}"; echo "$1 (S/N): $r  (automático)"
-    else read -r -p "$1 (S/N): " r; fi
-    [[ "$r" =~ ^[[:space:]]*[sS] ]]
+    local r i
+    if [ "$AUTOMATICO" = 1 ]; then
+        r="${2:-N}"; echo "$1 (S/N): $r  (automático)"
+        [[ "$r" =~ ^[[:space:]]*[sS] ]]; return
+    fi
+    # Una respuesta vacía o que no es S ni N no cancela: se vuelve a preguntar (un Enter de más, o la línea siguiente
+    # de un texto pegado, cancelaba sin aviso).
+    for i in 1 2 3; do
+        if ! read -r -p "$1 (S/N): " r; then
+            echo; aviso "No se pudo leer la respuesta. Ejecutá el comando en la terminal de Ubuntu y respondé S o N."
+            return 1
+        fi
+        [[ "$r" =~ ^[[:space:]]*[sSyY] ]] && return 0
+        [[ "$r" =~ ^[[:space:]]*[nN] ]] && return 1
+        aviso "Escribí S y Enter para continuar, o N y Enter para cancelar."
+    done
+    return 1
 }
 
 # La configuración manda: variables con el mismo nombre en la terminal (que docker compose priorizaría) no se usan.
