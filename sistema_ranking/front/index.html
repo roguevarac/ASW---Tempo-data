@@ -455,6 +455,18 @@ function tempoEstandar(valor){
   return MARCADORES_TEMPO.find(m => sinTildes(m) === sinTildes(v.replace(/^PENDIENTE /, 'PENDING '))) || null;
 }
 
+// Opciones de la lista de Tempo ID: los valores admitidos o, en un compilado, lo ya escrito hasta el último "/"
+// seguido de cada valor (123/UNCONTROLLED).
+function listaTempo(valor){
+  const lista = document.getElementById('marcadoresTempo');
+  if(!lista) return;
+  const v = String(valor || '');
+  const previo = v.includes('/') ? v.slice(0, v.lastIndexOf('/') + 1) : '';
+  const opciones = MARCADORES_TEMPO.map(m => previo + m);
+  if([...lista.options].map(o => o.value).join('|') !== opciones.join('|'))
+    lista.innerHTML = opciones.map(o => `<option value="${o.replace(/"/g, '&quot;')}">`).join('');
+}
+
 // Compilado: varios Tempo ID separados por "/" (123/456), uno por canción del título ("A / B - Artista").
 function tempoCompilado(value){
   if(!String(value || '').includes('/')) return null;
@@ -1405,7 +1417,7 @@ function renderMaster(){
   <tbody>${rows.length ? rows.map(r=>`
     <tr class="${r.deleted_at?'is-deleted':''}">
       <td>${r.track_artist_concat}</td>
-      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—" list="marcadoresTempo" inputmode="numeric" title="Número de Tempo ID, o elegí UNCONTROLLED / PENDING de la lista. Compilado: un Tempo ID por canción separados por /">` : (r.tempo_id||'—')}</td>
+      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—" list="marcadoresTempo" inputmode="numeric" title="Número de Tempo ID, o elegí UNCONTROLLED / PENDING de la lista. Compilado: un Tempo ID por canción separados por / (por ejemplo 123/UNCONTROLLED)">` : (r.tempo_id||'—')}</td>
     </tr>`).join('') : `<tr><td colspan="2"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
   </tbody></table>
   ${renderPager('master', state.masterTotal, state.masterPage)}`;
@@ -2222,12 +2234,15 @@ function attachAppEvents(){
 
 
   document.querySelectorAll('[data-field-master="tempo_id"]').forEach(el => {
-    // Solo se escriben números (y "/" para un compilado: 123/456); UNCONTROLLED y PENDING se eligen de la lista.
+    // Solo se escriben números (y "/" para un compilado: 123/456); UNCONTROLLED y PENDING se eligen de la lista,
+    // también como parte de un compilado (123/UNCONTROLLED): después de "/", la lista ofrece cada valor a continuación.
     el.oninput = () => {
-      if(MARCADORES_TEMPO.includes(el.value)) return;
-      const numero = el.value.replace(/[^0-9\/]/g, '');
-      if(numero !== el.value) el.value = numero;
+      const limpio = el.value.split('/')
+        .map(p => MARCADORES_TEMPO.find(m => p.trim().startsWith(m)) || p.replace(/[^0-9]/g, '')).join('/');
+      if(limpio !== el.value) el.value = limpio;
+      listaTempo(el.value);
     };
+    el.onfocus = () => listaTempo(el.value);
   });
   document.querySelectorAll('[data-field-master]').forEach(el => {
     const handler = () => { if(el.value !== el.defaultValue) updateMasterField(el.dataset.id, el.dataset.fieldMaster, el.value); };

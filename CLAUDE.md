@@ -264,7 +264,8 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
       - `test_acceso_directo.py` (`sin-suspension.ps1`).
     - La red de esta sesión bloquea Tailscale (403) y el clasificador no deja abrir un Funnel desde acá: el enlace real
       se prueba en la PC.
-  - **Tempo ID en la tabla principal:** solo se tipean números y "/"; UNCONTROLLED/PENDING se eligen de la lista (`oninput`).
+  - **Tempo ID en la tabla principal:** solo se tipean números y "/"; UNCONTROLLED/PENDING se eligen de la lista (`oninput`),
+    también como parte de un compilado (`listaTempo` arma "123/" + cada valor).
   - **Compilados (11/11/2026, `db/mejoras/14_compilados.sql`):** "A / B - Artista" con Tempo ID `123/456` (en la tabla
     principal, `fn_asignar_tempo_id`, o en la carga CSV de Tempo IDs) se separa en una obra por canción
     (`separar_compilado`): usa la obra que ya tenga ese número o ese título y artista, reparte los streams en partes

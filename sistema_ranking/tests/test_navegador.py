@@ -175,14 +175,20 @@ with sync_playwright() as p:
         dialogos.append(d.message); d.accept()
     pag.on("dialog", responder)
     campo = pag.locator(f'[data-field-master="tempo_id"][data-id="{comp_id}"]')
-    campo.click(); pag.keyboard.type("777101/777102"); campo.press("Tab"); pag.wait_for_timeout(3000)
+    campo.click(); pag.keyboard.type("777101/x")
+    opciones = pag.evaluate("[...document.querySelectorAll('#marcadoresTempo option')].map(o => o.value)")
+    check("compilado: después de '/' no se escriben letras y la lista ofrece los valores a continuación (123/UNCONTROLLED)",
+          campo.input_value() == "777101/" and opciones[:2] == ["777101/UNCONTROLLED", "777101/PENDING ARGENTINA"], (campo.input_value(), opciones[:2]))
+    campo.fill("777101/UNCONTROLLED"); pag.keyboard.type("9")
+    check("...el valor elegido de la lista queda completo", campo.input_value() == "777101/UNCONTROLLED", campo.input_value())
+    campo.fill("777101/UNCONTROLLED"); campo.press("Tab"); pag.wait_for_timeout(3000)
     pag.remove_listener("dialog", responder)
-    check("compilado: se escribe 123/456, se confirma y la obra queda separada en una por canción, con los streams divididos",
+    check("compilado: se escribe 123/UNCONTROLLED, se confirma y la obra queda separada en una por canción, con los streams divididos",
           len(dialogos) == 2 and "se va a separar en 2 obras" in dialogos[0] and "Uno Comp - Banda Nav (777101)" in dialogos[0]
-          and "quedó separado en 2 obras" in dialogos[1]
+          and "Dos Comp - Banda Nav (UNCONTROLLED)" in dialogos[0] and "quedó separado en 2 obras" in dialogos[1]
           and sqlq("select string_agg(tm.track_artist_concat || '=' || tm.tempo_id || '=' || tt.streams, '|' order by tm.track_artist_concat) from tracks_master tm "
                    "join territory_tracks tt on tt.track_master_id = tm.id where tm.track_name_raw like '%Comp%'")
-          == "Dos Comp - Banda Nav=777102=500|Uno Comp - Banda Nav=777101=501", (dialogos, sqlq("select string_agg(track_artist_concat, '|') from tracks_master where track_name_raw like '%Comp%'")))
+          == "Dos Comp - Banda Nav=UNCONTROLLED=500|Uno Comp - Banda Nav=777101=501", (dialogos, sqlq("select string_agg(track_artist_concat, '|') from tracks_master where track_name_raw like '%Comp%'")))
     check("...y la tabla muestra las dos obras en lugar del compilado",
           "Uno Comp - Banda Nav" in pag.inner_text("tbody") and "Uno Comp / Dos Comp" not in pag.inner_text("tbody"), pag.inner_text("tbody")[:300])
     pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
