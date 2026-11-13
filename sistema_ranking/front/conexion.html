@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba de conexión — Auditor de Rankings Digitales</title>
+<link rel="icon" href="iconos/icono-32.png">
+<style>
+  :root { color-scheme: dark; --fondo: #0E1520; --texto: #E8E6DF; --suave: #8A97A8; --azul: #0f4bab; --ok: #2e8b57;
+          --mal: #c0392b; --aviso: #b8860b; --borde: #24324a; }
+  body { margin: 0; min-height: 100vh; background: var(--fondo); color: var(--texto);
+         font: 15px/1.5 system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+  h1 { font-size: 20px; margin: 0 0 6px; font-weight: 600; }
+  p { color: var(--suave); margin: 8px 0; }
+  ul { list-style: none; padding: 0; margin: 18px 0; }
+  li { border: 1px solid var(--borde); border-radius: 4px; padding: 10px 12px; margin: 8px 0; }
+  li b { display: block; }
+  li span { color: var(--suave); font-size: 13px; }
+  li.ok { border-left: 4px solid var(--ok); } li.mal { border-left: 4px solid var(--mal); }
+  li.aviso { border-left: 4px solid var(--aviso); } li.espera { border-left: 4px solid var(--borde); }
+  #resumen { border-radius: 4px; padding: 12px; margin: 16px 0; background: #16202f; color: var(--texto); }
+  button { font: inherit; font-size: 14px; color: #fff; background: var(--azul); border: 0; border-radius: 4px;
+           padding: 9px 18px; cursor: pointer; margin: 6px 8px 0 0; }
+  button:hover { background: #1a5cc4; }
+  a { color: #9fc0ff; }
+  textarea { position: absolute; left: -9999px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Prueba de conexión con el servidor</h1>
+  <p>Verifica si desde esta computadora y esta red (con o sin la VPN de la empresa) se llega al sistema.</p>
+  <ul id="pasos">
+    <li class="espera" id="p1"><b>Respuesta del sistema</b><span>Probando…</span></li>
+    <li class="espera" id="p2"><b>Estabilidad (10 pedidos seguidos)</b><span>En espera</span></li>
+    <li class="espera" id="p3"><b>Descarga de la aplicación</b><span>En espera</span></li>
+  </ul>
+  <div id="resumen" hidden></div>
+  <p>
+    <button type="button" id="repetir">Repetir la prueba</button>
+    <button type="button" id="copiar">Copiar el resultado</button>
+    <a href="/">Volver al sistema</a>
+  </p>
+  <p id="copiado" hidden>Resultado copiado: enviáselo a la persona que administra el sistema.</p>
+  <textarea id="texto" aria-hidden="true"></textarea>
+</main>
+<script>
+  const lineas = [];
+  const paso = (id, clase, detalle) => {
+    const li = document.getElementById(id);
+    li.className = clase;
+    li.querySelector('span').textContent = detalle;
+    lineas.push(li.querySelector('b').textContent + ': ' + detalle);
+  };
+  async function pedido(url, segundos) {
+    const corte = new AbortController();
+    const reloj = setTimeout(() => corte.abort(), segundos * 1000);
+    const t0 = performance.now();
+    try {
+      const r = await fetch(url, { cache: 'no-store', signal: corte.signal });
+      const cuerpo = await r.text();
+      return { r, cuerpo, ms: Math.round(performance.now() - t0) };
+    } catch (e) {
+      return { error: e.name === 'AbortError' ? 'sin respuesta en ' + segundos + ' s' : 'sin respuesta (' + e.message + ')',
+               ms: Math.round(performance.now() - t0) };
+    } finally { clearTimeout(reloj); }
+  }
+  const esDelSistema = (x) => { try { return typeof JSON.parse(x.cuerpo).ok === 'boolean'; } catch (e) { return false; } };
+
+  async function probar() {
+    lineas.length = 0;
+    document.getElementById('resumen').hidden = true;
+    document.getElementById('copiado').hidden = true;
+    for (const id of ['p1', 'p2', 'p3']) { document.getElementById(id).className = 'espera'; }
+    document.querySelector('#p1 span').textContent = 'Probando…';
+    let problema = null;
+
+    // 1. ¿Responde el sistema, o algo de la red (filtro, proxy, VPN) responde en su lugar?
+    const x = await pedido('/health', 20);
+    if (x.error) { paso('p1', 'mal', 'El servidor no responde desde esta red: ' + x.error + '.'); problema = 'sin_respuesta'; }
+    else if (!esDelSistema(x)) { paso('p1', 'mal', 'Respondió la red de la empresa en lugar del sistema (HTTP ' + x.r.status + '): el acceso está bloqueado o interceptado.'); problema = 'bloqueado'; }
+    else if (x.r.status === 503) { paso('p1', 'aviso', 'El sistema está iniciando (' + x.ms + ' ms). Repetí la prueba en un minuto.'); problema = 'iniciando'; }
+    else if (!x.r.ok) { paso('p1', 'mal', 'El sistema respondió con un error (HTTP ' + x.r.status + ').'); problema = 'error'; }
+    else { paso('p1', 'ok', 'Correcta (' + x.ms + ' ms).'); }
+
+    // 2. Estabilidad: cortes intermitentes y demoras.
+    if (!problema) {
+      const tiempos = []; let fallas = 0;
+      for (let i = 0; i < 10; i++) {
+        const y = await pedido('/health', 15);
+        if (y.error || !esDelSistema(y) || !y.r.ok) fallas++; else tiempos.push(y.ms);
+      }
+      tiempos.sort((a, b) => a - b);
+      const mediana = tiempos.length ? tiempos[Math.floor(tiempos.length / 2)] : null;
+      const maximo = tiempos.length ? tiempos[tiempos.length - 1] : null;
+      const detalle = fallas + ' de 10 sin respuesta' + (mediana !== null ? '; tiempo habitual ' + mediana + ' ms, máximo ' + maximo + ' ms' : '') + '.';
+      if (fallas) { paso('p2', 'mal', detalle); problema = 'inestable'; }
+      else if (maximo > 3000) { paso('p2', 'aviso', detalle + ' La conexión es lenta.'); problema = 'lenta'; }
+      else paso('p2', 'ok', detalle);
+
+      // 3. Descarga grande: con algunas VPN las respuestas grandes se cortan aunque las chicas lleguen.
+      const z = await pedido('/index.html', 60);
+      if (z.error || !z.r.ok) { paso('p3', 'mal', 'La descarga no se completó: ' + (z.error || 'HTTP ' + z.r.status) + '.'); problema = problema || 'descarga'; }
+      else paso('p3', z.ms > 15000 ? 'aviso' : 'ok', Math.round(z.cuerpo.length / 1024) + ' KB en ' + (z.ms / 1000).toFixed(1) + ' s.');
+    } else {
+      paso('p2', 'espera', 'No se probó.'); paso('p3', 'espera', 'No se probó.');
+    }
+
+    const resumen = {
+      null: 'La conexión funciona correctamente desde esta red.',
+      sin_respuesta: 'Desde esta red no se llega al servidor. Si la computadora está conectada a la VPN de la empresa, probá '
+        + 'sin la VPN: si así funciona, la VPN no permite el acceso a ' + location.host + ' y hay que pedir a IT que lo habilite. '
+        + 'Si tampoco funciona sin la VPN, la computadora que hace de servidor puede estar apagada o sin conexión.',
+      bloqueado: 'La red de la empresa (filtro web o VPN) bloquea o intercepta el acceso a ' + location.host
+        + '. Hay que pedir a IT que habilite esa dirección.',
+      iniciando: 'El sistema está iniciando. Repetí la prueba en un minuto.',
+      error: 'El servidor respondió con un error. Enviá el resultado a la persona que administra el sistema.',
+      inestable: 'La conexión se interrumpe. El sistema reintenta las consultas automáticamente; si los cortes son '
+        + 'frecuentes con la VPN, hay que pedir a IT que habilite ' + location.host + ' (o que lo excluya del túnel de la VPN).',
+      lenta: 'La conexión funciona, pero lenta. Las consultas pueden demorar.',
+      descarga: 'Las respuestas grandes se cortan (frecuente con algunas VPN). Hay que pedir a IT que habilite '
+        + location.host + ' o que lo excluya del túnel de la VPN.',
+    }[problema];
+    const caja = document.getElementById('resumen');
+    caja.textContent = resumen; caja.hidden = false;
+    lineas.unshift('Prueba de conexión — Auditor de Rankings Digitales', 'Dirección: ' + location.host,
+                   'Fecha: ' + new Date().toLocaleString('es-AR'), 'Navegador: ' + navigator.userAgent);
+    lineas.push('Resultado: ' + resumen);
+  }
+  document.getElementById('repetir').onclick = probar;
+  document.getElementById('copiar').onclick = async () => {
+    const texto = lineas.join('\n');
+    try { await navigator.clipboard.writeText(texto); }
+    catch (e) { const a = document.getElementById('texto'); a.value = texto; a.select(); document.execCommand('copy'); }
+    document.getElementById('copiado').hidden = false;
+  };
+  probar();
+</script>
+</body>
+</html>

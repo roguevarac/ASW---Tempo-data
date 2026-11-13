@@ -63,6 +63,8 @@ with sync_playwright() as p:
     pag.goto(BASE + "/")
     pag.wait_for_selector("#loginEmail")
     check("la página carga y muestra el login", pag.is_visible("#loginBtn"))
+    check("la pantalla de ingreso ofrece probar la conexión con el servidor",
+          pag.get_attribute("#linkConexion", "href") == "conexion.html")
 
     pag.fill("#loginEmail", "admin@prueba.local"); pag.fill("#loginPass", "incorrecta"); pag.click("#loginBtn")
     try:
@@ -221,6 +223,46 @@ with sync_playwright() as p:
     sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from territory_tracks where track_master_id in "
          "(select id from tracks_master where track_name_raw like 'Dup Nav%'); delete from obra_alias where clave like 'dup nav%'; "
          "delete from tracks_master where track_name_raw like 'Dup Nav%'")
+
+    # ---- cortes de conexión (VPN): las consultas se reintentan solas con un aviso; los cambios no se reintentan
+    cortes = {"n": 0}
+    def cortar(ruta):
+        if cortes["n"] < 2:
+            cortes["n"] += 1; ruta.abort()
+        else:
+            ruta.continue_()
+    pag.route("**/rpc/fn_master_pagina", cortar)
+    pag.fill("#searchMaster", "Segundo")
+    pag.wait_for_selector("#avisoConexion", timeout=8000)
+    aviso = pag.inner_text("#avisoConexion")
+    pag.wait_for_selector("#avisoConexion", state="detached", timeout=20000)
+    check("con cortes de conexión, la tabla se carga igual: reintenta sola y muestra 'reintentando' mientras tanto",
+          cortes["n"] == 2 and "reintentando" in aviso and "Segundo Tema" in pag.inner_text("tbody"), (cortes, aviso))
+    pag.unroute("**/rpc/fn_master_pagina")
+    sqlq("insert into tracks_master (track_name_raw, artist_name_raw) values ('Tema Corte', 'Artista Corte')")
+    pag.fill("#searchMaster", "Tema Corte"); pag.wait_for_timeout(1500)
+    pag.route("**/rpc/fn_asignar_tempo_id", lambda ruta: ruta.abort())
+    mensajes = []
+    def anotar(d):
+        mensajes.append(d.message); d.accept()
+    pag.on("dialog", anotar)
+    campo = pag.locator('[data-field-master="tempo_id"]').first
+    campo.fill("777301"); campo.press("Tab"); pag.wait_for_timeout(2500)
+    pag.remove_listener("dialog", anotar); pag.unroute("**/rpc/fn_asignar_tempo_id")
+    check("un cambio cortado no se reintenta: avisa que se verifique si se guardó",
+          any("No se pudo confirmar el cambio" in m for m in mensajes)
+          and sqlq("select coalesce(tempo_id, '-') from tracks_master where track_name_raw = 'Tema Corte'") == "-", mensajes)
+    sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from tracks_master where track_name_raw = 'Tema Corte'")
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1500)
+    if pag.locator("#avisoConexion").count():
+        pag.evaluate("document.getElementById('avisoConexion').remove()")
+    errores_js[:] = [e for e in errores_js if "ERR_FAILED" not in e and "Failed to load resource" not in e]
+    prueba = ctx.new_page()
+    prueba.goto(BASE + "/conexion.html")
+    prueba.wait_for_selector("#resumen:not([hidden])", timeout=60000)
+    check("prueba de conexión con el servidor disponible: indica que funciona correctamente",
+          "funciona correctamente" in prueba.inner_text("#resumen") and prueba.locator("li.mal").count() == 0, prueba.inner_text("main")[:500])
+    prueba.close()
 
     pag.click('[data-tab="upload"]')
     # YouTube se carga a mano, igual que Spotify (no hay carga automática)
@@ -445,7 +487,7 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Mantener la sesión iniciada", "Con Tempo ID", "Compilado", "UNCONTROLLED DUP", "Tickets enviados",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Mantener la sesión iniciada", "Con Tempo ID", "Compilado", "UNCONTROLLED DUP", "Probar la conexión", "Tickets enviados",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
                                           "Respaldo en OneDrive", "no altera la información",
                                           "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))

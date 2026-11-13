@@ -76,6 +76,12 @@ with sync_playwright() as p:
     pag.wait_for_timeout(5000)   # pasa el intento automático de encenderlo: la pantalla sigue esperando
     check("después del intento automático de encender el servidor, la pantalla sigue esperando",
           "está iniciando o apagado" in pag.content() and pag.url.rstrip("/") == BASE, pag.url)
+    otra = ctx.new_page()
+    otra.goto(BASE + "/conexion.html")
+    otra.wait_for_selector("#resumen:not([hidden])", timeout=30000)
+    check("sin red hacia el servidor, la prueba de conexión abre igual (guardada) e indica que no llega al servidor",
+          "no se llega al servidor" in otra.inner_text("#resumen") and "VPN" in otra.inner_text("#resumen"), otra.inner_text("#resumen"))
+    otra.close()
     ctx.set_offline(False)
     pag.wait_for_selector("#loginEmail", timeout=15000)
     check("cuando el servidor vuelve, entra solo al sistema", pag.url.rstrip("/") == BASE)

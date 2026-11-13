@@ -59,6 +59,19 @@
       return renovando;
     }
 
+    // Cortes de red (frecuentes con la VPN de la empresa): las consultas se reintentan solas y la pantalla lo indica
+    // (evento "rk-conexion"). Los cambios no se reintentan, para no aplicarlos dos veces.
+    const LECTURAS = /^\/rpc\/fn_[a-z_]*(pagina|conteo|opciones|lista|historial_[a-z]+|ultimas_cargas|ticket_obras|envio_obras|nombres_usuarios|_view|exportar|obra_history)$/;
+    const esLectura = (metodo, ruta) => metodo === 'GET' || LECTURAS.test(ruta.split('?')[0]);
+    const avisar = (estado) => { try { window.dispatchEvent(new CustomEvent('rk-conexion', { detail: estado })); } catch (e) { /* sin ventana */ } };
+    const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+    async function conPlazo(url, opciones, segundos) {
+      const corte = new AbortController();
+      const reloj = setTimeout(() => corte.abort(), segundos * 1000);
+      try { return await fetch(url, Object.assign({}, opciones, { signal: corte.signal })); }
+      finally { clearTimeout(reloj); }
+    }
+
     async function pedir(metodo, ruta, { body, accept, raw, contentType } = {}) {
       const headers = {};
       let s = leerSesion();
@@ -72,10 +85,25 @@
       if (raw !== undefined) { cuerpo = raw; headers['Content-Type'] = contentType || 'application/octet-stream'; }
       else if (body !== undefined) { cuerpo = JSON.stringify(body); headers['Content-Type'] = 'application/json'; }
       let res;
-      try {
-        res = await fetch(base + ruta, { method: metodo, headers, body: cuerpo });
-      } catch (e) {
-        return { data: null, error: { message: 'No hay conexión con el servidor: ' + e.message } };
+      const lectura = esLectura(metodo, ruta);
+      const esperas = lectura ? [1, 2, 4, 8] : [];
+      for (let intento = 0; ; intento++) {
+        let fallo = null;
+        try {
+          res = await conPlazo(base + ruta, { method: metodo, headers, body: cuerpo }, lectura ? 90 : 300);
+          if ([502, 503, 504].includes(res.status) && lectura && !ruta.startsWith('/health')) fallo = 'HTTP ' + res.status;
+        } catch (e) {
+          fallo = e.name === 'AbortError' ? 'el servidor no respondió a tiempo' : e.message;
+        }
+        if (!fallo) { if (intento > 0) avisar('ok'); break; }
+        if (intento >= esperas.length) {
+          avisar('sin_conexion');
+          return { data: null, error: { message: lectura
+            ? 'No hay conexión con el servidor (' + fallo + '). Para revisar la conexión: Manual de uso > Uso desde otras computadoras.'
+            : 'No se pudo confirmar el cambio por un corte de conexión (' + fallo + '). Actualizá la tabla para verificar si se guardó.' } };
+        }
+        avisar('reintentando');
+        await esperar(esperas[intento] * 1000);
       }
       if (res.status === 401 && s) {
         // La sesión venció: se limpia y se vuelve a la pantalla de login.

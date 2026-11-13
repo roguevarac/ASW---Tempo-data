@@ -272,7 +272,29 @@ plan de Tailscale de la empresa o un servidor propio (ver "Servidor Linux"). Con
 - Si la red lo bloquea, IT tiene que habilitar la salida HTTPS (443) a `controlplane.tailscale.com`,
   `login.tailscale.com`, `log.tailscale.com` y `*.tailscale.com`.
 
-Si la red de quien abre el enlace bloquea `*.ts.net`, a esa persona no le va a abrir.
+**Con la VPN de la empresa:** la VPN manda el tráfico por los filtros de la empresa, que suelen bloquear o cortar los
+enlaces `*.ts.net` (categoría "túneles/acceso remoto"). Para saber qué pasa, la persona abre
+`https://auditor-rankings.<red>.ts.net/conexion.html` (también "Probar la conexión con el servidor", en la pantalla de
+ingreso): la página queda guardada en el navegador y funciona aunque la red no llegue al servidor. Distingue:
+- red que responde en lugar del sistema (bloqueo o inspección del filtro web);
+- sin respuesta;
+- cortes intermitentes;
+- descargas grandes que se cortan.
+
+Con **Copiar el resultado** lo envía. Los cortes breves no frenan el trabajo: el front reintenta las consultas solo
+(`tempo-client.js`, evento `rk-conexion`); los cambios no se reintentan, para no aplicarlos dos veces.
+
+Pedido para IT (reemplazar `<red>` por el del enlace que muestra el Panel de control):
+
+> Necesitamos que los usuarios conectados a la VPN puedan abrir la aplicación interna Auditor de Rankings Digitales
+> en `https://auditor-rankings.<red>.ts.net` (HTTPS, puerto 443). Pedimos:
+> 1. permitir ese dominio en el filtro web / proxy, sin inspección TLS;
+> 2. si la VPN es de túnel completo, excluir ese dominio del túnel (split tunneling) o permitir su salida a internet.
+>
+> El acceso está protegido por usuario y contraseña propios del sistema y viaja cifrado.
+
+Si la computadora servidor también usa la VPN, el estado del acceso figura en el Panel de control. Si ahí no aparece
+activo, el pedido a IT es el de "Si no conecta" (salida a `*.tailscale.com`).
 
 **Usuarios:** cada persona necesita su usuario. Se crea desde el Panel de control > Usuarios: el sistema muestra un
 código de activación, y la persona elige su contraseña en "¿Olvidaste la contraseña?". Puede instalarla como

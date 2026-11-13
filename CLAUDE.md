@@ -246,6 +246,16 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     - Estado en el Panel: `relevar_tunel` → `panel.latido_tunel` (`db/mejoras/11_acceso_compartido.sql`). Interpreta
       `tailscale status --json --peers=false` y `tailscale funnel status --json` en la base: Ubuntu no trae jq.
     - Windows: solo `sin-suspension.ps1`, que lanza `lanzar.ps1` si `$Compartir`.
+    - **Usuarios con la VPN de la empresa (13/11/2026):** "algunos usuarios no conectan con la VPN". Causa más probable:
+      el filtro web o el túnel de la VPN bloquea o corta `*.ts.net`. La solución la aplica IT; el texto del pedido está
+      en el README. En el sistema:
+      - `tempo-client.js` reintenta las lecturas (GET y RPC de consulta, `LECTURAS`) ante cortes o 502/503/504, con 1,
+        2, 4 y 8 s de espera. Tiene un plazo (90 s las lecturas, 300 s los cambios) y emite el evento `rk-conexion`; el
+        front muestra `#avisoConexion`.
+      - Los cambios nunca se reintentan.
+      - `front/conexion.html` prueba la conexión. Está en los BASICOS de `sw.js`, así que abre aunque la red no llegue
+        al servidor. Distingue bloqueo, sin respuesta, inestable y descarga cortada, y permite copiar el resultado. Se
+        abre desde el ingreso (`#linkConexion`), el aviso y `apagado.html`.
     - **Microsoft Dev Tunnels quedó descartado; no volver a él:**
       - en Docker no guarda la sesión (no hay llavero);
       - desde Windows, a José (`@sonymusicpub.com`) el ingreso con cuenta Microsoft le dio `HTTP ERROR 431` en

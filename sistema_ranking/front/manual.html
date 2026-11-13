@@ -574,6 +574,22 @@ habilitado, el <b>Panel de control</b> (Estado del sistema) muestra el enlace pa
   <li>Todas las personas trabajan sobre la misma información: lo que carga o modifica una persona lo ven las demás al
     actualizar la tabla.</li>
 </ul>
+<h3>Conexión con la VPN de la empresa</h3>
+<p>Si la conexión se interrumpe un momento, el sistema reintenta las consultas automáticamente y lo indica abajo de la
+pantalla (<b>Conexión inestable con el servidor: reintentando…</b>). Los cambios (por ejemplo, registrar un Tempo ID) no
+se reintentan solos: si un corte los interrumpe, el sistema lo informa; actualizá la tabla para verificar si se
+guardaron.</p>
+<p>Si con la VPN no se puede ingresar o los cortes son frecuentes:</p>
+<ol class="pasos">
+  <li>Abrí <b>Probar la conexión con el servidor</b> (debajo de la pantalla de ingreso, o el enlace del aviso). La prueba
+    funciona aunque la red no llegue al servidor e indica si la red de la empresa bloquea el acceso, si la conexión se
+    interrumpe o si el servidor no responde.</li>
+  <li>Probá con la VPN conectada y sin ella.</li>
+  <li>Con <b>Copiar el resultado</b>, enviá el resultado a la persona que administra el sistema.</li>
+</ol>
+<p>Cuando la VPN bloquea o corta el acceso, la solución la aplica IT: habilitar la dirección del enlace en el filtro web
+de la empresa y, si corresponde, excluirla del túnel de la VPN. La persona que administra el sistema hace ese
+pedido.</p>
 <h3>Habilitación (administración)</h3>
 <p>El enlace lo provee Tailscale y se habilita una sola vez desde la terminal de Ubuntu de la computadora servidor:</p>
 <ol class="pasos">
