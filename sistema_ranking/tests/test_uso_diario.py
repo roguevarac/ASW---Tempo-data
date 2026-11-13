@@ -191,6 +191,11 @@ r = rpc(h_aud, "fn_asignar_tempo_id", {"p_track_id": tres, "p_tempo_id": "444000
 check("el auditor no modifica ni unifica obras", r.status_code == 403 and sqlq(f"select count(*) from tracks_master where id = '{tres}'") == "1", r.text)
 check("quitar el Tempo ID (vacío)", rpc(h, "fn_asignar_tempo_id", {"p_track_id": uno, "p_tempo_id": ""}).json() == 0
       and sqlq(f"select coalesce(tempo_id, '-') from tracks_master where id = '{uno}'") == "-")
+check("sin Tempo ID, los datos de BO de ese Tempo ID ya no se muestran en la obra",
+      sqlq(f"select count(*) from fn_territory_pagina() v where v.track_master_id = '{uno}' and v.bo is not null") == "0")
+rpc(h, "fn_asignar_tempo_id", {"p_track_id": uno, "p_tempo_id": "4440001"})
+check("...y vuelven al registrarlo otra vez",
+      sqlq(f"select v.bo from fn_territory_pagina() v where v.track_master_id = '{uno}'") == "BO1")
 
 # ------------------------------------------------------------------ fusión real: alias y streams
 def chart(nombre, semana, rank, streams, artista="Banda Fusion"):
@@ -285,6 +290,52 @@ check("la carga CSV de Tempo IDs también separa compilados (una canción puede 
       and sqlq("select string_agg(tm.track_artist_concat || '=' || tm.tempo_id || '=' || tt.streams, '|' order by tm.track_artist_concat) from tracks_master tm "
                "join territory_tracks tt on tt.track_master_id = tm.id where tm.track_name_raw in ('Otro A', 'Otro B')")
       == "Otro A - Banda Comp=4440401=6|Otro B - Banda Comp=UNCONTROLLED=5", r.text)
+
+# ------------------------------------------------------------------ los datos de BO y Tempo siguen al Tempo ID
+chart("Repo Mal", "2025-04-24", 50, 10, "Banda Repo")
+chart("Repo Bien", "2025-04-24", 51, 11, "Banda Repo")
+repo_mal = sqlq("select id from tracks_master where track_name_raw = 'Repo Mal'")
+repo_bien = sqlq("select id from tracks_master where track_name_raw = 'Repo Bien'")
+rpc(h, "fn_asignar_tempo_id", {"p_track_id": repo_mal, "p_tempo_id": "4440501"})
+sqlq("select fn_upsert_tempo_report_row('4440501', 'UY', '2020-01-01', 40, 40, 0, 'p', 'c', 'ok', 'Repo Bien', '40', '40', '0', 'URUGUAY'); "
+     "select fn_upsert_bo_report_row('4440501', 'UY', 'BO-REPO', 'C', 'NOT WORK', null, 40)")
+rpc(h, "fn_guardar_seguimiento", {"p_track_id": repo_mal, "p_pais": "UY", "p_campo": "ticket", "p_valor": "T-REPO"})
+fila_repo = lambda: sqlq("select string_agg(v.track_artist_concat || '=' || coalesce(v.bo, '-') || '=' || coalesce(v.mech_raw, '-') || '=' "
+                         "|| coalesce(v.ticket, '-') || '=' || coalesce(v.estado_trabajo, '-'), '|' order by v.track_artist_concat) "
+                         "from fn_territory_pagina(p_pais => 'UY', p_buscar => 'Banda Repo') v")
+check("datos de BO y Tempo cargados por Tempo ID en la obra que lo tiene",
+      fila_repo() == "Repo Bien - Banda Repo=-=-=-=-|Repo Mal - Banda Repo=BO-REPO=40=T-REPO=TICKET ENVIADO", fila_repo())
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": repo_mal, "p_tempo_id": "4440502"})
+check("al corregir el Tempo ID de la obra, sus datos de BO y Tempo dejan de mostrarse en ella (quedan en espera)",
+      r.status_code == 200 and fila_repo() == "Repo Bien - Banda Repo=-=-=-=-|Repo Mal - Banda Repo=-=-=T-REPO=-", (r.text, fila_repo()))
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": repo_bien, "p_tempo_id": "4440501"})
+check("...y pasan, con el ticket, a la obra que recibe ese Tempo ID",
+      r.status_code == 200 and fila_repo() == "Repo Bien - Banda Repo=BO-REPO=40=T-REPO=TICKET ENVIADO|Repo Mal - Banda Repo=-=-=-=-", (r.text, fila_repo()))
+sqlq("select fn_upsert_bo_report_row('4440501', 'UY', 'BO-REPO2', 'C', 'WORK', null, 40)")
+check("volver a cargar el Reporte BackOffice actualiza los datos en la obra que tiene el Tempo ID",
+      sqlq("select tm.track_name_raw || '=' || br.bo_id from territory_bo_report br join tracks_master tm on tm.id = br.track_master_id "
+           "where br.tempo_id = '4440501' and br.deleted_at is null") == "Repo Bien=BO-REPO2", fila_repo())
+
+# ------------------------------------------------------------------ UNCONTROLLED DUP
+chart("Dup Original", "2025-04-24", 52, 100, "Banda Dup")
+chart("Dup Otra Forma", "2025-04-24", 53, 40, "Banda Dup")
+dup_otra = sqlq("select id from tracks_master where track_name_raw = 'Dup Otra Forma'")
+r = rpc(h, "fn_unificar_uncontrolled", {"p_track_id": dup_otra, "p_track_artista": "  Dup Original - Banda Dup "})
+check("UNCONTROLLED DUP: con el Track - Artista pegado se unifican y queda una sola obra, UNCONTROLLED, con los streams sumados",
+      r.status_code == 200 and r.json() == "Dup Original - Banda Dup"
+      and sqlq("select string_agg(tm.track_artist_concat || '=' || tm.tempo_id || '=' || tt.streams, '|') from tracks_master tm "
+               "join territory_tracks tt on tt.track_master_id = tm.id where tm.artist_name_raw = 'Banda Dup'") == "Dup Original - Banda Dup=UNCONTROLLED=140",
+      r.text)
+chart("Dup Otra Forma", "2025-04-24", 53, 40, "Banda Dup")
+check("...y las cargas siguientes con el otro nombre van a la obra que quedó",
+      sqlq("select count(*) from tracks_master where artist_name_raw = 'Banda Dup'") == "1")
+r = rpc(h, "fn_unificar_uncontrolled", {"p_track_id": repo_mal, "p_track_artista": "No Existe - Nadie"})
+check("UNCONTROLLED DUP con un nombre que no está en la tabla: no cambia nada y lo explica",
+      r.status_code >= 400 and "No se encontró en la tabla principal" in r.json().get("message", ""), r.text)
+r = rpc(h, "fn_unificar_uncontrolled", {"p_track_id": repo_mal, "p_track_artista": "Dup Original - Banda Dup"})
+check("UNCONTROLLED DUP no unifica una obra con Tempo ID numérico",
+      r.status_code >= 400 and "tiene el Tempo ID 4440502" in r.json().get("message", "")
+      and sqlq("select count(*) from tracks_master where track_name_raw in ('Repo Mal', 'Dup Original')") == "2", r.text)
 
 # ------------------------------------------------------------------ Tempo ID: número o valores estándar
 r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": tres, "p_tempo_id": "COMPILADO"})

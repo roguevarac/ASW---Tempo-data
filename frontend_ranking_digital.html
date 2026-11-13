@@ -442,6 +442,10 @@ function buscar(valor, idCampo){
 // Valores admitidos en Tempo ID además del número (la base los valida igual: fn_valor_tempo).
 const MARCADORES_TEMPO = ['UNCONTROLLED', 'PENDING ARGENTINA', 'PENDING CHILE', 'PENDING URUGUAY', 'PENDING MIAMI',
                           'PENDING USA', 'PENDING MEXICO', 'PENDING COREA', 'PENDING ESPAÑA'];
+// No es un valor que se guarde: en la tabla principal, unifica la obra con otra (sin Tempo ID numérico) y queda una sola,
+// UNCONTROLLED (fn_unificar_uncontrolled).
+const UNCONTROLLED_DUP = 'UNCONTROLLED DUP';
+const OPCIONES_TEMPO = [MARCADORES_TEMPO[0], UNCONTROLLED_DUP, ...MARCADORES_TEMPO.slice(1)];
 const sinTildes = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 // El valor estándar, '' si está vacío o null si no es válido.
 function tempoEstandar(valor){
@@ -457,7 +461,7 @@ function listaTempo(valor){
   if(!lista) return;
   const v = String(valor || '');
   const previo = v.includes('/') ? v.slice(0, v.lastIndexOf('/') + 1) : '';
-  const opciones = MARCADORES_TEMPO.map(m => previo + m);
+  const opciones = previo ? MARCADORES_TEMPO.map(m => previo + m) : OPCIONES_TEMPO;
   if([...lista.options].map(o => o.value).join('|') !== opciones.join('|'))
     lista.innerHTML = opciones.map(o => `<option value="${o.replace(/"/g, '&quot;')}">`).join('');
 }
@@ -470,6 +474,19 @@ function tempoCompilado(value){
 }
 
 async function updateMasterField(id, field, value){
+  if(field === 'tempo_id' && String(value).trim() === UNCONTROLLED_DUP){
+    // Misma canción que otra obra sin Tempo ID numérico: se pega su Track - Artista y queda una sola, UNCONTROLLED.
+    const obra = state.master.find(r => r.id === id);
+    const otra = prompt(`UNCONTROLLED DUP: pegá el Track - Artista exacto de la obra de la tabla principal que es la misma `
+      + `canción que "${obra?.track_artist_concat || ''}".\n\nLas dos obras se unifican (charts, streams y reportes) y queda `
+      + `una sola, UNCONTROLLED, con el nombre pegado.`);
+    if(otra === null || !otra.trim()){ loadAll(); return; }
+    const { data, error } = await sb.rpc('fn_unificar_uncontrolled', { p_track_id: id, p_track_artista: otra.trim() });
+    if(error) alert('No se unificaron las obras. ' + error.message);
+    else alert(`Las obras quedaron unificadas en "${data}", como UNCONTROLLED.`);
+    loadAll();
+    return;
+  }
   if(field === 'tempo_id' && tempoCompilado(value) !== null){
     // El compilado se separa en una obra por canción: los streams se dividen en partes iguales y el nombre del
     // compilado queda registrado para las próximas cargas.
@@ -1403,7 +1420,7 @@ function renderMaster(){
   </div>
   ${filtrosActivos().length ? `<div class="filtro-activo" id="filtroActivo">Filtros aplicados: ${filtrosActivos().join(' · ')} · <b>${fmtNum(state.masterTotal)} ${state.masterTotal === 1 ? 'obra' : 'obras'}</b></div>` : ''}
   ${state.masterConteo ? `<div class="conteo-id">Identificadas: ${fmtNum(state.masterConteo.identificadas)} · Sin identificar: ${fmtNum(state.masterConteo.sin)}</div>` : ''}
-  <datalist id="marcadoresTempo">${MARCADORES_TEMPO.map(m => `<option value="${m}">`).join('')}</datalist>
+  <datalist id="marcadoresTempo">${OPCIONES_TEMPO.map(m => `<option value="${m}">`).join('')}</datalist>
   <table><thead><tr><th style="width:70%">Track - Artista</th><th>Tempo ID
     <select id="tempoFilter" class="filtro-th ${state.tempoFilter ? 'filtro-on' : ''}" title="Filtrar por Tempo ID">
       <option value="">Todos</option>
@@ -1412,7 +1429,7 @@ function renderMaster(){
   <tbody>${rows.length ? rows.map(r=>`
     <tr class="${r.deleted_at?'is-deleted':''}">
       <td>${r.track_artist_concat}</td>
-      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—" list="marcadoresTempo" inputmode="numeric" title="Número de Tempo ID, o elegí UNCONTROLLED / PENDING de la lista. Compilado: un Tempo ID por canción separados por / (por ejemplo 123/UNCONTROLLED)">` : (r.tempo_id||'—')}</td>
+      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—" list="marcadoresTempo" inputmode="numeric" title="Número de Tempo ID, o elegí UNCONTROLLED / UNCONTROLLED DUP / PENDING de la lista. Compilado: un Tempo ID por canción separados por / (por ejemplo 123/UNCONTROLLED)">` : (r.tempo_id||'—')}</td>
     </tr>`).join('') : `<tr><td colspan="2"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
   </tbody></table>
   ${renderPager('master', state.masterTotal, state.masterPage)}`;
@@ -2232,6 +2249,7 @@ function attachAppEvents(){
     // Solo se escriben números (y "/" para un compilado: 123/456); UNCONTROLLED y PENDING se eligen de la lista,
     // también como parte de un compilado (123/UNCONTROLLED): después de "/", la lista ofrece cada valor a continuación.
     el.oninput = () => {
+      if(el.value.trim() === UNCONTROLLED_DUP){ listaTempo(''); return; }
       const limpio = el.value.split('/')
         .map(p => MARCADORES_TEMPO.find(m => p.trim().startsWith(m)) || p.replace(/[^0-9]/g, '')).join('/');
       if(limpio !== el.value) el.value = limpio;

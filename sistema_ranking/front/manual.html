@@ -274,7 +274,8 @@ marcan en rojo. El Tempo ID registrado se aplica también a todas las filas de e
 <p>En la celda solo se pueden escribir números. Además del número se admiten estos valores, que se eligen de la lista
 que se despliega en la celda (flecha hacia abajo o clic en la celda vacía) y pueden repetirse en varias obras:
 <b>UNCONTROLLED</b>, <b>PENDING ARGENTINA</b>, <b>PENDING CHILE</b>, <b>PENDING URUGUAY</b>, <b>PENDING MIAMI</b>,
-<b>PENDING USA</b>, <b>PENDING MEXICO</b>, <b>PENDING COREA</b> y <b>PENDING ESPAÑA</b>. Si hace falta otro valor, se
+<b>PENDING USA</b>, <b>PENDING MEXICO</b>, <b>PENDING COREA</b> y <b>PENDING ESPAÑA</b>. La lista incluye también <b>UNCONTROLLED DUP</b>, que
+no es un valor: unifica la obra con otra (ver <a href="#principal">UNCONTROLLED DUP</a>). Si hace falta otro valor, se
 agrega al sistema. El reporte BO incluye solo las obras con Tempo ID numérico.</p>
 <p>Un Tempo ID corresponde a una sola obra. Si ya está asignado a otra, el sistema indica a cuál y consulta si se trata
 de la misma canción (por ejemplo, escrita de otra forma en Spotify y en YouTube):</p>
@@ -285,6 +286,19 @@ de la misma canción (por ejemplo, escrita de otra forma en Spotify y en YouTube
     se registran directamente en la obra que quedó.</li>
   <li><b>Cancelar:</b> no se modifica nada.</li>
 </ul>
+<p>Los datos de los Reportes BackOffice y Tempo Control se cargan por Tempo ID: siempre se muestran en la obra que tiene
+ese Tempo ID. Si un Tempo ID estaba asignado a la obra equivocada, corregí primero esa obra (con su Tempo ID correcto
+o vacía) y después registrá el Tempo ID en la obra que corresponde: sus datos de BO y de Tempo, con el ticket de cada
+territorio, pasan a esa obra en la tabla por territorio. Mientras ninguna obra tiene el Tempo ID, sus datos no se
+muestran.</p>
+<h3>UNCONTROLLED DUP</h3>
+<p>Para dos obras sin Tempo ID numérico que son la misma canción (por ejemplo, escrita de otra forma en Spotify y en
+YouTube), elegí <b>UNCONTROLLED DUP</b> en la lista del Tempo ID de una de ellas. El sistema solicita el Track - Artista
+de la otra: copialo exactamente como figura en la tabla principal y pegalo. Las dos obras se unifican como en la fusión
+por Tempo ID (charts, streams, reportes y descargas) y queda una sola, UNCONTROLLED, con el nombre pegado. Las próximas
+cargas con el otro nombre se registran en esa obra.</p>
+<p>No se aplica si alguna de las dos tiene Tempo ID numérico: en ese caso, ingresá ese número en la otra obra para
+unificarlas.</p>
 <h3>Compilado</h3>
 <p>Algunos charts registran varias canciones en un solo nombre, separadas por "/", por ejemplo
 <i>A Un Milimetro De Mi / Tan Natural - Q' Lokura, Sergio Torres</i>. En ese caso, ingresá el Tempo ID de cada canción
@@ -593,6 +607,8 @@ habilitado, el <b>Panel de control</b> (Estado del sistema) muestra el enlace pa
   <tr><td>"Para separar un compilado, el título tiene que tener una canción por cada Tempo ID…"</td><td>La cantidad de
     Tempo ID ingresados no coincide con las canciones del título separadas por "/". Ingresá un Tempo ID por canción,
     en el mismo orden (ver <a href="#principal">Compilado</a>).</td></tr>
+  <tr><td>"No se encontró en la tabla principal la obra …" (UNCONTROLLED DUP)</td><td>El Track - Artista pegado no
+    coincide con ninguna obra. Copialo de la tabla principal (celda Track - Artista) y volvé a intentarlo.</td></tr>
   <tr><td>"No se cargó: falta cargar la semana del …"</td><td>Entre la última semana cargada de ese territorio y
     plataforma y la del archivo falta al menos una. Cargá primero la semana indicada y después el archivo.</td></tr>
   <tr><td>"… no indica la semana del chart"</td><td>El nombre del chart no incluye la fecha. Descargalo nuevamente o

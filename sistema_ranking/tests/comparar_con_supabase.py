@@ -30,6 +30,10 @@ A_PROPOSITO = {("extension", "pg_cron"), ("extension", "pg_net"), ("extension", 
                # Tempo IDs usan los alias de las obras unificadas, suman streams y solo admiten los valores estándar.
                ("funcion", "public.fn_normalize_text"), ("funcion", "public.fn_upsert_ranking_row"),
                ("funcion", "public.fn_upsert_master_tempo_batch"),
+               # Columna en_espera: los datos de un Tempo ID que hoy no tiene ninguna obra quedan ocultos hasta que
+               # alguna lo reciba (db/mejoras/15_reportes_siguen_tempo.sql).
+               ("tabla", "public.territory_bo_report"), ("tabla", "public.territory_tempo_report"),
+               ("tabla", "public.territory_control"),
                # Descarga de la tabla por territorio con el orden nuevo y Ticket/Fecha (db/mejoras/04).
                ("funcion", "public.fn_territory_exportar"),
                # Estado de trabajo con RECLAMO ACTIVO, REVISAR NOT WORK y REVISAR % (db/mejoras/10_estado_trabajo.sql).

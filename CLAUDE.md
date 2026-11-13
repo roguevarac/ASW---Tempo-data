@@ -272,6 +272,16 @@ completo en `docs/tempo_schema/workbook_csv/` (glosario, reglas de calidad, refe
     iguales (el resto, de a uno, a las primeras) como partes en `territory_tracks_partes` y borra el compilado. Su nombre
     (y sus alias) queda en `compilado_partes` (tabla en 04, va en los TRUNCATE); `fn_upsert_ranking_row` reparte las
     cargas siguientes con ese nombre y nunca recrea la obra. La cantidad de títulos tiene que coincidir con la de IDs.
+  - **Los datos de BO y Tempo siguen al Tempo ID (13/11/2026, `db/mejoras/15_reportes_siguen_tempo.sql`):** las filas de
+    `territory_bo_report`/`territory_tempo_report`/`territory_control` (únicas por Tempo ID + país) van a la obra que hoy
+    tiene su Tempo ID (`trg_reporte_sigue_tempo`, BEFORE, `trg_b0_*` para correr antes del estado de trabajo; el ticket
+    del país pasa con los datos de BO). Sin obra quedan `en_espera` (con `deleted_at`, ocultas) hasta que una lo reciba.
+    `trg_tracks_master_reportes_tempo` las reubica al cambiar el Tempo ID. Un traslado explícito (`unificar_obras`) no se
+    recalcula. Los joins con `territory_bo_report` filtran `deleted_at is null`. `territory_control` ya no se renombra
+    con el Tempo ID nuevo de la obra.
+  - **UNCONTROLLED DUP (13/11/2026):** opción de la lista de Tempo ID (no se guarda): `prompt` para pegar el Track -
+    Artista exacto de la otra obra; `fn_unificar_uncontrolled` (15) unifica con `unificar_obras` y deja una sola,
+    UNCONTROLLED, con el nombre pegado. Rechaza si alguna tiene Tempo ID numérico.
   - **Estado de trabajo (28/10/2026, `db/mejoras/10_estado_trabajo.sql`, reemplaza `trg_bo_report_auto_revisar`):**
     problemas RECLAMO ACTIVO (`fn_reclamo_activo`: Reclamos con valor que no sea vacío/No/None/0/N/A/resuelto),
     REVISAR NOT WORK (`bo_status` informado y distinto de WORK) y REVISAR % (ex "REVISAR"); sin problemas, OK BO-Tempo /

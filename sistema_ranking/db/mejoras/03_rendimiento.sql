@@ -181,6 +181,7 @@ AS $function$
         join tracks_master tm on tm.id = u.track_master_id
         left join territory_seguimiento sg on sg.track_master_id = u.track_master_id and sg.pais_code = u.pais_code
         left join territory_bo_report br on br.track_master_id = u.track_master_id and br.pais_code = u.pais_code
+               and br.deleted_at is null
         left join territory_tempo_report tr on tr.track_master_id = u.track_master_id and tr.pais_code = u.pais_code
                and tr.deleted_at is null
         where (p_include_deleted or (u.deleted_at is null and tm.deleted_at is null))

@@ -391,13 +391,16 @@ begin
     where tt.id = x.territory_track_id and (tt.streams is distinct from x.streams or tt.rank is distinct from x.rank);
     -- Reportes, controles y tickets por territorio: queda lo de p_destino.
     delete from territory_bo_report t where t.track_master_id = p_origen and exists (
-        select 1 from territory_bo_report s where s.track_master_id = p_destino and s.pais_code = t.pais_code);
+        select 1 from territory_bo_report s where s.track_master_id = p_destino and s.pais_code = t.pais_code
+           and s.deleted_at is null);
     update territory_bo_report set track_master_id = p_destino where track_master_id = p_origen;
     delete from territory_tempo_report t where t.track_master_id = p_origen and exists (
-        select 1 from territory_tempo_report s where s.track_master_id = p_destino and s.pais_code = t.pais_code);
+        select 1 from territory_tempo_report s where s.track_master_id = p_destino and s.pais_code = t.pais_code
+           and s.deleted_at is null);
     update territory_tempo_report set track_master_id = p_destino where track_master_id = p_origen;
     delete from territory_control t where t.track_master_id = p_origen and exists (
-        select 1 from territory_control s where s.track_master_id = p_destino and s.pais_code = t.pais_code);
+        select 1 from territory_control s where s.track_master_id = p_destino and s.pais_code = t.pais_code
+           and s.deleted_at is null);
     update territory_control set track_master_id = p_destino where track_master_id = p_origen;
     delete from territory_seguimiento t where t.track_master_id = p_origen and exists (
         select 1 from territory_seguimiento s where s.track_master_id = p_destino and s.pais_code = t.pais_code);

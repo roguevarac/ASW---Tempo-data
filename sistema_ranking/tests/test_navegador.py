@@ -116,7 +116,7 @@ with sync_playwright() as p:
     campo = pag.locator('[data-field-master="tempo_id"][value=""]').first
     check("Tempo ID ofrece la lista de valores estándar",
           pag.evaluate("[...document.querySelectorAll('#marcadoresTempo option')].map(o => o.value).join('|')")
-          == "UNCONTROLLED|PENDING ARGENTINA|PENDING CHILE|PENDING URUGUAY|PENDING MIAMI|PENDING USA|PENDING MEXICO|PENDING COREA|PENDING ESPAÑA")
+          == "UNCONTROLLED|UNCONTROLLED DUP|PENDING ARGENTINA|PENDING CHILE|PENDING URUGUAY|PENDING MIAMI|PENDING USA|PENDING MEXICO|PENDING COREA|PENDING ESPAÑA")
     campo.click(); pag.keyboard.type("compilado"); campo.press("Tab"); pag.wait_for_timeout(1000)
     check("Tempo ID: no se pueden escribir letras (solo números; los valores de la lista se eligen)",
           campo.input_value() == "" and sqlq("select coalesce(tempo_id, '-') from tracks_master where track_name_clean='Segundo Tema'") == "-",
@@ -195,6 +195,32 @@ with sync_playwright() as p:
     sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from territory_tracks where track_master_id in "
          "(select id from tracks_master where track_name_raw in ('Uno Comp', 'Dos Comp')); "
          "delete from tracks_master where track_name_raw in ('Uno Comp', 'Dos Comp')")
+
+    # ---- UNCONTROLLED DUP: se pega el Track - Artista de la otra obra y queda una sola, UNCONTROLLED
+    sqlq("select fn_upsert_ranking_row('Dup Nav A', 'Banda Nav', 'AR', 4, 4, 4, 1, 300, 'x', 'u', 'spotify', null, '2026-10-08'); "
+         "select fn_upsert_ranking_row('Dup Nav B', 'Banda Nav', 'AR', 5, 5, 5, 1, 20, 'x', 'u', 'spotify', null, '2026-10-08')")
+    dup_b = sqlq("select id from tracks_master where track_name_raw = 'Dup Nav B'")
+    pag.fill("#searchMaster", "Dup Nav"); pag.wait_for_timeout(1500)
+    dialogos = []
+    def responder_dup(d):
+        dialogos.append((d.type, d.message))
+        d.accept("Dup Nav A - Banda Nav") if d.type == "prompt" else d.accept()
+    pag.on("dialog", responder_dup)
+    campo = pag.locator(f'[data-field-master="tempo_id"][data-id="{dup_b}"]')
+    campo.fill("UNCONTROLLED DUP")
+    check("UNCONTROLLED DUP se elige de la lista y queda completo", campo.input_value() == "UNCONTROLLED DUP", campo.input_value())
+    campo.press("Tab"); pag.wait_for_timeout(3000)
+    pag.remove_listener("dialog", responder_dup)
+    check("UNCONTROLLED DUP: pide pegar el Track - Artista, unifica y queda una sola obra UNCONTROLLED",
+          [d[0] for d in dialogos] == ["prompt", "alert"] and "pegá el Track - Artista exacto" in dialogos[0][1]
+          and 'unificadas en "Dup Nav A - Banda Nav"' in dialogos[1][1]
+          and sqlq("select string_agg(tm.track_artist_concat || '=' || tm.tempo_id || '=' || tt.streams, '|') from tracks_master tm "
+                   "join territory_tracks tt on tt.track_master_id = tm.id where tm.track_name_raw like 'Dup Nav%'")
+          == "Dup Nav A - Banda Nav=UNCONTROLLED=320", (dialogos, sqlq("select string_agg(track_artist_concat, '|') from tracks_master where track_name_raw like 'Dup Nav%'")))
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from territory_tracks where track_master_id in "
+         "(select id from tracks_master where track_name_raw like 'Dup Nav%'); delete from obra_alias where clave like 'dup nav%'; "
+         "delete from tracks_master where track_name_raw like 'Dup Nav%'")
 
     pag.click('[data-tab="upload"]')
     # YouTube se carga a mano, igual que Spotify (no hay carga automática)
@@ -419,7 +445,7 @@ with sync_playwright() as p:
     manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
     texto_manual = manual.inner_text("main")
     check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
-          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Mantener la sesión iniciada", "Con Tempo ID", "Compilado", "Tickets enviados",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde la última descarga", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Mantener la sesión iniciada", "Con Tempo ID", "Compilado", "UNCONTROLLED DUP", "Tickets enviados",
                                           "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
                                           "Respaldo en OneDrive", "no altera la información",
                                           "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))
