@@ -1,0 +1,610 @@
+"""
+Mejoras de uso diario (db/mejoras/04_uso_diario.sql, api/app.py, tempo-client.js), por HTTP y en el navegador:
+  - sesiones en la base: renovación mientras se usa, vencimiento por inactividad, cierre de sesión que anula el token,
+    bloqueo, cambio y restablecimiento de contraseña desde el ingreso, y mensajes en castellano;
+  - carga de un archivo en una sola transacción (todo o nada), charts sin semana rechazados;
+  - Tempo ID repetido: unificación de las dos obras con sus charts, reportes, controles y envíos;
+  - descarga de la tabla por territorio con todos los filtros; respuestas comprimidas.
+
+Usa sus propios usuarios y obras (no depende de los datos de otras pruebas). Variables: BASE, PGURL.
+"""
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import tempfile
+
+import httpx
+from playwright.sync_api import sync_playwright
+
+# Chromium de la máquina de pruebas (variable CHROMIUM o el enlace estable de /opt/pw-browsers; si no, el de Playwright).
+CHROMIUM = os.environ.get("CHROMIUM") or ("/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else None)
+
+BASE = os.environ.get("BASE", "http://localhost:8787")
+PGURL = os.environ["PGURL"]
+fallas = []
+
+
+def check(nombre, cond, extra=""):
+    print(("OK   " if cond else "FAIL ") + nombre + ("" if cond else f"  -> {extra}"))
+    if not cond:
+        fallas.append(nombre)
+
+
+def sqlq(q):
+    r = subprocess.run(["psql", PGURL, "-At", "-c", q], capture_output=True, text=True)
+    if r.returncode:
+        raise SystemExit(f"SQL del test falló: {q}\n{r.stderr}")
+    return r.stdout.strip()
+
+
+sqlq("""SELECT auth.set_password('diario@prueba.local', 'clave-diario-123');
+        SELECT auth.set_password('diario.auditor@prueba.local', 'clave-auditor-456');
+        SELECT auth.set_password('diario.olvido@prueba.local', 'clave-olvido-789');
+        INSERT INTO public.app_users (user_id, app_role, oficina)
+        SELECT id, CASE WHEN email LIKE 'diario.auditor%' THEN 'auditor' ELSE 'usuario_estandar' END, 'AR'
+        FROM auth.users WHERE email LIKE 'diario%' ON CONFLICT (user_id) DO NOTHING""")
+
+
+def ingresar(email="diario@prueba.local", clave="clave-diario-123"):
+    r = httpx.post(f"{BASE}/auth/login", json={"email": email, "password": clave})
+    return r, {"Authorization": "Bearer " + r.json().get("access_token", "")}
+
+
+def rpc(h, fn, params):
+    return httpx.post(f"{BASE}/rpc/{fn}", json=params, headers=h, timeout=60)
+
+
+def leer(h):
+    return httpx.get(f"{BASE}/rest/app_users", params={"select": "app_role"}, headers=h).status_code
+
+
+_, h_aud = ingresar("diario.auditor@prueba.local", "clave-auditor-456")   # antes de que se frene su ingreso
+# ------------------------------------------------------------------ sesiones
+r = httpx.post(f"{BASE}/auth/login", json={"email": "diario@prueba.local", "password": "otra"})
+check("ingreso con contraseña incorrecta: mensaje en castellano", r.json()["message"] == "El email o la contraseña no son correctos.", r.text)
+r, h = ingresar()
+sid = sqlq("select s.id from auth.sesiones s join auth.users u on u.id = s.user_id where u.email = 'diario@prueba.local' "
+           "order by creada desc limit 1")
+check("el ingreso abre una sesión en la base", r.status_code == 200 and bool(sid) and r.json()["expires_in"] > 0, r.text)
+r = httpx.post(f"{BASE}/auth/renovar", headers=h)
+h_nuevo = {"Authorization": "Bearer " + r.json()["access_token"]}
+check("renovar da un token nuevo de la misma sesión", r.status_code == 200 and leer(h_nuevo) == 200 and leer(h) == 200, r.text)
+sqlq(f"update auth.sesiones set ultimo_uso = now() - interval '9 hours' where id = '{sid}'")
+r = httpx.get(f"{BASE}/rest/app_users", headers=h_nuevo)
+check("vence tras SESSION_HOURS sin uso, con mensaje claro",
+      r.status_code == 401 and "venció" in r.json()["message"], r.text)
+check("una sesión vencida no se puede renovar", httpx.post(f"{BASE}/auth/renovar", headers=h_nuevo).status_code == 401)
+# "Mantener la sesión iniciada en esta computadora": vence tras 30 días sin uso, no tras SESSION_HOURS.
+r = httpx.post(f"{BASE}/auth/login", json={"email": "diario@prueba.local", "password": "clave-diario-123", "recordar": True})
+h_rec = {"Authorization": "Bearer " + r.json()["access_token"]}
+sid_rec = sqlq("select s.id from auth.sesiones s join auth.users u on u.id = s.user_id where u.email = 'diario@prueba.local' "
+               "order by creada desc limit 1")
+check("mantener la sesión iniciada: el token dura 30 días y la sesión queda marcada",
+      r.status_code == 200 and r.json()["recordar"] is True and r.json()["expires_in"] == 30 * 86400
+      and sqlq(f"select recordar from auth.sesiones where id = '{sid_rec}'") == "t", r.text)
+sqlq(f"update auth.sesiones set ultimo_uso = now() - interval '9 days' where id = '{sid_rec}'")
+r = httpx.post(f"{BASE}/auth/renovar", headers=h_rec)
+check("...sigue abierta después de días sin uso, y al renovarla conserva la opción",
+      leer(h_rec) == 200 and r.status_code == 200 and r.json()["recordar"] is True and r.json()["expires_in"] == 30 * 86400, r.text)
+sqlq(f"update auth.sesiones set ultimo_uso = now() - interval '31 days' where id = '{sid_rec}'")
+check("...y vence tras 30 días sin uso", leer(h_rec) == 401)
+r = httpx.post(f"{BASE}/auth/login", json={"email": "diario@prueba.local", "password": "clave-diario-123"})
+check("sin la opción, la sesión es la de siempre (horas)", r.json()["recordar"] is False and r.json()["expires_in"] < 86400, r.text)
+_, h = ingresar()
+check("cerrar sesión responde", httpx.post(f"{BASE}/auth/salir", headers=h).status_code == 204)
+check("después de cerrar sesión el token ya no sirve", leer(h) == 401)
+_, h = ingresar()
+sqlq("update auth.users set banned_until = now() + interval '1 day' where email = 'diario@prueba.local'")
+check("bloquear al usuario corta su sesión en el acto", leer(h) == 401)
+sqlq("update auth.users set banned_until = null where email = 'diario@prueba.local'")
+
+# Cambio de contraseña desde la pantalla de ingreso (sin sesión): pide la actual.
+_, h = ingresar()
+_, h_otra_pc = ingresar()
+clave = lambda **b: httpx.post(f"{BASE}/auth/clave", json=dict(email="diario@prueba.local", **b))
+r = clave(actual="equivocada", nueva="clave-diario-nueva")
+check("cambiar contraseña: la actual equivocada se rechaza", r.status_code == 400 and "actual no son correctos" in r.json()["message"], r.text)
+r = clave(actual="clave-diario-123", nueva="corta")
+check("cambiar contraseña: mínimo 10 caracteres", r.status_code == 400 and "10 caracteres" in r.json()["message"], r.text)
+r = clave(actual="clave-diario-123", nueva="clave-diario-nueva")
+check("cambiar contraseña: se guarda sin haber ingresado", r.status_code == 204, r.text)
+check("cambiar contraseña: cierra las sesiones abiertas", leer(h) == 401 and leer(h_otra_pc) == 401)
+check("cambiar contraseña: se ingresa con la nueva y no con la anterior",
+      ingresar(clave="clave-diario-nueva")[0].status_code == 200 and ingresar()[0].status_code == 400)
+
+# Contraseña olvidada: código de un solo uso que genera quien administra el sistema.
+salida = subprocess.run([sys.executable, "admin/usuarios.py", "codigo", "diario@prueba.local"], capture_output=True, text=True,
+                        env=dict(os.environ, PGURL=PGURL), cwd=pathlib.Path(__file__).resolve().parents[1]).stdout
+codigo = (re.search(r"([A-Z2-9]{4}-[A-Z2-9]{4})", salida) or [None, ""])[1]
+check("usuarios.py codigo: genera un código XXXX-XXXX", bool(codigo) and "30 minutos" in salida, salida)
+check("el código se guarda solo como hash", codigo and sqlq("select count(*) from auth.codigos_clave where codigo_hash like '%" + codigo[:4] + "%'") == "0")
+_, h = ingresar(clave="clave-diario-nueva")
+resto = lambda c, n="clave-restablecida-1": httpx.post(f"{BASE}/auth/restablecer", json={"email": "diario@prueba.local", "codigo": c, "nueva": n})
+r = resto("AAAA-AAAA")
+check("restablecer: un código equivocado se rechaza con un mensaje claro", r.status_code == 400 and "no es válido o venció" in r.json()["message"], r.text)
+r = resto(codigo.lower().replace("-", " "))
+check("restablecer: con el código (sin importar mayúsculas ni separador) se guarda la nueva", r.status_code == 204, r.text)
+check("restablecer: se ingresa con la nueva, se cierran las sesiones y el código no sirve otra vez",
+      ingresar(clave="clave-restablecida-1")[0].status_code == 200 and leer(h) == 401
+      and resto(codigo, "otra-clave-12345").status_code == 400)
+codigo = subprocess.run([sys.executable, "admin/usuarios.py", "codigo", "diario@prueba.local"], capture_output=True, text=True,
+                        env=dict(os.environ, PGURL=PGURL), cwd=pathlib.Path(__file__).resolve().parents[1]).stdout
+codigo = re.search(r"([A-Z2-9]{4}-[A-Z2-9]{4})", codigo)[1]
+for _ in range(5):
+    resto("BBBB-BBBB")
+check("restablecer: después de 5 intentos fallidos el código deja de servir", resto(codigo).status_code in (400, 429))
+sqlq("update auth.codigos_clave set intentos = 0, vence = now() - interval '1 minute'")
+check("restablecer: un código vencido no sirve", resto(codigo).status_code in (400, 429))
+sqlq("select auth.set_password('diario@prueba.local', 'clave-diario-123'); delete from auth.codigos_clave")
+check("los ingresos correctos no cuentan como intentos fallidos", all(ingresar()[0].status_code == 200 for _ in range(10)))
+for _ in range(8):
+    httpx.post(f"{BASE}/auth/login", json={"email": "diario.auditor@prueba.local", "password": "mala"})
+r = httpx.post(f"{BASE}/auth/login", json={"email": "diario.auditor@prueba.local", "password": "clave-auditor-456"})
+check("8 intentos fallidos frenan el ingreso unos minutos", r.status_code == 429 and "intentos fallidos" in r.json()["message"], r.text)
+
+# ------------------------------------------------------------------ carga de un archivo (todo o nada)
+_, h = ingresar()
+filas = [{"track_name": "Diario Uno", "artist_names": "Banda Diario", "pais_code": "UY", "rank": "1", "snapshot_date": "2025-03-06"},
+         {"track_name": "Diario Dos", "artist_names": "Banda Diario", "pais_code": "UY", "rank": "2", "snapshot_date": "2025-03-06"},
+         {"track_name": "Diario Tres", "artist_names": "Otra Banda", "pais_code": "UY", "rank": "3", "snapshot_date": "2025-03-06"}]
+antes = sqlq("select count(*) from territory_tracks") + "|" + sqlq("select count(*) from csv_uploads")
+r = rpc(h, "fn_cargar_archivo", {"p_formato": "spotify", "p_filas": filas, "p_archivo": None, "p_ruta": "x", "p_total": 3})
+check("si algo falla al registrar la carga, no queda ninguna fila cargada (todo o nada)",
+      r.status_code >= 400 and sqlq("select count(*) from territory_tracks") + "|" + sqlq("select count(*) from csv_uploads") == antes, r.text)
+r = rpc(h, "fn_cargar_archivo", {"p_formato": "spotify", "p_filas": filas, "p_archivo": "regional-uy-weekly-2025-03-06.csv",
+                                 "p_ruta": "spotify/UY/2025-03-06/x.csv", "p_total": 4, "p_errores": ["Fila sin título"]})
+check("carga correcta: filas cargadas y registro en el historial con sus avisos",
+      r.status_code == 200 and r.json() == {"updated": 3, "created_tracks": 3, "errors": ["Fila sin título"]}
+      and sqlq("select total_rows || '|' || updated_rows || '|' || error_count || '|' || format || '|' || (uploaded_by is not null)::int "
+               "from csv_uploads where filename = 'regional-uy-weekly-2025-03-06.csv'") == "4|3|1|spotify|1", r.text)
+r = rpc(h_aud, "fn_cargar_archivo", {"p_formato": "spotify", "p_filas": filas[:1], "p_archivo": "a.csv", "p_ruta": "y", "p_total": 1})
+check("el auditor no carga datos", r.status_code != 200 or r.json()["updated"] == 0, r.text)
+
+# ------------------------------------------------------------------ Tempo ID repetido: unificación
+uno = sqlq("select id from tracks_master where track_name_raw = 'Diario Uno'")
+dos = sqlq("select id from tracks_master where track_name_raw = 'Diario Dos'")
+tres = sqlq("select id from tracks_master where track_name_raw = 'Diario Tres'")
+check("asignar un Tempo ID libre", rpc(h, "fn_asignar_tempo_id", {"p_track_id": uno, "p_tempo_id": "4440001"}).json() == 0)
+rpc(h, "fn_cargar_archivo", {"p_formato": "bo_report", "p_pais": "UY", "p_archivo": "bo_uy.csv", "p_ruta": "z", "p_total": 1,
+                             "p_filas": [{"tempo_id": "4440001", "bo_id": "BO1", "reclamos": "No", "mech_bo": "50"}]})
+# La otra obra tiene charts de otra semana, el mismo chart (se descarta) y está en un envío.
+sqlq(f"""insert into territory_tracks (track_master_id, pais_code, rank, platform, snapshot_date)
+         values ('{dos}', 'UY', 9, 'youtube', '2025-03-13');
+         insert into envios (tipo, modo, obras) values ('csv_principal', 'todas', 1);
+         insert into envio_obras select max(id), '{dos}' from envios""")
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": dos, "p_tempo_id": "4440001"})
+check("Tempo ID repetido sin confirmar: no cambia nada y nombra la obra que lo tiene",
+      r.status_code == 409 and '"Diario Uno - Banda Diario"' in r.json()["message"]
+      and sqlq(f"select coalesce(tempo_id, '-') from tracks_master where id = '{dos}'") == "-", r.text)
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": dos, "p_tempo_id": "4440001", "p_unificar": True})
+check("con confirmación, las obras se unifican en la que ya tenía el Tempo ID", r.status_code == 200 and r.json() == 1
+      and sqlq(f"select count(*) from tracks_master where id = '{dos}'") == "0", r.text)
+check("la obra que queda tiene los charts de ambas (sin duplicar la misma semana)",
+      sqlq(f"select string_agg(platform || ' ' || snapshot_date || ' ' || tempo_id, ',' order by snapshot_date) "
+           f"from territory_tracks where track_master_id = '{uno}'") == "spotify 2025-03-06 4440001,youtube 2025-03-13 4440001")
+check("la obra que queda conserva su reporte BO y recibe los envíos de la otra",
+      sqlq(f"select count(*) from territory_bo_report where track_master_id = '{uno}'") == "1"
+      and sqlq(f"select count(*) from envio_obras where track_master_id = '{uno}'") == "1")
+r = rpc(h_aud, "fn_asignar_tempo_id", {"p_track_id": tres, "p_tempo_id": "4440001", "p_unificar": True})
+check("el auditor no modifica ni unifica obras", r.status_code == 403 and sqlq(f"select count(*) from tracks_master where id = '{tres}'") == "1", r.text)
+check("quitar el Tempo ID (vacío)", rpc(h, "fn_asignar_tempo_id", {"p_track_id": uno, "p_tempo_id": ""}).json() == 0
+      and sqlq(f"select coalesce(tempo_id, '-') from tracks_master where id = '{uno}'") == "-")
+check("sin Tempo ID, los datos de BO de ese Tempo ID ya no se muestran en la obra",
+      sqlq(f"select count(*) from fn_territory_pagina() v where v.track_master_id = '{uno}' and v.bo is not null") == "0")
+rpc(h, "fn_asignar_tempo_id", {"p_track_id": uno, "p_tempo_id": "4440001"})
+check("...y vuelven al registrarlo otra vez",
+      sqlq(f"select v.bo from fn_territory_pagina() v where v.track_master_id = '{uno}'") == "BO1")
+
+# ------------------------------------------------------------------ fusión real: alias y streams
+def chart(nombre, semana, rank, streams, artista="Banda Fusion"):
+    fila = {"track_name": nombre, "artist_names": artista, "pais_code": "UY", "rank": str(rank), "streams": str(streams),
+            "snapshot_date": semana}
+    return rpc(h, "fn_cargar_archivo", {"p_formato": "spotify", "p_archivo": f"regional-uy-weekly-{semana}.csv", "p_ruta": "f",
+                                        "p_total": 1, "p_filas": [fila]})
+chart("Fusion Original", "2025-03-13", 4, 1000)
+chart("Fusion Original (Sped Up)", "2025-03-13", 30, 200)
+orig = sqlq("select id from tracks_master where track_name_raw = 'Fusion Original'")
+sped = sqlq("select id from tracks_master where track_name_raw = 'Fusion Original (Sped Up)'")
+rpc(h, "fn_asignar_tempo_id", {"p_track_id": orig, "p_tempo_id": "4440100"})
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": sped, "p_tempo_id": "4440100", "p_unificar": True})
+check("fusión: la misma semana suma los streams y queda el mejor puesto", r.json() == 1
+      and sqlq(f"select rank || '|' || streams from territory_tracks where track_master_id = '{orig}'") == "4|1200", r.text)
+chart("Fusion Original (Sped Up)", "2025-03-13", 30, 200)
+chart("Fusion Original", "2025-03-13", 4, 1000)
+check("volver a cargar la misma semana no suma dos veces",
+      sqlq(f"select rank || '|' || streams from territory_tracks where track_master_id = '{orig}'") == "4|1200")
+chart("Fusion Original (Sped Up)", "2025-03-20", 25, 300)
+check("las cargas siguientes con el nombre de la obra fusionada van a la obra que quedó (no se vuelve a crear)",
+      sqlq("select count(*) from tracks_master where track_name_raw like 'Fusion Original%' and deleted_at is null") == "1"
+      and sqlq(f"select string_agg(snapshot_date || ' ' || streams || ' ' || tempo_id, ',' order by snapshot_date) from territory_tracks "
+               f"where track_master_id = '{orig}'") == "2025-03-13 1200 4440100,2025-03-20 300 4440100")
+
+# ------------------------------------------------------------------ charts: no se puede saltear una semana
+r = chart("Semana Seguida", "2025-04-03", 1, 10)
+check("saltear una semana: no carga nada y dice qué semana falta",
+      r.status_code == 200 and r.json()["updated"] == 0
+      and any("falta cargar la semana del 27/03/2025 de Spotify para UY" in e for e in r.json()["errors"])
+      and sqlq("select count(*) from territory_tracks where snapshot_date = '2025-04-03'") == "0", r.text)
+check("la siguiente semana sí carga", chart("Semana Seguida", "2025-03-27", 1, 10).json()["updated"] == 1)
+check("y después la otra", chart("Semana Seguida", "2025-04-03", 1, 10).json()["updated"] == 1)
+check("volver a cargar una semana ya cargada o una anterior (completar el historial) sí se puede",
+      chart("Semana Seguida", "2025-03-27", 2, 11).json()["updated"] == 1
+      and chart("Semana Seguida", "2025-01-02", 1, 10).json()["updated"] == 1)
+r = rpc(h, "fn_cargar_archivo", {"p_formato": "youtube", "p_archivo": "youtube-uy-weekly-2025-05-29.csv", "p_ruta": "f",
+                                 "p_total": 1, "p_filas": [{"track_name": "Semana Seguida", "artist_names": "Banda Fusion",
+                                                            "pais_code": "UY", "rank": "1", "snapshot_date": "2025-05-29"}]})
+check("cada plataforma lleva su propia secuencia de semanas (YouTube UY sigue a su última semana)",
+      r.json()["updated"] == 0 and any("semana del 20/03/2025 de YouTube" in e for e in r.json()["errors"]), r.text)
+
+# ------------------------------------------------------------------ limpieza: tildes mal codificadas
+chart("3 PECADOS DESPUES...", "2025-04-03", 7, 70, "Milo j")
+chart("3 PECADOS DESPUESâ€¦", "2025-04-10", 8, 80, "Milo j")
+chart("3 PECADOS DESPUES…", "2025-04-17", 9, 90, "Milo j")
+chart("FrÃ¡gil Diario", "2025-04-03", 5, 50, "Banda Ã‘")
+check("'â€¦' y '…' se leen como '...': una sola obra",
+      sqlq("select count(*) || '|' || min(track_artist_concat) from tracks_master where track_name_raw like '3 PECADOS%'")
+      == "1|3 PECADOS DESPUES... - Milo j")
+check("tildes mal codificadas ('FrÃ¡gil', 'Ã‘')", sqlq("select track_artist_concat from tracks_master where track_name_raw like 'Fr%gil Diario'")
+      == "Fragil Diario - Banda N")
+# Á, Í mayúsculas: sus bytes (0x81, 0x8D) no existen en Windows-1252 y quedaban como "A" + un carácter invisible.
+chart("PLÁSTICO", "2025-04-17", 11, 110, "Lali, Duki")
+chart("PLÃ\x81STICO", "2025-04-17", 11, 110, "Lali, Duki")
+chart("FANÃ\x81TICO", "2025-04-17", 12, 120, "Lali")
+chart("MÃ\x8dO", "2025-04-17", 13, 130, "Banda Mia")
+check("'Á' e 'Í' mayúsculas mal codificadas: misma obra que la bien escrita, sin caracteres invisibles",
+      sqlq("select count(*) from tracks_master where track_artist_concat = 'PLASTICO - Lali, Duki'") == "1"
+      and sqlq("select count(*) from tracks_master where track_name_clean like 'PL%STICO'") == "1"
+      and sqlq("select track_artist_concat from tracks_master where track_name_raw like 'FAN%TICO'") == "FANATICO - Lali"
+      and sqlq("select track_artist_concat from tracks_master where track_name_raw like 'M%O' and artist_name_raw = 'Banda Mia'") == "MIO - Banda Mia")
+
+# ------------------------------------------------------------------ compilados ("A / B - Artista" con 123/456)
+chart("Compilado Uno / Compilado Dos", "2025-04-17", 20, 1001, "Banda Comp")
+chart("Compilado Dos", "2025-04-17", 30, 500, "Banda Comp")
+comp = sqlq("select id from tracks_master where track_name_raw = 'Compilado Uno / Compilado Dos'")
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": comp, "p_tempo_id": "4440201 / 4440202"})
+comp_obras = lambda: sqlq("select string_agg(tm.track_artist_concat || '=' || coalesce(tm.tempo_id, '-') || '=' || tt.snapshot_date || '=' || tt.streams, '|' "
+                          "order by tm.track_artist_concat, tt.snapshot_date) from tracks_master tm join territory_tracks tt on tt.track_master_id = tm.id "
+                          "where tm.artist_name_raw = 'Banda Comp' and tm.track_name_raw like 'Compilado%'")
+check("compilado: se separa en una obra por canción; los streams se dividen en partes iguales y la que ya existía no se repite",
+      r.status_code == 200 and r.json() == 2 and sqlq(f"select count(*) from tracks_master where id = '{comp}'") == "0"
+      and comp_obras() == "Compilado Dos - Banda Comp=4440202=2025-04-17=1000|Compilado Uno - Banda Comp=4440201=2025-04-17=501", (r.text, comp_obras()))
+chart("Compilado Uno / Compilado Dos", "2025-04-24", 18, 300, "Banda Comp")
+chart("Compilado Uno / Compilado Dos", "2025-04-17", 20, 1001, "Banda Comp")
+check("las cargas siguientes con el nombre del compilado se reparten entre sus canciones (sin crear la obra ni sumar dos veces)",
+      sqlq("select count(*) from tracks_master where track_name_raw like 'Compilado Uno /%'") == "0"
+      and comp_obras() == ("Compilado Dos - Banda Comp=4440202=2025-04-17=1000|Compilado Dos - Banda Comp=4440202=2025-04-24=150|"
+                           "Compilado Uno - Banda Comp=4440201=2025-04-17=501|Compilado Uno - Banda Comp=4440201=2025-04-24=150"), comp_obras())
+chart("Tres / Partes / Juntas", "2025-04-17", 40, 10, "Banda Comp")
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": sqlq("select id from tracks_master where track_name_raw = 'Tres / Partes / Juntas'"), "p_tempo_id": "4440301/4440302"})
+check("compilado con distinta cantidad de canciones que de Tempo ID: no cambia nada y lo explica",
+      r.status_code >= 400 and "tiene 3 y se ingresaron 2" in r.json().get("message", "")
+      and sqlq("select count(*) from tracks_master where track_name_raw = 'Tres / Partes / Juntas'") == "1", r.text)
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": sqlq("select id from tracks_master where track_name_raw = 'Tres / Partes / Juntas'"), "p_tempo_id": "4440301/4440301/4440303"})
+check("compilado con un Tempo ID repetido: lo rechaza", r.status_code >= 400 and "dos veces" in r.json().get("message", ""), r.text)
+chart("Otro A / Otro B", "2025-04-17", 41, 11, "Banda Comp")
+r = rpc(h, "fn_upsert_master_tempo_batch", {"p_rows": [{"track_artist": "Otro A / Otro B - Banda Comp", "tempo_id": "4440401/UNCONTROLLED"}]})
+check("la carga CSV de Tempo IDs también separa compilados (una canción puede quedar UNCONTROLLED)",
+      r.status_code == 200 and r.json()[0]["error_message"] is None
+      and sqlq("select string_agg(tm.track_artist_concat || '=' || tm.tempo_id || '=' || tt.streams, '|' order by tm.track_artist_concat) from tracks_master tm "
+               "join territory_tracks tt on tt.track_master_id = tm.id where tm.track_name_raw in ('Otro A', 'Otro B')")
+      == "Otro A - Banda Comp=4440401=6|Otro B - Banda Comp=UNCONTROLLED=5", r.text)
+
+# ------------------------------------------------------------------ los datos de BO y Tempo siguen al Tempo ID
+chart("Repo Mal", "2025-04-24", 50, 10, "Banda Repo")
+chart("Repo Bien", "2025-04-24", 51, 11, "Banda Repo")
+repo_mal = sqlq("select id from tracks_master where track_name_raw = 'Repo Mal'")
+repo_bien = sqlq("select id from tracks_master where track_name_raw = 'Repo Bien'")
+rpc(h, "fn_asignar_tempo_id", {"p_track_id": repo_mal, "p_tempo_id": "4440501"})
+sqlq("select fn_upsert_tempo_report_row('4440501', 'UY', '2020-01-01', 40, 40, 0, 'p', 'c', 'ok', 'Repo Bien', '40', '40', '0', 'URUGUAY'); "
+     "select fn_upsert_bo_report_row('4440501', 'UY', 'BO-REPO', 'C', 'NOT WORK', null, 40)")
+rpc(h, "fn_guardar_seguimiento", {"p_track_id": repo_mal, "p_pais": "UY", "p_campo": "ticket", "p_valor": "T-REPO"})
+fila_repo = lambda: sqlq("select string_agg(v.track_artist_concat || '=' || coalesce(v.bo, '-') || '=' || coalesce(v.mech_raw, '-') || '=' "
+                         "|| coalesce(v.ticket, '-') || '=' || coalesce(v.estado_trabajo, '-'), '|' order by v.track_artist_concat) "
+                         "from fn_territory_pagina(p_pais => 'UY', p_buscar => 'Banda Repo') v")
+check("datos de BO y Tempo cargados por Tempo ID en la obra que lo tiene",
+      fila_repo() == "Repo Bien - Banda Repo=-=-=-=-|Repo Mal - Banda Repo=BO-REPO=40=T-REPO=TICKET ENVIADO", fila_repo())
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": repo_mal, "p_tempo_id": "4440502"})
+check("al corregir el Tempo ID de la obra, sus datos de BO y Tempo dejan de mostrarse en ella (quedan en espera)",
+      r.status_code == 200 and fila_repo() == "Repo Bien - Banda Repo=-=-=-=-|Repo Mal - Banda Repo=-=-=T-REPO=-", (r.text, fila_repo()))
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": repo_bien, "p_tempo_id": "4440501"})
+check("...y pasan, con el ticket, a la obra que recibe ese Tempo ID",
+      r.status_code == 200 and fila_repo() == "Repo Bien - Banda Repo=BO-REPO=40=T-REPO=TICKET ENVIADO|Repo Mal - Banda Repo=-=-=-=-", (r.text, fila_repo()))
+sqlq("select fn_upsert_bo_report_row('4440501', 'UY', 'BO-REPO2', 'C', 'WORK', null, 40)")
+check("volver a cargar el Reporte BackOffice actualiza los datos en la obra que tiene el Tempo ID",
+      sqlq("select tm.track_name_raw || '=' || br.bo_id from territory_bo_report br join tracks_master tm on tm.id = br.track_master_id "
+           "where br.tempo_id = '4440501' and br.deleted_at is null") == "Repo Bien=BO-REPO2", fila_repo())
+
+# ------------------------------------------------------------------ todas las obras en todos los países (columna Chart)
+paises_repo = sqlq("select string_agg(v.pais_code || '=' || v.chart || '=' || v.en_chart_de || '=' || coalesce(v.bo, '-'), '|') "
+                   "from fn_territory_pagina(p_buscar => 'Repo Bien') v")
+check("una obra que solo figura en el chart de UY aparece en los 8 países; en los demás, 'No en chart'",
+      paises_repo == "AR=No en chart=UY=-|CL=No en chart=UY=-|PE=No en chart=UY=-|UY=En chart=UY=BO-REPO2|PY=No en chart=UY=-|"
+                     "CO=No en chart=UY=-|EC=No en chart=UY=-|MX=No en chart=UY=-", paises_repo)
+sqlq("select fn_upsert_bo_report_row('4440501', 'MX', 'BO-MX', 'C', 'NOT WORK', null, 10)")
+check("los datos de BO de un país donde la obra no está en el chart también se ven (para controlarlos)",
+      sqlq("select v.chart || '=' || v.bo || '=' || v.estado_trabajo from fn_territory_pagina(p_buscar => 'Repo Bien', p_pais => 'MX') v")
+      == "No en chart=BO-MX=REVISAR NOT WORK")
+chart("Repo Otra Semana", "2025-05-01", 60, 5, "Banda Repo")
+check("una obra que ya no está en la última semana del país sigue figurando 'En chart' en ese país",
+      sqlq("select v.chart || '=' || v.snapshot_date from fn_territory_pagina(p_buscar => 'Repo Bien', p_pais => 'UY') v")
+      == "En chart=2025-04-24")
+r = rpc(h, "fn_territory_pagina", {"p_buscar": "Banda Repo", "p_chart": "No en chart", "p_limite": 100})
+check("filtro Chart: 'No en chart' muestra solo los países donde la obra no figura",
+      r.status_code == 200 and len(r.json()) == 21 and all(x["chart"] == "No en chart" for x in r.json()), r.text[:300])
+r = rpc(h, "fn_ticket_filtrado", {"p_ticket": "X", "p_fecha": None, "p_aplicar": False, "p_buscar": "Repo Bien", "p_chart": "No en chart"})
+check("Cargar ticket respeta el filtro Chart", r.status_code == 200 and r.json()[0]["obras"] == 7, r.text)
+
+# ------------------------------------------------------------------ UNCONTROLLED DUP
+chart("Dup Original", "2025-04-24", 52, 100, "Banda Dup")
+chart("Dup Otra Forma", "2025-04-24", 53, 40, "Banda Dup")
+dup_otra = sqlq("select id from tracks_master where track_name_raw = 'Dup Otra Forma'")
+r = rpc(h, "fn_unificar_uncontrolled", {"p_track_id": dup_otra, "p_track_artista": "  Dup Original - Banda Dup "})
+check("UNCONTROLLED DUP: con el Track - Artista pegado se unifican y queda una sola obra, UNCONTROLLED, con los streams sumados",
+      r.status_code == 200 and r.json() == "Dup Original - Banda Dup"
+      and sqlq("select string_agg(tm.track_artist_concat || '=' || tm.tempo_id || '=' || tt.streams, '|') from tracks_master tm "
+               "join territory_tracks tt on tt.track_master_id = tm.id where tm.artist_name_raw = 'Banda Dup'") == "Dup Original - Banda Dup=UNCONTROLLED=140",
+      r.text)
+chart("Dup Otra Forma", "2025-04-24", 53, 40, "Banda Dup")
+check("...y las cargas siguientes con el otro nombre van a la obra que quedó",
+      sqlq("select count(*) from tracks_master where artist_name_raw = 'Banda Dup'") == "1")
+check("las obras UNCONTROLLED no figuran en la tabla por territorio",
+      sqlq("select count(*) from fn_territory_pagina(p_buscar => 'Banda Dup')") == "0")
+dup_obra = sqlq("select id from tracks_master where artist_name_raw = 'Banda Dup'")
+rpc(h, "fn_asignar_tempo_id", {"p_track_id": dup_obra, "p_tempo_id": "4440601"})
+check("...y aparecen cuando reciben un Tempo ID numérico",
+      sqlq("select count(*) from fn_territory_pagina(p_buscar => 'Banda Dup')") == "8")
+rpc(h, "fn_asignar_tempo_id", {"p_track_id": dup_obra, "p_tempo_id": "UNCONTROLLED"})
+r = rpc(h, "fn_unificar_uncontrolled", {"p_track_id": repo_mal, "p_track_artista": "No Existe - Nadie"})
+check("UNCONTROLLED DUP con un nombre que no está en la tabla: no cambia nada y lo explica",
+      r.status_code >= 400 and "No se encontró en la tabla principal" in r.json().get("message", ""), r.text)
+r = rpc(h, "fn_unificar_uncontrolled", {"p_track_id": repo_mal, "p_track_artista": "Dup Original - Banda Dup"})
+check("UNCONTROLLED DUP no unifica una obra con Tempo ID numérico",
+      r.status_code >= 400 and "tiene el Tempo ID 4440502" in r.json().get("message", "")
+      and sqlq("select count(*) from tracks_master where track_name_raw in ('Repo Mal', 'Dup Original')") == "2", r.text)
+
+# ------------------------------------------------------------------ la misma obra escrita de otra forma
+chart("Kuduro Prueba (feat. Lucenzo)", "2025-04-24", 80, 100, "Don Prueba")
+chart("Kuduro Prueba", "2025-04-24", 81, 20, "Don Prueba, Lucenzo")
+check("'(feat. X) - A' y '- A, X' son la misma obra: la segunda carga va a la primera y queda como nombre unificado",
+      sqlq("select count(*) from tracks_master where track_name_raw like 'Kuduro Prueba%'") == "1"
+      and sqlq("select a.clave from obra_alias a join tracks_master tm on tm.id = a.track_master_id "
+               "where tm.track_name_raw like 'Kuduro Prueba%'") == "kuduro prueba - don prueba, lucenzo")
+chart('"EMHDM PRUEBA"', "2025-04-24", 82, 30, "Blessd Prueba")
+chart("EMHDM PRUEBA", "2025-04-24", 82, 30, "Blessd Prueba")
+check("las comillas dobles no cuentan: '\"EMHDM\"' y 'EMHDM' son la misma obra",
+      sqlq("select string_agg(track_artist_concat, '|') from tracks_master where track_name_raw ilike '%emhdm prueba%'")
+      == "EMHDM PRUEBA - Blessd Prueba")
+chart("Millonarios Prueba", "2025-04-24", 83, 40, "Eladio Prueba, Myke Prueba")
+chart("Millonarios Prueba", "2025-04-24", 83, 20, ", Myke Prueba")
+check("artista incompleto (', Myke'): va a la obra del mismo título con la lista completa",
+      sqlq("select string_agg(track_artist_concat, '|') from tracks_master where track_name_raw = 'Millonarios Prueba'")
+      == "Millonarios Prueba - Eladio Prueba, Myke Prueba")
+chart("Otra Prueba (feat. Nadie)", "2025-04-24", 84, 5, "Banda Otra")
+check("un invitado distinto no unifica: es otra obra",
+      sqlq("select count(*) from tracks_master where track_name_raw like 'Otra Prueba%' or track_name_raw like 'Kuduro Prueba%'") == "2")
+# Obras ya cargadas antes de la mejora: se unifican al aplicar las mejoras.
+sqlq("insert into tracks_master (track_name_raw, artist_name_raw, tempo_id, estado_bo) values "
+     "('Madura Prueba (feat. Bad Prueba)', 'Cosc Prueba', null, 'uncontrolled'), ('Madura Prueba', 'Cosc Prueba, Bad Prueba', '4440801', 'ok'), "
+     "('Jovenes Prueba', ', Myke Dos', '4440802', 'ok'), ('Distinta Prueba (feat. Y)', 'Banda D', '4440803', 'ok'), "
+     "('Distinta Prueba', 'Banda D, Y', '4440804', 'ok')")
+sqlq("insert into obra_alias (clave, track_raw, artist_raw, track_master_id) select 'jovenes prueba - eladio dos, myke dos', "
+     "'Jovenes Prueba', 'Eladio Dos, Myke Dos', id from tracks_master where track_name_raw = 'Jovenes Prueba'")
+_db = pathlib.Path(__file__).resolve().parents[1] / "db" / "mejoras"
+subprocess.run(["psql", PGURL, "-v", "ON_ERROR_STOP=1", "-q", "-c", "SET ROLE app_owner", "-f", str(_db / "09_limpieza.sql"),
+                "-f", str(_db / "16_misma_obra.sql")], check=True, capture_output=True)
+check("al aplicar las mejoras, las obras ya cargadas con '(feat.)' se unifican en la que tiene Tempo ID",
+      sqlq("select string_agg(track_artist_concat || '=' || tempo_id, '|') from tracks_master where track_name_raw like 'Madura Prueba%'")
+      == "Madura Prueba - Cosc Prueba, Bad Prueba=4440801")
+check("...el nombre principal con el artista incompleto pasa a ser el completo",
+      sqlq("select track_artist_concat from tracks_master where track_name_raw = 'Jovenes Prueba'") == "Jovenes Prueba - Eladio Dos, Myke Dos")
+check("...y dos obras con Tempo ID numéricos distintos quedan separadas",
+      sqlq("select count(*) from tracks_master where track_name_raw like 'Distinta Prueba%'") == "2")
+
+# ------------------------------------------------------------------ Tempo ID duplicado en Tempo (123-456)
+chart("Dup Tempo Prueba", "2025-04-24", 90, 50, "Banda DT")
+dt = sqlq("select id from tracks_master where track_name_raw = 'Dup Tempo Prueba'")
+rpc(h, "fn_asignar_tempo_id", {"p_track_id": dt, "p_tempo_id": "4440901"})
+sqlq("select fn_upsert_bo_report_row('4440901', 'UY', 'BO-UNO', 'C', 'WORK', null, 50)")
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": dt, "p_tempo_id": " 4440901 - 4440902 "})
+sqlq("select fn_upsert_bo_report_row('4440902', 'UY', 'BO-DOS', 'C', 'NOT WORK', null, 50)")   # el reporte acepta el duplicado
+filas_dt = lambda pais="UY": sqlq("select string_agg(v.tempo_id || '=' || coalesce(v.bo, '-') || '=' || coalesce(v.estado_trabajo, '-') || '=' "
+                                  "|| v.duplicada || '=' || coalesce(v.ticket, '-'), '|') "
+                                  f"from fn_territory_pagina(p_buscar => 'Dup Tempo Prueba', p_pais => '{pais}') v")
+check("Tempo ID duplicado (123-456): la obra queda con los dos y la tabla por territorio la muestra una vez por cada uno, "
+      "con sus datos de BO y el estado DUPLICADA",
+      r.status_code == 200 and r.json() == 2
+      and filas_dt() == "4440901=BO-UNO=DUPLICADA=true=-|4440902=BO-DOS=DUPLICADA / REVISAR NOT WORK=true=-", (r.text, filas_dt()))
+check("...en todos los países (también donde no está en el chart)",
+      sqlq("select count(*) from fn_territory_pagina(p_buscar => 'Dup Tempo Prueba')") == "16")
+check("...la tabla principal muestra '4440901-4440902' y la búsqueda encuentra el duplicado",
+      sqlq("select tempo_id from fn_master_pagina(p_buscar => '4440902')") == "4440901-4440902")
+rpc(h, "fn_guardar_seguimiento", {"p_track_id": dt, "p_pais": "UY", "p_campo": "ticket", "p_valor": "T-DUP2", "p_tempo_id": "4440902"})
+rpc(h, "fn_guardar_seguimiento", {"p_track_id": dt, "p_pais": "UY", "p_campo": "ticket", "p_valor": "T-DUP1", "p_tempo_id": "4440901"})
+check("el ticket se lleva por separado para cada Tempo ID",
+      filas_dt() == "4440901=BO-UNO=DUPLICADA=true=T-DUP1|4440902=BO-DOS=DUPLICADA / TICKET ENVIADO=true=T-DUP2", filas_dt())
+r = rpc(h, "fn_territory_pagina", {"p_buscar": "Dup Tempo Prueba", "p_estado_trabajo": "DUPLICADA", "p_limite": 100})
+check("el filtro Estado de trabajo 'DUPLICADA' las muestra", r.status_code == 200 and len(r.json()) == 16, r.text[:200])
+check("...y figura entre las opciones del filtro",
+      "DUPLICADA" in [x["valor"] for x in rpc(h, "fn_territory_opciones", {}).json() if x["campo"] == "estado_trabajo"])
+otra_dt = sqlq("select id from tracks_master where track_name_raw = 'Repo Mal'")
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": otra_dt, "p_tempo_id": "4440902"})
+check("un Tempo ID duplicado de una obra no se puede asignar a otra", r.status_code >= 400 and "duplicado" in r.text, r.text)
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": dt, "p_tempo_id": "4440901"})
+check("con un solo Tempo ID la obra deja de estar duplicada: los datos del otro dejan de mostrarse",
+      r.status_code == 200 and filas_dt() == "4440901=BO-UNO=-=false=T-DUP1", (r.text, filas_dt()))
+
+# ------------------------------------------------------------------ nombre principal al unificar
+chart("Original Nombre", "2025-04-24", 70, 100, "Banda Nombre")
+chart("Cover Nombre", "2025-04-24", 71, 10, "Banda Nombre")
+orig_n = sqlq("select id from tracks_master where track_name_raw = 'Original Nombre'")
+cover_n = sqlq("select id from tracks_master where track_name_raw = 'Cover Nombre'")
+rpc(h, "fn_asignar_tempo_id", {"p_track_id": cover_n, "p_tempo_id": "4440701"})
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": orig_n, "p_tempo_id": "4440701", "p_unificar": True, "p_nombre_de_esta": True})
+check("unificar por Tempo ID eligiendo el nombre de esta obra: queda la original y el cover queda unificado",
+      r.status_code == 200 and r.json() == 1
+      and sqlq("select string_agg(track_artist_concat || '=' || tempo_id, '|') from tracks_master where artist_name_raw = 'Banda Nombre'")
+      == "Original Nombre - Banda Nombre=4440701", r.text)
+r = rpc(h, "fn_nombres_unificados", {"p_ids": [cover_n]})
+check("fn_nombres_unificados lista el nombre unificado", r.status_code == 200 and [x["nombre"] for x in r.json()] == ["Cover Nombre - Banda Nombre"], r.text)
+chart("Cover Nombre", "2025-04-24", 71, 10, "Banda Nombre")
+chart("Original Nombre", "2025-04-24", 70, 100, "Banda Nombre")
+check("las cargas con cualquiera de los dos nombres van a la misma obra, sin sumar dos veces",
+      sqlq("select count(*) || '=' || max(tt.streams) from tracks_master tm join territory_tracks tt on tt.track_master_id = tm.id "
+           "where tm.artist_name_raw = 'Banda Nombre'") == "1=110")
+r = rpc(h, "fn_nombre_principal", {"p_track_id": cover_n, "p_clave": "cover nombre - banda nombre"})
+check("'Usar este nombre' cambia el nombre principal y deja el anterior unificado",
+      r.status_code == 200 and r.json() == "Cover Nombre - Banda Nombre"
+      and [x["nombre"] for x in rpc(h, "fn_nombres_unificados", {"p_ids": [cover_n]}).json()] == ["Original Nombre - Banda Nombre"], r.text)
+r = rpc(h, "fn_nombre_principal", {"p_track_id": cover_n, "p_clave": "no existe"})
+check("'Usar este nombre' con un nombre que no está unificado: lo rechaza", r.status_code >= 400 and "no está unificado" in r.text, r.text)
+r = rpc(h_aud, "fn_nombre_principal", {"p_track_id": cover_n, "p_clave": "original nombre - banda nombre"})
+check("sin permiso de escritura no se cambia el nombre", r.status_code == 403, r.text)
+
+# ------------------------------------------------------------------ Tempo ID: número o valores estándar
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": tres, "p_tempo_id": "COMPILADO"})
+check("Tempo ID: un valor fuera de la lista no se guarda y el mensaje los nombra",
+      r.status_code >= 400 and "PENDING ESPAÑA" in r.json().get("message", "") and
+      sqlq(f"select coalesce(tempo_id, '-') from tracks_master where id = '{tres}'") == "-", r.text)
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": tres, "p_tempo_id": "pending colombia"})
+check("Tempo ID: PENDING COLOMBIA es un valor admitido", r.status_code == 200
+      and sqlq(f"select tempo_id from tracks_master where id = '{tres}'") == "PENDING COLOMBIA", r.text)
+r = rpc(h, "fn_asignar_tempo_id", {"p_track_id": tres, "p_tempo_id": "  pending   espana "})
+check("Tempo ID: se guarda siempre igual ('pending espana' -> 'PENDING ESPAÑA')", r.status_code == 200
+      and sqlq(f"select tempo_id from tracks_master where id = '{tres}'") == "PENDING ESPAÑA", r.text)
+
+# ------------------------------------------------------------------ ticket y fecha por territorio
+r = rpc(h, "fn_guardar_seguimiento", {"p_track_id": uno, "p_pais": "UY", "p_campo": "ticket", "p_valor": " INC-123 "})
+r2 = rpc(h, "fn_guardar_seguimiento", {"p_track_id": uno, "p_pais": "UY", "p_campo": "fecha", "p_valor": "26092026"})
+check("ticket y fecha (DDMMAAAA) se guardan por obra y territorio", r.json() == "INC-123" and r2.json() == "26/09/2026"
+      and sqlq(f"select ticket || '|' || ticket_fecha from territory_seguimiento where track_master_id = '{uno}'") == "INC-123|2026-09-26",
+      (r.text, r2.text))
+r = rpc(h, "fn_guardar_seguimiento", {"p_track_id": uno, "p_pais": "UY", "p_campo": "fecha", "p_valor": "31022026"})
+check("fecha inexistente: no se guarda y explica el formato", r.status_code >= 400 and "DDMMAAAA" in r.json().get("message", "")
+      and sqlq(f"select ticket_fecha from territory_seguimiento where track_master_id = '{uno}'") == "2026-09-26", r.text)
+r = rpc(h_aud, "fn_guardar_seguimiento", {"p_track_id": uno, "p_pais": "UY", "p_campo": "ticket", "p_valor": "X"})
+check("sin permiso de escritura no se guarda el ticket", r.status_code == 403, r.text)
+
+# ------------------------------------------------------------------ descarga de la tabla por territorio
+h_csv = dict(h, Accept="text/csv", **{"Accept-Encoding": "gzip"})
+r = httpx.post(f"{BASE}/rpc/fn_territory_exportar", headers=h_csv, json={"p_pais": "UY", "p_buscar": "diario", "p_reclamos": "No"})
+lineas = r.text.strip().split("\n")
+check("descarga con todos los filtros de la pantalla (país, búsqueda, reclamos)",
+      r.status_code == 200 and lineas[0].strip() == ("Pais,Chart,Track - Artista,Created date,Tempo ID,% Perf Tempo,% Mech Tempo,BO ID,C/A,"
+                                                      "% Mech BO,Estado,Reclamos,Estado de trabajo,Ticket,Fecha") and len(lineas) == 2
+      and lineas[1].startswith("UY,En chart,") and ",Diario Uno - Banda Diario," in lineas[1] and lineas[1].strip().endswith(",INC-123,26/09/2026"), r.text[:400])
+check("las respuestas grandes viajan comprimidas",
+      httpx.get(f"{BASE}/", headers={"Accept-Encoding": "gzip"}).headers.get("content-encoding") == "gzip")
+
+# ------------------------------------------------------------------ ticket para todas las obras filtradas
+r = rpc(h, "fn_ticket_filtrado", {"p_ticket": "INC-900", "p_fecha": "04112026", "p_aplicar": True})
+check("ticket a las obras filtradas: sin ningún filtro no se carga (nunca a la tabla entera)",
+      r.status_code >= 400 and "filtro" in r.json().get("message", "") and sqlq("select count(*) from territory_seguimiento where ticket = 'INC-900'") == "0", r.text)
+uy = sqlq("select count(*) from fn_territory_pagina(p_pais => 'UY', p_limite => 100000)")
+con_ticket = sqlq("select count(*) from fn_territory_pagina(p_pais => 'UY', p_limite => 100000) where ticket is not null")
+r = rpc(h, "fn_ticket_filtrado", {"p_ticket": None, "p_fecha": None, "p_aplicar": False, "p_pais": "UY"})
+check("antes de cargar: cuántas obras filtradas y cuántas ya tienen otro ticket", int(uy) > 1 and int(con_ticket) >= 1
+      and r.json() == [{"obras": int(uy), "con_otro_ticket": int(con_ticket)}], (r.text, uy, con_ticket))
+r = rpc(h, "fn_ticket_filtrado", {"p_ticket": " INC-900 ", "p_fecha": "04112026", "p_aplicar": True, "p_pais": "UY"})
+check("carga el mismo ticket y fecha en todas las obras filtradas (todas las páginas)",
+      r.status_code == 200 and r.json()[0]["obras"] == int(uy)
+      and sqlq("select count(*) from fn_territory_pagina(p_pais => 'UY', p_limite => 100000) where ticket = 'INC-900' "
+               "and ticket_fecha = '2026-11-04'") == uy, r.text)
+r = rpc(h, "fn_ticket_filtrado", {"p_ticket": "INC-901", "p_fecha": "31022026", "p_aplicar": True, "p_pais": "UY"})
+check("con una fecha no válida no cambia ninguna obra (todo o nada)",
+      r.status_code >= 400 and "DDMMAAAA" in r.json().get("message", "")
+      and sqlq("select count(*) from territory_seguimiento where ticket = 'INC-901'") == "0", r.text)
+r = rpc(h_aud, "fn_ticket_filtrado", {"p_ticket": "INC-902", "p_fecha": "04112026", "p_aplicar": True, "p_pais": "UY"})
+check("sin permiso de escritura no se cargan tickets", r.status_code == 403, r.text)
+
+# ------------------------------------------------------------------ descargas de la tabla principal con la búsqueda; orden alfabético
+esperadas = sqlq("select count(*) from fn_master_pagina(p_buscar => 'fusion', p_limite => 100000)")
+r = rpc(h, "fn_envio_conteo", {"p_tipo": "csv_principal", "p_buscar": "fusion"})
+check("la descarga cuenta solo las obras de la búsqueda aplicada", int(esperadas) >= 1
+      and r.json()[0]["todas"] == int(esperadas) and r.json()[0]["todas"] < int(sqlq("select count(*) from tracks_master where deleted_at is null")), r.text)
+r = rpc(h, "fn_preparar_envio", {"p_tipo": "csv_principal", "p_modo": "todas", "p_buscar": "fusion"})
+envio = r.json()[0]["envio_id"]
+obras = rpc(h, "fn_envio_obras", {"p_envio_id": envio}).json()
+check("el CSV sale con las obras de la búsqueda (y queda registrada en el envío)",
+      r.json()[0]["obras"] == int(esperadas) and all("fusion" in o["track_artist_concat"].lower() for o in obras)
+      and sqlq(f"select buscar from envios where id = {envio}") == "fusion", (r.text, obras[:3]))
+vacias = rpc(h, "fn_master_pagina", {"p_tempo": "vacios", "p_limite": 500}).json()
+con = rpc(h, "fn_master_pagina", {"p_tempo": "con", "p_limite": 500}).json()
+total = int(sqlq("select count(*) from tracks_master where deleted_at is null"))
+check("filtro Tempo ID: vacíos y con Tempo ID se reparten todas las obras",
+      vacias and con and all(not x["tempo_id"] for x in vacias) and all(x["tempo_id"] for x in con)
+      and len(vacias) + len(con) == total and rpc(h, "fn_master_conteo", {"p_tempo": "vacios"}).json()[0]["identificadas"] == 0)
+r = rpc(h, "fn_envio_conteo", {"p_tipo": "csv_principal", "p_tempo": "vacios"})
+check("la descarga respeta el filtro Tempo ID", r.json()[0]["todas"] == len(vacias), r.text)
+nombres = [x["track_artist_concat"] for x in rpc(h, "fn_master_pagina", {"p_limite": 500}).json()]
+check("tabla principal en orden alfabético", len(nombres) > 3 and nombres == sorted(nombres, key=str.lower), nombres[:8])
+territorio = [x["track_artist_concat"] for x in rpc(h, "fn_territory_pagina", {"p_limite": 500}).json()]
+check("tabla por territorio en orden alfabético (también al buscar)", len(territorio) > 3 and territorio == sorted(territorio, key=str.lower)
+      and [x["track_artist_concat"] for x in rpc(h, "fn_territory_pagina", {"p_buscar": "a", "p_limite": 500}).json()]
+      == sorted([x["track_artist_concat"] for x in rpc(h, "fn_territory_pagina", {"p_buscar": "a", "p_limite": 500}).json()], key=str.lower), territorio[:8])
+
+# ------------------------------------------------------------------ en el navegador
+tmp = pathlib.Path(tempfile.mkdtemp())
+sin_semana = tmp / "regional-uy-weekly.csv"
+sin_semana.write_text("rank,uri,artist_names,track_name,source,peak_rank,previous_rank,weeks_on_chart,streams\n"
+                      "1,spotify:track:9,Banda Sin Semana,Tema Sin Semana,Sello,1,2,3,5000\n", encoding="utf-8")
+with sync_playwright() as p:
+    nav = p.chromium.launch(executable_path=CHROMIUM)
+    pag = nav.new_page()
+    errores_js = []
+    pag.on("pageerror", lambda e: errores_js.append(str(e)))
+    pag.goto(BASE + "/")
+    pag.fill("#loginEmail", "diario@prueba.local"); pag.fill("#loginPass", "clave-diario-123"); pag.click("#loginBtn")
+    pag.wait_for_selector("#logoutBtn")
+
+    # La sesión se renueva sola al usarse: se simula que pasó la mitad de su vigencia.
+    pag.evaluate("() => { const s = JSON.parse(localStorage.getItem('rk_session')); s.renovar_desde = 1; "
+                 "localStorage.setItem('rk_session', JSON.stringify(s)); }")
+    pag.click('[data-tab="territory"]'); pag.wait_for_timeout(1500)
+    nuevo = pag.evaluate("() => JSON.parse(localStorage.getItem('rk_session'))")
+    check("la sesión se renueva sola mientras se usa la aplicación",
+          nuevo["renovar_desde"] > 1 and nuevo["access_token"])
+
+    pag.click('[data-tab="upload"]')
+    pag.set_input_files("#fileInput", [str(sin_semana)])
+    pag.wait_for_function("() => !document.body.innerText.includes('Procesando')", timeout=20000)
+    pag.wait_for_timeout(1000)
+    fila = pag.inner_text("#uploadQueue tbody tr")
+    check("un chart sin la semana en el nombre no se carga (y se informa)",
+          sqlq("select count(*) from tracks_master where track_name_raw = 'Tema Sin Semana'") == "0"
+          and sqlq("select error_count || '|' || updated_rows || '|' || (errors ->> 0 like '%no indica la semana%')::int "
+                   "from csv_uploads where filename = 'regional-uy-weekly.csv'") == "1|0|1", fila)
+
+    pag.click("#logoutBtn"); pag.wait_for_selector("#loginEmail")
+    check("cerrar sesión desde la aplicación anula la sesión en el servidor",
+          httpx.get(f"{BASE}/rest/app_users", headers={"Authorization": "Bearer " + nuevo["access_token"]}).status_code == 401)
+
+    # Contraseñas en la pantalla de ingreso.
+    check("dentro de la aplicación no hay botón de contraseña (está en el ingreso)", pag.locator("#claveBtn").count() == 0)
+    pag.click("#linkCambiar")
+    pag.fill("#loginEmail", "diario@prueba.local"); pag.fill("#claveActual", "clave-diario-123")
+    pag.fill("#claveNueva", "clave-navegador-1"); pag.fill("#claveRepetir", "otra-distinta-1")
+    pag.click("#claveGuardar")
+    check("cambiar contraseña: avisa si las nuevas no coinciden", "no coinciden" in pag.inner_text("#loginErr"))
+    pag.fill("#claveRepetir", "clave-navegador-1"); pag.click("#claveGuardar")
+    pag.wait_for_selector("#loginOk")
+    check("cambiar contraseña desde el ingreso: vuelve al ingreso con el email y la nueva funciona",
+          pag.input_value("#loginEmail") == "diario@prueba.local" and ingresar(clave="clave-navegador-1")[0].status_code == 200)
+    pag.click("#linkOlvide")
+    pag.fill("#loginEmail", "diario.olvido@prueba.local")   # usuario aparte: el freno de intentos de arriba no lo alcanza
+    check("¿Olvidaste la contraseña?: indica cómo obtener el código", "administra el sistema" in pag.inner_text(".login-card"))
+    pag.fill("#claveCodigo", "CCCC-CCCC"); pag.fill("#claveNueva", "clave-olvidada-1"); pag.fill("#claveRepetir", "clave-olvidada-1")
+    pag.click("#claveGuardar"); pag.wait_for_function("() => document.getElementById('loginErr').innerText.length > 0")
+    check("restablecer desde el ingreso: un código equivocado se informa", "no es válido" in pag.inner_text("#loginErr"))
+    codigo = sqlq("select auth.generar_codigo_clave('diario.olvido@prueba.local')")
+    pag.fill("#claveCodigo", codigo); pag.click("#claveGuardar"); pag.wait_for_selector("#loginOk")
+    pag.fill("#loginPass", "clave-olvidada-1"); pag.click("#loginBtn")
+    pag.wait_for_selector("#logoutBtn")
+    check("restablecer desde el ingreso con el código y entrar con la contraseña nueva", pag.is_visible("#logoutBtn"))
+    sqlq("select auth.set_password('diario@prueba.local', 'clave-diario-123')")
+    check("sin errores de JavaScript", not errores_js, errores_js)
+    nav.close()
+
+print(f"\nFallas: {len(fallas)}")
+sys.exit(1 if fallas else 0)

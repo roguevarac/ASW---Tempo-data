@@ -1,0 +1,2651 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditor de Rankings Digitales</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2212%22%20fill%3D%22%230E1520%22/%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2252%22%20height%3D%2252%22%20rx%3D%228%22%20fill%3D%22none%22%20stroke%3D%22%230f4bab%22%20stroke-width%3D%224%22/%3E%3Ctext%20x%3D%2232%22%20y%3D%2242%22%20font-family%3D%22Arial%2C%20sans-serif%22%20font-size%3D%2222%22%20font-weight%3D%22700%22%20fill%3D%22%230f4bab%22%20text-anchor%3D%22middle%22%3ERD%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="papaparse.min.js"></script>
+<script src="tempo-client.js"></script>
+<style>
+:root{
+  --void:#0E1520; --panel:#161F2C; --panel-raised:#1D2836; --line:#2B3A4C; --line-soft:#22303F;
+  --text-primary:#E8E6DF; --text-muted:#8A97A8; --brass:#0f4bab; --brass-dim:#0b3785;
+  --green:#5FA980; --green-bg:#1B2B23; --red:#C15C51; --red-bg:#2C1D1A; --blue:#FFFFFF; --blue-bg:#1A2530;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--void);color:var(--text-primary);font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased;}
+.mono{font-family:'IBM Plex Mono',monospace;}
+.display{font-family:'Space Grotesk',sans-serif;}
+.app{max-width:1180px;margin:0 auto;padding:28px 24px 60px;}
+
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;}
+.login-card{width:340px;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:28px 26px;}
+.login-card h1{font-size:16px;margin:0 0 4px;font-family:'Space Grotesk',sans-serif;}
+.login-card p{font-size:12.5px;color:var(--text-muted);margin:0 0 20px;}
+.login-card label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:5px;}
+.login-card input{width:100%;background:var(--panel-raised);border:1px solid var(--line);border-radius:3px;padding:9px 10px;color:var(--text-primary);font-size:13px;margin-bottom:14px;}
+.login-card input:focus{outline:none;border-color:var(--brass-dim);}
+.login-card label.recordar{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:12px;margin:-4px 0 14px;cursor:pointer;}
+.login-card label.recordar input{width:auto;margin:0;padding:0;}
+.login-card .err{color:var(--red);font-size:12px;margin:-6px 0 12px;min-height:14px;}
+
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:20px;border-bottom:1px solid var(--line);}
+.wordmark{display:flex;align-items:center;gap:12px;}
+.wordmark .mark{width:34px;height:34px;border:1.5px solid var(--brass);border-radius:2px;display:flex;align-items:center;justify-content:center;color:var(--brass);font-size:13px;font-weight:600;font-family:'Space Grotesk',sans-serif;flex-shrink:0;}
+.wordmark h1{font-size:17px;letter-spacing:0.02em;margin:0;font-weight:600;}
+.wordmark p{margin:2px 0 0;font-size:12.5px;color:var(--text-muted);}
+.session{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+.session .who{font-size:12.5px;}
+.session .who .mono{color:var(--brass);}
+.session button{background:none;border:1px solid var(--line);color:var(--text-muted);font-size:11.5px;padding:5px 10px;border-radius:3px;cursor:pointer;}
+.session button:hover{border-color:var(--brass-dim);color:var(--brass);}
+.last-chart{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.last-chart .mono{color:var(--brass);}
+
+.tabs{display:flex;gap:2px;margin-top:22px;border-bottom:1px solid var(--line);}
+.tab{padding:10px 16px;font-size:13px;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;position:relative;user-select:none;}
+.tab.active{color:var(--brass);border-bottom-color:var(--brass);}
+.tab:not(.active):hover{color:var(--text-primary);}
+.tab .lock{font-size:10px;margin-left:5px;color:var(--text-muted);}
+
+.panel-body{padding-top:18px;}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
+.toolbar-left{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.search{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:8px 10px;color:var(--text-primary);font-size:13px;width:240px;}
+.search::placeholder{color:var(--text-muted);}
+.search:focus{outline:none;border-color:var(--brass-dim);}
+select{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:8px 10px;color:var(--text-primary);font-size:13px;}
+select:focus{outline:none;border-color:var(--brass-dim);}
+.btn{background:transparent;border:1px solid var(--line);color:var(--text-primary);padding:8px 13px;font-size:12.5px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+.btn:hover{border-color:var(--brass-dim);color:var(--brass);}
+.btn.primary{background:var(--brass);border-color:var(--brass);color:#FFFFFF;font-weight:500;}
+.btn.primary:hover{background:#1a5cc4;color:#FFFFFF;}
+.btn:disabled{opacity:0.35;cursor:not-allowed;}
+.check{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);}
+
+table{width:100%;border-collapse:collapse;font-size:12.5px;}
+thead th{text-align:left;color:var(--text-muted);font-weight:500;font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--void);z-index:5;}
+tbody td{padding:7px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle;}
+tbody tr:hover{background:var(--panel);}
+tbody tr.is-deleted{opacity:0.45;}
+.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
+.tempo{font-family:'IBM Plex Mono',monospace;color:var(--text-muted);}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:500;}
+.badge.ok{background:var(--green-bg);color:var(--green);}
+.badge.dup{background:var(--red-bg);color:var(--red);}
+.badge.unc{background:var(--blue-bg);color:var(--blue);}
+.badge.pct{background:var(--red-bg);color:var(--red);}
+.dup-marca{font-size:11px;color:var(--text-muted);font-style:italic;}
+.unificados{font-size:11px;color:var(--text-muted);margin-top:3px;}
+.unificados span{display:block;}
+.unificados a{color:var(--text-muted);text-decoration:underline;cursor:pointer;}
+.unificados a:hover{color:var(--brass);}
+.elegir-nombre{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+.elegir-nombre .btn{text-align:left;}
+.obras-cambio{margin-top:6px;}
+.obras-cambio summary{cursor:pointer;color:var(--text-muted);font-size:12px;}
+.obras-cambio table{margin-top:6px;font-size:12px;}
+.obras-cambio td{padding:4px 10px 4px 0;border:0;}
+.no-chart{display:block;font-family:inherit;font-size:10.5px;color:var(--text-muted);margin-top:2px;white-space:nowrap;}
+.estados{display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
+.estados .marcar{margin-top:2px;padding:2px 8px;font-size:11px;}
+th select.filtro-th{margin-left:8px;font-size:11px;padding:2px 4px;text-transform:none;letter-spacing:0;}
+.badge.estado-tr{background:var(--red-bg);color:var(--red);}
+.badge.ticket{background:rgba(217,164,65,0.18);color:#B07D12;}
+.rowbtn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:11.5px;padding:3px 6px;}
+.rowbtn:hover{color:var(--red);}
+.empty{padding:40px 10px;text-align:center;color:var(--text-muted);font-size:13px;}
+.locked{padding:40px 20px;text-align:center;color:var(--text-muted);font-size:13px;max-width:420px;margin:0 auto;}
+.locked .lk{font-size:11px;color:var(--brass);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;}
+.drop{border:1.5px dashed var(--line);border-radius:4px;padding:34px 20px;text-align:center;margin-bottom:18px;background:var(--panel);}
+.drop.over{border-color:var(--brass);background:var(--panel-raised);}
+.drop p{margin:0 0 4px;font-size:13px;}
+.drop .hint{font-size:11.5px;color:var(--text-muted);}
+.drop input{display:none;}
+.summary-row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.metric{background:var(--panel);border-radius:3px;padding:10px 14px;flex:1;min-width:120px;}
+.metric .n{font-size:20px;font-weight:500;font-family:'IBM Plex Mono',monospace;}
+.metric .l{font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;}
+.metric.err .n{color:var(--red);}
+.metric.ok .n{color:var(--green);}
+.metric.new .n{color:var(--blue);}
+footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--line);font-size:11px;color:var(--text-muted);display:flex;justify-content:space-between;}
+
+.edit-field{background:var(--panel-raised);border:1px solid var(--line);border-radius:3px;padding:4px 6px;color:var(--text-primary);font-size:12px;font-family:'IBM Plex Mono',monospace;width:100%;}
+.edit-field:focus{outline:none;border-color:var(--brass-dim);}
+.edit-field.empty-flag{border-color:var(--red);}
+select.edit-field{font-family:'IBM Plex Sans',sans-serif;}
+.control-country{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:12.5px;color:var(--text-muted);}
+.upload-guide{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px 18px;margin-bottom:16px;}
+.upload-guide h3{font-size:14px;margin:0 0 6px;font-family:'Space Grotesk',sans-serif;}
+.upload-guide p{font-size:13px;margin:0 0 10px;color:var(--text-muted);}
+.upload-guide ul{margin:10px 0 0;padding-left:18px;font-size:12.5px;color:var(--text-muted);}
+.upload-guide li{margin:4px 0;}
+.upload-guide li b{color:var(--text-primary);font-weight:500;}
+.tipos{display:flex;gap:8px;flex-wrap:wrap;}
+.tipo-chip{padding:4px 10px;border-radius:20px;font-size:12px;background:var(--panel-raised);border:1px solid var(--line);}
+.tipo-chip small{color:var(--text-muted);margin-left:4px;}
+.progreso{height:6px;background:var(--panel-raised);border-radius:3px;overflow:hidden;margin:4px 0 8px;}
+.progreso div{height:100%;background:var(--brass);transition:width .3s;}
+.progreso-txt{font-size:12.5px;color:var(--text-muted);margin-bottom:12px;}
+.estado{font-size:11.5px;white-space:nowrap;}
+.estado.ok{color:var(--green);}
+.estado.err{color:var(--red);}
+.estado.run{color:var(--brass);}
+.estado.wait{color:var(--text-muted);}
+.pager{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:12px;font-size:12.5px;color:var(--text-muted);}
+.pager .btn:disabled{opacity:0.4;cursor:default;}
+.conteo-id{display:block;margin:-4px 0 10px;font-size:12.5px;color:var(--text-muted);}
+.subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+.subtab{background:var(--panel);border:1px solid var(--line);color:var(--text-muted);border-radius:3px;padding:7px 12px;font-size:12.5px;cursor:pointer;}
+.subtab.active{border-color:var(--brass);color:var(--text-primary);}
+.subtab .cnt{font-family:'IBM Plex Mono',monospace;font-size:11px;margin-left:6px;color:var(--text-muted);}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.chip{background:none;border:1px solid var(--line);color:var(--text-muted);border-radius:20px;padding:3px 11px;font-size:12px;cursor:pointer;}
+.chip.active{background:var(--brass);border-color:var(--brass);color:#fff;}
+.chip:disabled{opacity:0.35;cursor:default;}
+.hist-nota{font-size:12.5px;color:var(--text-muted);margin:0 0 12px;}
+.hist-sec{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin:22px 0 6px;}
+tr.clic{cursor:pointer;}
+tr.clic:hover td{background:var(--panel-raised);}
+.filtro-activo{margin:-4px 0 10px;padding:8px 12px;border:1px solid var(--brass);border-radius:3px;background:var(--panel-raised);font-size:12.5px;}
+.filtro-on{border-color:var(--brass) !important;box-shadow:0 0 0 1px var(--brass);}
+.aviso-filtro .n{font-size:28px;font-weight:600;margin:6px 0 2px;}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:100;}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:4px;width:min(1500px,96vw);max-height:88vh;overflow:auto;padding:22px 24px;}
+.modal h2{font-size:15px;margin:0 0 4px;font-family:'Space Grotesk',sans-serif;}
+.modal .sub{font-size:12px;color:var(--text-muted);margin:0 0 16px;}
+.modal .close{position:sticky;top:0;float:right;background:none;border:1px solid var(--line);color:var(--text-muted);border-radius:3px;padding:4px 9px;cursor:pointer;font-size:12px;}
+.modal .close:hover{border-color:var(--brass-dim);color:var(--brass);}
+.modal table{font-size:12px;}
+.modal.small{width:min(620px,96vw);}
+/* Panel de control */
+.panel-actualizar{margin-left:auto;padding:6px 11px;}
+.panel-hora{font-size:11.5px;color:var(--text-muted);align-self:center;}
+.tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:18px;}
+.tarjeta{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:14px 16px;}
+.tarjeta.ancha{grid-column:1/-1;}
+.tarjeta h3,.titulo-panel{font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin:0 0 10px;font-weight:500;}
+.titulo-panel{margin:22px 0 10px;}
+.servicio{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft);}
+.servicio:last-child{border-bottom:none;}
+.punto{display:inline-block;width:9px;height:9px;border-radius:50%;margin:4px 6px 0 0;flex:none;vertical-align:baseline;}
+.punto.ok{background:var(--green);} .punto.error{background:var(--red);} .punto.aviso{background:#D9A441;} .punto.apagado{background:var(--line);}
+.estado-ok{color:var(--green);} .estado-error{color:var(--red);} .estado-aviso{color:#D9A441;} .estado-apagado{color:var(--text-muted);}
+.det{font-size:11.5px;color:var(--text-muted);margin-top:2px;}
+.dato{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:12.5px;}
+.dato span{color:var(--text-muted);} .dato b{font-weight:500;text-align:right;}
+.barra-uso{height:5px;background:var(--panel-raised);border-radius:3px;overflow:hidden;margin:0 0 6px;}
+.barra-uso div{height:100%;background:var(--green);} .barra-uso.media div{background:#D9A441;} .barra-uso.alta div{background:var(--red);}
+.acciones-panel{display:flex;gap:10px;align-items:center;margin:12px 0 6px;flex-wrap:wrap;}
+.filtros-panel{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+.filtros-panel .search{width:260px;} .corto{width:110px !important;}
+.tabla-panel td{vertical-align:top;}
+.acciones-usuario{display:flex;gap:6px;flex-wrap:wrap;}
+.acciones-usuario .btn{padding:4px 9px;font-size:11.5px;}
+.aviso-panel{background:var(--green-bg);color:var(--green);border-radius:3px;padding:8px 12px;font-size:12.5px;margin-bottom:12px;}
+.aviso-panel.error{background:var(--red-bg);color:var(--red);}
+.nota-panel{font-size:11.5px;color:var(--text-muted);}
+.consola{background:#0A0F17;border:1px solid var(--line);border-radius:4px;padding:12px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;max-height:60vh;overflow:auto;}
+.consola .linea{padding:1px 0;white-space:pre-wrap;word-break:break-word;color:var(--text-primary);}
+.consola .linea span{color:var(--text-muted);} .consola .linea.aviso b{color:#D9A441;} .consola .linea.error b,.consola .linea.error{color:var(--red);}
+.codigo-grande{font-family:'IBM Plex Mono',monospace;font-size:28px;letter-spacing:0.12em;text-align:center;padding:18px;background:var(--panel-raised);border-radius:4px;margin:8px 0 12px;user-select:all;}
+.login-links{display:flex;justify-content:space-between;gap:10px;margin-top:14px;font-size:12px;}
+.login-links a,.login-volver{color:var(--text-muted);cursor:pointer;text-decoration:underline;}
+.login-links a:hover,.login-volver:hover{color:var(--brass);}
+.login-conexion{margin-top:10px;font-size:12px;text-align:center;}
+.login-conexion a{color:var(--text-muted);}
+#avisoConexion{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;padding:8px 16px;border-radius:4px;
+  font-size:13px;background:#7a5b00;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35);}
+#avisoConexion.sin{background:#8b1e1e;}
+#avisoConexion a{color:#fff;}
+.login-card .ok{color:var(--green);font-size:12.5px;margin:-6px 0 12px;}
+.login-card .nota{font-size:12.5px;color:var(--text-muted);margin:0 0 12px;}
+.ticket-campos{display:flex;gap:12px;margin:12px 0;}
+.ticket-campos label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-muted);flex:1;}
+.envio-op{display:block;width:100%;text-align:left;margin:0 0 10px;padding:12px 14px;}
+.envio-op b{display:block;font-size:13px;margin-bottom:3px;}
+.envio-op span{font-size:12px;color:var(--text-muted);}
+.envio-bo{margin:0 0 14px;font-size:12.5px;}
+.envio-bo label{display:block;margin:8px 0 0;color:var(--text-muted);}
+.envio-bo input{display:block;width:100%;margin-top:3px;}
+.error-bo{margin-top:10px;color:var(--red);}
+.cert-bo{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel-raised);}
+.cert-bo p{margin:0 0 6px;}
+.cert-bo dl{display:grid;grid-template-columns:max-content 1fr;gap:2px 10px;margin:6px 0 10px;}
+.cert-bo dt{color:var(--text-muted);}
+.cert-bo dd{margin:0;word-break:break-all;}
+.cert-bo .huella{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;}
+.registro-bo{margin-top:8px;font-size:11.5px;}
+.registro-bo summary{cursor:pointer;color:var(--text-muted);}
+.registro-bo pre{max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:6px 0;padding:8px;
+  background:var(--void);border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,Consolas,monospace;}
+.carpetas-bo{display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow:auto;}
+.carpetas-bo .btn{font-size:12px;padding:5px 9px;}
+.envio-cambiar{display:inline-block;margin-top:4px;font-size:12px;color:var(--text-muted);text-decoration:underline;cursor:pointer;}
+.envio-op:disabled{opacity:0.45;cursor:default;}
+.manual-link{font-size:11.5px;color:var(--text-muted);text-decoration:none;border:1px solid var(--line);padding:5px 10px;border-radius:3px;}
+.manual-link:hover{border-color:var(--brass-dim);color:var(--brass);}
+.modal tbody td{padding:6px 8px;}
+.modal thead th{padding:7px 8px;background:var(--panel);}
+.val-old{color:var(--red);}
+.val-new{color:var(--green);}
+</style>
+<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
+<meta name="theme-color" content="#0E1520">
+<link rel="icon" href="iconos/icono-32.png">
+<link rel="apple-touch-icon" href="iconos/icono-192.png">
+</head>
+<body>
+
+<!-- ============================================================
+  CONFIGURACIÓN — sistema propio (sin Supabase). La URL de la API va
+  vacía cuando el front lo sirve la misma API.
+============================================================= -->
+<script>
+// API propia: vacío = mismo servidor que sirve esta página.
+const SUPABASE_URL = '';
+const SUPABASE_ANON_KEY = '';
+</script>
+
+<div id="root"></div>
+
+<script>
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Cortes de conexión con el servidor (tempo-client.js reintenta las consultas solo): aviso abajo de la pantalla.
+window.addEventListener('rk-conexion', (e) => {
+  let aviso = document.getElementById('avisoConexion');
+  if(e.detail === 'ok'){ if(aviso) aviso.remove(); return; }
+  if(!aviso){ aviso = document.createElement('div'); aviso.id = 'avisoConexion'; aviso.setAttribute('role', 'status'); document.body.appendChild(aviso); }
+  aviso.className = e.detail === 'sin_conexion' ? 'sin' : '';
+  aviso.innerHTML = e.detail === 'sin_conexion'
+    ? 'Sin conexión con el servidor. <a href="conexion.html" target="_blank" rel="noopener">Probar la conexión</a>'
+    : 'Conexión inestable con el servidor: reintentando…';
+});
+const COUNTRIES = ['AR','CL','PE','UY','PY','CO','EC','MX'];
+const COUNTRY_ALIASES = { ar:'AR', arg:'AR', cl:'CL', chl:'CL', pe:'PE', per:'PE', uy:'UY', ury:'UY', py:'PY', pry:'PY', co:'CO', col:'CO', ec:'EC', ecu:'EC', mx:'MX', mex:'MX' };
+// Estados que se marcan a mano (los demás los calcula el sistema y se muestran como etiquetas).
+const ESTADOS_MANUALES = ['duplicada','dif de split'];
+
+// Estado de trabajo: una etiqueta por problema (rojo), OK (verde) o manual (azul). Quien puede editar tiene un botón
+// para marcar un estado manual o volver al automático.
+function celdaEstadoTrabajo(r){
+  const v = r.estado_trabajo || '';
+  const etiquetas = v ? v.split(' / ').map(e => {
+    const clase = ESTADOS_MANUALES.includes(e) || e === 'DUPLICADA' ? 'unc' : e.startsWith('OK') ? 'ok' : e === 'TICKET ENVIADO' ? 'ticket' : 'estado-tr';
+    return `<span class="badge ${clase}">${esc(e)}</span>`;
+  }).join('') : '—';
+  if(!(canWrite() && r.bo_report_id)) return `<div class="estados">${etiquetas}</div>`;
+  if(state.editEstado === r.bo_report_id){
+    const actual = ESTADOS_MANUALES.includes(v) ? v : '';
+    return `<select class="edit-field" data-field-bo="estado_trabajo" data-id="${r.bo_report_id}">
+      <option value=""${actual===''?' selected':''}>Automático</option>
+      ${ESTADOS_MANUALES.map(o=>`<option value="${o}"${actual===o?' selected':''}>${o}</option>`).join('')}
+    </select>`;
+  }
+  return `<div class="estados">${etiquetas}<button class="rowbtn marcar" data-edit-estado="${r.bo_report_id}" title="Marcar duplicada o dif de split">Marcar</button></div>`;
+}
+const ESTADOS = ['ok','duplicada','uncontrolled','porcentaje_incorrecto'];
+
+let state = {
+  session: null, profile: null, loginError: '',
+  activeTab: 'master', searchMaster: '', tempoFilter: '', searchTerritory: '', territoryCountry: '', estadoFilter: '', origenFilter: '', reclamosFilter: '', estadoTrabajoFilter: '',
+  dateFromT: '', dateToT: '',
+  dateFrom: '', dateTo: '', masterCountry: '', history: null, historyLoading: false,
+  master: [], territoryControl: [], uploads: [], loading: true,
+  uploadQueue: [], uploadIndex: -1, uploading: false, editEstado: null,
+  historial: null, histTab: 'youtube', histPais: '', controlCountry: '', lastChartLoad: null, lastLoads: {}, lastCountry: '',
+  envioDialog: null, ticketDialog: null, tickets: null, ticketObras: null,
+  loginModo: 'ingresar', loginAviso: '',
+  panel: { acceso: false, sub: 'estado', datos: {}, filtrosAct: {}, eventoServicio: '', error: '', mensaje: '',
+           codigo: null, ocupado: false, actualizado: null },
+  masterTotal: 0, masterPage: 0, territoryTotal: 0, territoryPage: 0, territoryStale: true,
+  territoryOpciones: { estado: [], reclamos: [], estado_trabajo: [] }, seqMaster: 0, seqTerritory: 0, envioBusy: false,
+};
+
+function fmtNum(n){ return n===null || n===undefined ? '—' : Number(n).toLocaleString('es-AR'); }
+function canWrite(){ return state.profile?.app_role==='admin' || state.profile?.app_role==='usuario_estandar'; }
+function canUpload(){ return canWrite(); }
+
+function badgeFor(estado){
+  const map = {ok:['ok','ok'], duplicada:['dup','duplicada'], uncontrolled:['unc','uncontrolled'], porcentaje_incorrecto:['pct','% incorrecto']};
+  const [cls,label] = map[estado] || ['unc', estado||'—'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function detectCountry(sourceName){
+  const text = `${sourceName||''}`.toLowerCase();
+  for(const [alias, code] of Object.entries(COUNTRY_ALIASES)){
+    const re = new RegExp(`(^|[^a-z])${alias}([^a-z]|$)`);
+    if(re.test(text)) return code;
+  }
+  return null;
+}
+
+// ---------- Datos reales desde Postgres (vía Supabase) ----------
+async function loadProfile(){
+  const { data, error } = await sb.from('app_users').select('app_role,oficina').eq('user_id', state.session.user.id).single();
+  state.profile = error ? { app_role:'usuario_estandar', oficina:null } : data;
+  await loadPanelAcceso();
+  await loadEnvioBo();
+}
+async function fetchAll(fn, params){
+  const PAGE = 50000;   // la API propia no tiene el límite de 1.000 filas de Supabase: menos vueltas, sin recalcular
+  let from = 0;
+  const all = [];
+  while(true){
+    const { data, error } = await sb.rpc(fn, params).range(from, from + PAGE - 1);
+    if(error) return { data: all, error };
+    all.push(...(data || []));
+    if(!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return { data: all, error: null };
+}
+
+// Las tablas se piden de a una página (PAGE_SIZE filas) ya filtrada, buscada y ordenada por la base, con el total.
+// Así abrir la aplicación no depende de cuántos charts haya cargados.
+const PAGE_SIZE = 100;
+
+// Cada pestaña tiene sus propios filtros: cambiar de pestaña no los borra.
+function filtrosFechas(tabla = 'master'){
+  return tabla === 'territory' ? { p_date_from: state.dateFromT || null, p_date_to: state.dateToT || null }
+                               : { p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null };
+}
+function incluyeEliminados(){ return false; }
+
+async function loadMaster(){
+  const seq = ++state.seqMaster;
+  const filtros = {
+    ...filtrosFechas(), p_pais: state.masterCountry || null, p_include_deleted: incluyeEliminados(),
+    p_buscar: state.searchMaster || null, p_tempo: state.tempoFilter || null,
+  };
+  // Obras identificadas (con Tempo ID o marcador) y sin identificar: se vuelven a contar solo si cambian los filtros
+  // (al pasar de página no) o después de un cambio (se borra state.masterConteoClave).
+  const clave = JSON.stringify(filtros);
+  const contar = clave !== state.masterConteoClave
+    ? sb.rpc('fn_master_conteo', filtros) : Promise.resolve(null);
+  const [{ data, error }, conteo] = await Promise.all([
+    sb.rpc('fn_master_pagina', { ...filtros, p_limite: PAGE_SIZE, p_offset: state.masterPage * PAGE_SIZE }), contar]);
+  if(seq !== state.seqMaster) return;           // llegó una respuesta más nueva
+  if(conteo && !conteo.error && conteo.data?.[0]){
+    state.masterConteo = { identificadas: Number(conteo.data[0].identificadas), sin: Number(conteo.data[0].sin_identificar) };
+    state.masterConteoClave = clave;
+  }
+  if(error) console.error('fn_master_pagina:', error.message);
+  if(!error && !(data || []).length && state.masterPage > 0){ state.masterPage = 0; return loadMaster(); }
+  state.master = data || [];
+  state.masterTotal = state.master.length ? Number(state.master[0].total) : 0;
+  // Nombres unificados a cada obra de la página (se muestran debajo del nombre principal).
+  const ids = state.master.map(r => r.id);
+  const alias = ids.length ? await sb.rpc('fn_nombres_unificados', { p_ids: ids }) : { data: [] };
+  if(seq !== state.seqMaster) return;
+  state.masterAlias = {};
+  (alias.data || []).forEach(a => { (state.masterAlias[a.track_master_id] ||= []).push(a); });
+}
+
+async function loadTerritory(){
+  const seq = ++state.seqTerritory;
+  const [t, o] = await Promise.all([
+    sb.rpc('fn_territory_pagina', {
+      ...filtrosFechas('territory'), p_pais: state.territoryCountry || null, p_include_deleted: incluyeEliminados(),
+      p_buscar: state.searchTerritory || null, p_estado: state.estadoFilter || null,
+      p_reclamos: state.reclamosFilter || null, p_estado_trabajo: state.estadoTrabajoFilter || null,
+      p_chart: state.origenFilter || null,
+      p_limite: PAGE_SIZE, p_offset: state.territoryPage * PAGE_SIZE,
+    }),
+    sb.rpc('fn_territory_opciones', {}),
+  ]);
+  if(seq !== state.seqTerritory) return;
+  if(t.error) console.error('fn_territory_pagina:', t.error.message);
+  if(!t.error && !(t.data || []).length && state.territoryPage > 0){ state.territoryPage = 0; return loadTerritory(); }
+  state.territoryControl = t.data || [];
+  state.territoryTotal = state.territoryControl.length ? Number(state.territoryControl[0].total) : 0;
+  const op = o.data || [];
+  state.territoryOpciones = {
+    estado: op.filter(x => x.campo === 'estado').map(x => x.valor),
+    reclamos: op.filter(x => x.campo === 'reclamos').map(x => x.valor),
+    estado_trabajo: op.filter(x => x.campo === 'estado_trabajo').map(x => x.valor),
+  };
+  state.territoryStale = false;
+}
+
+// Filtros aplicados en la pestaña activa, para mostrarlos ("País: AR · Desde: 01/01/2025").
+function fechaCorta(f){ const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(f || ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : f; }
+// Filtro Tempo ID de la tabla principal (en el encabezado de la columna).
+const TEMPO_FILTRO = { vacios: 'Vacíos', con: 'Con Tempo ID' };
+const TEMPO_FILTRO_TEXTO = { vacios: 'vacíos', con: 'con valor' };
+function filtrosActivos(){
+  const t = state.activeTab === 'territory';
+  const pais = t ? state.territoryCountry : state.masterCountry;
+  const desde = t ? state.dateFromT : state.dateFrom, hasta = t ? state.dateToT : state.dateTo;
+  const busqueda = (t ? state.searchTerritory : state.searchMaster).trim();
+  const f = [];
+  if(busqueda) f.push(busqueda === '-' ? 'Sin Tempo ID' : `Búsqueda: "${esc(busqueda)}"`);
+  if(!t && state.tempoFilter) f.push(`Tempo ID: ${TEMPO_FILTRO_TEXTO[state.tempoFilter]}`);
+  if(pais) f.push(`País: ${pais}`);
+  if(desde) f.push(`Desde: ${fechaCorta(desde)}`);
+  if(hasta) f.push(`Hasta: ${fechaCorta(hasta)}`);
+  if(t){
+    if(state.estadoFilter) f.push(`Estado: ${state.estadoFilter}`);
+    if(state.reclamosFilter) f.push(`Reclamos: ${state.reclamosFilter}`);
+    if(state.estadoTrabajoFilter) f.push(`Estado de trabajo: ${state.estadoTrabajoFilter}`);
+    if(state.origenFilter) f.push('Ranking de origen');
+  }
+  return f;
+}
+function totalActivo(){ return state.activeTab === 'territory' ? state.territoryTotal : state.masterTotal; }
+
+// Aplica un cambio de filtro y muestra cuántas obras se ven ahora (antes y después), con un botón Aceptar.
+async function aplicarFiltro(cambio, recargar = loadAll){
+  const antes = totalActivo();
+  cambio();
+  await recargar();
+  state.avisoFiltro = { tabla: state.activeTab, antes, ahora: totalActivo(), filtros: filtrosActivos() };
+  render();
+  const ok = document.getElementById('okFiltro');
+  if(ok) ok.focus();
+}
+
+function renderAvisoFiltro(){
+  const a = state.avisoFiltro;
+  if(!a) return '';
+  const cosa = a.tabla === 'territory' ? (n) => `${fmtNum(n)} ${n === 1 ? 'registro' : 'registros'} (obra y territorio)`
+                                       : (n) => `${fmtNum(n)} ${n === 1 ? 'obra' : 'obras'}`;
+  return `
+  <div class="modal-bg" id="avisoFiltroBg">
+    <div class="modal small aviso-filtro">
+      <h2 class="display">${a.filtros.length ? 'Filtro aplicado' : 'Filtros quitados'}</h2>
+      <p class="sub">${a.filtros.length ? a.filtros.join(' · ') : 'Se muestran todos los registros.'}</p>
+      ${a.ahora ? `<div class="n mono">${cosa(a.ahora)}</div><p class="sub">Antes: ${cosa(a.antes)}.</p>`
+                : `<div class="n mono">Sin resultados</div><p class="sub">No hay registros con estos filtros. Antes: ${cosa(a.antes)}.</p>`}
+      <button class="btn primary" id="okFiltro">Aceptar</button>
+    </div>
+  </div>`;
+}
+
+// Recarga lo que depende de los filtros. La tabla por territorio se pide recién cuando se abre su pestaña.
+async function loadAll(){
+  state.loading = true; render();
+  state.masterPage = 0; state.territoryPage = 0; state.territoryStale = true;
+  state.masterConteoClave = null;   // se vuelve a contar (pudo cambiar un Tempo ID o haber una carga nueva)
+  const tareas = [loadMaster(), loadLastChartLoad()];
+  if(state.activeTab === 'territory') tareas.push(loadTerritory());
+  await Promise.all(tareas);
+  state.historial = null;   // se vuelve a leer al abrir "Historial de cargas"
+  if(state.activeTab === 'history') loadHistorial();
+  state.tickets = null;   // se vuelve a leer al abrir "Tickets enviados"
+  if(state.activeTab === 'tickets') loadTickets();
+  state.loading = false;
+  render();
+}
+
+// Búsqueda en la base, con una pequeña espera mientras se escribe.
+let esperaBusqueda = null;
+function buscar(valor, idCampo){
+  if(idCampo === 'searchMaster') state.searchMaster = valor; else state.searchTerritory = valor;
+  clearTimeout(esperaBusqueda);
+  esperaBusqueda = setTimeout(async () => {
+    if(state.activeTab === 'master'){ state.masterPage = 0; await loadMaster(); }
+    else { state.territoryPage = 0; await loadTerritory(); }
+    const activo = document.activeElement && document.activeElement.id === idCampo;
+    render();
+    const el = document.getElementById(idCampo);
+    if(el && activo){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }, 250);
+}
+
+// Valores admitidos en Tempo ID además del número (la base los valida igual: fn_valor_tempo).
+// UNCONTROLLED y después los PENDING, siempre en orden alfabético.
+const MARCADORES_TEMPO = ['UNCONTROLLED', ...['PENDING ARGENTINA', 'PENDING CHILE', 'PENDING COLOMBIA', 'PENDING COREA',
+  'PENDING ESPAÑA', 'PENDING MEXICO', 'PENDING MIAMI', 'PENDING URUGUAY', 'PENDING USA'].sort((a, b) => a.localeCompare(b, 'es'))];
+// No es un valor que se guarde: en la tabla principal, unifica la obra con otra (sin Tempo ID numérico) y queda una sola,
+// UNCONTROLLED (fn_unificar_uncontrolled).
+const UNCONTROLLED_DUP = 'UNCONTROLLED DUP';
+const OPCIONES_TEMPO = [MARCADORES_TEMPO[0], UNCONTROLLED_DUP, ...MARCADORES_TEMPO.slice(1)];
+const sinTildes = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+// El valor estándar, '' si está vacío o null si no es válido.
+function tempoEstandar(valor){
+  const v = String(valor || '').trim().replace(/\s+/g, ' ').toUpperCase();
+  if(!v || /^[0-9]+$/.test(v)) return v;
+  return MARCADORES_TEMPO.find(m => sinTildes(m) === sinTildes(v.replace(/^PENDIENTE /, 'PENDING '))) || null;
+}
+
+// Opciones de la lista de Tempo ID: los valores admitidos o, en un compilado, lo ya escrito hasta el último "/"
+// seguido de cada valor (123/UNCONTROLLED).
+function listaTempo(valor){
+  const lista = document.getElementById('marcadoresTempo');
+  if(!lista) return;
+  const v = String(valor || '');
+  const previo = v.includes('/') ? v.slice(0, v.lastIndexOf('/') + 1) : '';
+  const opciones = previo ? MARCADORES_TEMPO.map(m => previo + m) : OPCIONES_TEMPO;
+  if([...lista.options].map(o => o.value).join('|') !== opciones.join('|'))
+    lista.innerHTML = opciones.map(o => `<option value="${o.replace(/"/g, '&quot;')}">`).join('');
+}
+
+// Una parte del Tempo ID mientras se escribe: con dígitos, solo el número; con letras, se busca en la lista ("miam" ->
+// PENDING MIAMI, "colom" -> PENDING COLOMBIA) y se completa cuando coincide un solo valor (al borrar no se completa).
+// Las letras que no coinciden con ningún valor no se escriben.
+function completarTempoParte(parte, opciones, borrando){
+  const v = parte.replace(/^\s+/, '');
+  const norm = (s) => sinTildes(s).toUpperCase();
+  if(/[0-9]/.test(v)){
+    // Un valor de la lista ya completo, seguido de un número por error, queda como estaba.
+    const previo = opciones.find(o => norm(v).startsWith(norm(o)));
+    return previo || v.replace(/[^0-9]/g, '');
+  }
+  const coinciden = (texto) => {
+    const palabras = norm(texto).split(/\s+/).filter(Boolean);
+    return palabras.length ? opciones.filter(o => palabras.every(w => norm(o).split(' ').some(p => p.startsWith(w)))) : [];
+  };
+  if(!v.trim()) return '';
+  if(borrando) return v;
+  const exacta = opciones.find(o => norm(o) === norm(v));
+  const posibles = coinciden(v);
+  if(posibles.length === 1) return posibles[0];
+  if(exacta) return exacta;
+  if(posibles.length) return v;
+  // Nada coincide: un valor completo seguido de algo más queda en el valor; si no, se descartan las letras sobrantes.
+  const completo = [...opciones].sort((a, b) => b.length - a.length).find(o => norm(v).startsWith(norm(o)));
+  if(completo) return completo;
+  let resto = v;
+  while(resto && !coinciden(resto).length) resto = resto.slice(0, -1);
+  return resto;
+}
+
+// Compilado: varios Tempo ID separados por "/" (123/456), uno por canción del título ("A / B - Artista").
+function tempoCompilado(value){
+  if(!String(value || '').includes('/')) return null;
+  const partes = String(value).split('/').map(v => tempoEstandar(v));
+  return partes.length >= 2 && partes.every(v => v) ? partes : [];
+}
+
+// Al unificar dos obras, qué nombre queda como principal (pedido del usuario: a veces una es un cover). El otro queda
+// unificado y se muestra debajo. Devuelve 'otra', 'esta' o null si se cancela.
+function elegirNombre(texto, nombreOtra, nombreEsta){
+  return new Promise(resolve => {
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg'; bg.id = 'elegirNombreBg';
+    bg.innerHTML = `<div class="modal small"><h2>Unificar obras</h2><p class="sub">${esc(texto)}</p>
+      <p style="font-size:13px">Seleccioná el nombre que queda como principal. El otro queda unificado a esa obra y se
+      muestra debajo del nombre.</p>
+      <div class="elegir-nombre">
+        <button class="btn" data-nombre="otra">${esc(nombreOtra)}</button>
+        <button class="btn" data-nombre="esta">${esc(nombreEsta)}</button>
+      </div>
+      <div style="text-align:right;margin-top:14px"><button class="btn" data-nombre="">Cancelar</button></div></div>`;
+    bg.onclick = (e) => {
+      const b = e.target.closest('[data-nombre]');
+      if(!b && e.target !== bg) return;
+      bg.remove(); resolve(b ? (b.dataset.nombre || null) : null);
+    };
+    document.body.appendChild(bg);
+  });
+}
+
+function nombresUnificados(id){
+  const lista = (state.masterAlias || {})[id];
+  if(!lista || !lista.length) return '';
+  return `<div class="unificados">${lista.map(a => `<span>Unificada: ${esc(a.nombre)}${canWrite()
+    ? ` · <a data-nombre-principal="${esc(a.clave)}" data-id="${id}" data-nombre="${esc(a.nombre)}">Usar este nombre</a>` : ''}</span>`).join('')}</div>`;
+}
+
+async function updateMasterField(id, field, value){
+  if(field === 'tempo_id' && String(value).trim() === UNCONTROLLED_DUP){
+    // Misma canción que otra obra sin Tempo ID numérico: se pega su Track - Artista y queda una sola, UNCONTROLLED.
+    const obra = state.master.find(r => r.id === id);
+    const otra = prompt(`UNCONTROLLED DUP: pegá el Track - Artista exacto de la obra de la tabla principal que es la misma `
+      + `canción que "${obra?.track_artist_concat || ''}".\n\nLas dos obras se unifican (charts, streams y reportes) y queda `
+      + `una sola, UNCONTROLLED, con el nombre pegado.`);
+    if(otra === null || !otra.trim()){ loadAll(); return; }
+    const eleccion = await elegirNombre(`UNCONTROLLED DUP: "${obra?.track_artist_concat || ''}" y "${otra.trim()}" se unifican `
+      + `en una sola obra, UNCONTROLLED.`, otra.trim(), obra?.track_artist_concat || '');
+    if(!eleccion){ loadAll(); return; }
+    const { data, error } = await sb.rpc('fn_unificar_uncontrolled', { p_track_id: id, p_track_artista: otra.trim(),
+                                                                       p_nombre_de_esta: eleccion === 'esta' });
+    if(error) alert('No se unificaron las obras. ' + error.message);
+    else alert(`Las obras quedaron unificadas en "${data}", como UNCONTROLLED.`);
+    loadAll();
+    return;
+  }
+  if(field === 'tempo_id' && /^\s*[0-9]+\s*(-\s*[0-9]+\s*)+$/.test(String(value))){
+    // Tempo ID duplicado en Tempo (123-456): la obra queda con los dos y se sigue por separado en la tabla por territorio.
+    const ids = String(value).split('-').map(s => s.trim());
+    const obra = state.master.find(r => r.id === id);
+    if(!confirm(`"${obra?.track_artist_concat || ''}" queda con ${ids.length} Tempo ID (${ids.join(' y ')}): en la tabla por `
+        + `territorio aparece una vez por cada uno, con sus datos de BO y Tempo y su ticket por separado, marcada como `
+        + `DUPLICADA. El reporte BO incluye los dos.`)){ loadAll(); return; }
+    const { error } = await sb.rpc('fn_asignar_tempo_id', { p_track_id: id, p_tempo_id: ids.join('-'), p_unificar: false });
+    if(error) alert('No se guardó el Tempo ID. ' + error.message);
+    loadAll();
+    return;
+  }
+  if(field === 'tempo_id' && tempoCompilado(value) !== null){
+    // El compilado se separa en una obra por canción: los streams se dividen en partes iguales y el nombre del
+    // compilado queda registrado para las próximas cargas.
+    const partes = tempoCompilado(value);
+    const obra = state.master.find(r => r.id === id);
+    const titulos = String(obra?.track_name_clean || '').split('/').map(s => s.trim());
+    const artista = String(obra?.track_artist_concat || '').slice(String(obra?.track_name_clean || '').length).replace(/^ - /, '');
+    if(!partes.length){
+      alert(`Compilado no válido: "${String(value).trim()}". Ingresá el Tempo ID de cada canción separados por "/", por ejemplo 123/456.`);
+      loadAll(); return;
+    }
+    if(titulos.length !== partes.length){
+      alert(`Para separar un compilado, el título tiene que tener una canción por cada Tempo ID, separadas por "/": `
+        + `"${obra?.track_artist_concat || ''}" tiene ${titulos.length} y se ingresaron ${partes.length}.`);
+      loadAll(); return;
+    }
+    const detalle = titulos.map((t, i) => `• ${t} - ${artista} (${partes[i]})`).join('\n');
+    if(!confirm(`"${obra.track_artist_concat}" es un compilado y se va a separar en ${partes.length} obras:\n\n${detalle}\n\n`
+        + `Los charts y streams del compilado se dividen en partes iguales entre las canciones, y las próximas cargas con `
+        + `este nombre también. Si alguna canción ya existe, se suma a esa obra.`)){ loadAll(); return; }
+    const { data, error } = await sb.rpc('fn_asignar_tempo_id', { p_track_id: id, p_tempo_id: partes.join('/'), p_unificar: false });
+    if(error) alert('No se separó el compilado. ' + error.message);
+    else alert(`El compilado quedó separado en ${data} obras.`);
+    loadAll();
+    return;
+  }
+  if(field === 'tempo_id'){
+    // Si otra obra ya tiene ese Tempo ID, es la misma canción escrita de otra forma: con la confirmación de la
+    // persona, las dos obras se fusionan en la que ya lo tenía (charts, streams, reportes y envíos de ambas).
+    const limpio = tempoEstandar(value);
+    if(limpio === null){
+      alert(`Tempo ID no válido: "${String(value).trim()}". Ingresá el número o uno de estos valores: ${MARCADORES_TEMPO.join(', ')}.`);
+      loadAll();
+      return;
+    }
+    value = limpio;
+    let unificar = false, nombreDeEsta = false;
+    if(/^[0-9]+$/.test(limpio)){
+      const { data: otras } = await sb.from('tracks_master').select('id,track_artist_concat').eq('tempo_id', limpio).limit(2);
+      const otra = (otras || []).find(o => o.id !== id);
+      if(otra){
+        const esta = state.master.find(r => r.id === id);
+        const eleccion = await elegirNombre(`El Tempo ID ${limpio} ya está asignado a "${otra.track_artist_concat}". Si es la `
+          + `misma canción, las dos obras se unifican: los charts, streams, reportes y envíos de ambas quedan en una sola obra, `
+          + `y las próximas cargas con cualquiera de los dos nombres también.`, otra.track_artist_concat, esta?.track_artist_concat || '');
+        if(!eleccion){ await loadMaster(); render(); return; }
+        unificar = true; nombreDeEsta = eleccion === 'esta';
+      }
+    }
+    const { data, error } = await sb.rpc('fn_asignar_tempo_id', { p_track_id: id, p_tempo_id: value, p_unificar: unificar,
+                                                                 p_nombre_de_esta: nombreDeEsta });
+    if(error) alert(error.message.startsWith('No se pudo confirmar') ? error.message : 'No se guardó el Tempo ID. ' + error.message);
+    else if(data > 0) alert('Las obras quedaron fusionadas.');
+    loadAll();
+    return;
+  }
+  const patch = {}; patch[field] = value === '' ? null : value;
+  await sb.from('tracks_master').update(patch).eq('id', id);
+  loadAll();
+}
+
+// Ticket y fecha de una obra en un territorio (la fecha se escribe DDMMAAAA y se muestra DD/MM/AAAA).
+async function updateSeguimiento(el){
+  if(el.value === el.defaultValue) return;
+  const { data, error } = await sb.rpc('fn_guardar_seguimiento', { p_track_id: el.dataset.track, p_pais: el.dataset.pais,
+                                                                  p_campo: el.dataset.fieldSeg, p_valor: el.value,
+                                                                  p_tempo_id: el.dataset.tempo || null });
+  if(error){ alert('No se guardó. ' + error.message); el.value = el.defaultValue; return; }
+  el.value = el.defaultValue = data || '';
+  const fila = state.territoryControl.find(r => r.track_master_id === el.dataset.track && r.pais_code === el.dataset.pais
+                                             && (r.tempo_id || '') === (el.dataset.tempo || ''));
+  if(fila){
+    if(el.dataset.fieldSeg === 'ticket') fila.ticket = data || null;
+    else fila.ticket_fecha_txt = data || '';
+  }
+  // Con ticket, el estado de trabajo pasa a TICKET ENVIADO (y al quitarlo se recalcula): se vuelve a leer la página.
+  if(el.dataset.fieldSeg === 'ticket'){
+    const foco = document.activeElement?.dataset || {};   // si pasó a la fecha con Tab, sigue ahí después de redibujar
+    await loadTerritory(); render();
+    if(foco.fieldSeg) document.querySelector(`[data-field-seg="${foco.fieldSeg}"][data-track="${foco.track}"][data-pais="${foco.pais}"]`)?.focus();
+  }
+}
+
+// Tickets enviados: un renglón por número de ticket (quién lo cargó, cuándo, fecha del ticket, países y obras).
+async function loadTickets(){
+  const { data, error } = await sb.rpc('fn_tickets_lista', {});
+  if(error) console.error('fn_tickets_lista:', error.message);
+  state.tickets = data || [];
+  if(state.activeTab === 'tickets') render();
+}
+async function openTicketObras(ticket){
+  state.ticketObras = { ticket, rows: null };
+  render();
+  const { data } = await sb.rpc('fn_ticket_obras', { p_ticket: ticket });
+  if(state.ticketObras?.ticket === ticket){ state.ticketObras.rows = data || []; render(); }
+}
+function renderTickets(){
+  const t = state.tickets;
+  if(!t) return `<div class="empty">Cargando...</div>`;
+  if(!t.length) return `<div class="empty">Sin tickets cargados. Se cargan en la tabla por territorio (Cargar ticket o la columna Ticket).</div>`;
+  return `
+  <table id="tablaTickets"><thead><tr><th>Ticket</th><th>Cargado por</th><th>Cargado el</th><th>Fecha del ticket</th>
+    <th>Países</th><th class="num">Obras</th><th></th></tr></thead>
+  <tbody>${t.map(r => `<tr>
+    <td class="tempo">${esc(r.ticket)}</td>
+    <td>${esc(r.creado_por)}</td>
+    <td class="mono">${fmtFecha(r.creado_el)}</td>
+    <td class="mono">${r.fecha ? fechaCorta(r.fecha) : '—'}</td>
+    <td>${esc(r.paises || '')}</td>
+    <td class="num">${fmtNum(Number(r.obras))}</td>
+    <td><button class="rowbtn" data-ticket-obras="${esc(r.ticket)}">Ver obras</button></td>
+  </tr>`).join('')}</tbody></table>`;
+}
+function renderTicketObras(){
+  const d = state.ticketObras;
+  if(!d) return '';
+  return `
+  <div class="modal-bg" id="ticketObrasBg">
+    <div class="modal">
+      <button class="close" id="closeTicketObras">Cerrar</button>
+      <h2 class="display">Ticket ${esc(d.ticket)}</h2>
+      ${!d.rows ? `<div class="empty">Cargando...</div>` : `
+      <p class="sub">${fmtNum(d.rows.length)} obra${d.rows.length === 1 ? '' : 's'}</p>
+      <table><thead><tr><th>País</th><th>Track - Artista</th><th>Tempo ID</th><th>Fecha</th><th>Estado de trabajo</th></tr></thead>
+      <tbody>${d.rows.map(r => `<tr><td class="mono">${r.pais_code}</td><td>${esc(r.track_artist_concat)}</td>
+        <td class="tempo">${esc(r.tempo_id || '—')}</td><td class="mono">${r.ticket_fecha ? fechaCorta(r.ticket_fecha) : '—'}</td>
+        <td>${celdaEstadoTrabajo({ estado_trabajo: r.estado_trabajo })}</td></tr>`).join('')}</tbody></table>`}
+    </div>
+  </div>`;
+}
+
+// Ticket para todas las obras filtradas de la tabla por territorio (los tickets se envían por grupo de obras).
+function filtrosTerritorioRpc(){
+  return { ...filtrosFechas('territory'), p_pais: state.territoryCountry || null, p_buscar: state.searchTerritory || null,
+           p_estado: state.estadoFilter || null, p_reclamos: state.reclamosFilter || null,
+           p_estado_trabajo: state.estadoTrabajoFilter || null, p_chart: state.origenFilter || null };
+}
+function hoyDDMMAAAA(){ const d = new Date(); return String(d.getDate()).padStart(2, '0') + String(d.getMonth() + 1).padStart(2, '0') + d.getFullYear(); }
+async function openTicketDialog(){
+  state.ticketDialog = { conteo: null, ticket: '', fecha: hoyDDMMAAAA(), busy: false, error: '', hecho: null };
+  render();
+  const { data, error } = await sb.rpc('fn_ticket_filtrado', { p_ticket: null, p_fecha: null, p_aplicar: false, ...filtrosTerritorioRpc() });
+  if(!state.ticketDialog) return;
+  if(error) state.ticketDialog.error = error.message;
+  else state.ticketDialog.conteo = { obras: Number(data?.[0]?.obras || 0), otro: Number(data?.[0]?.con_otro_ticket || 0) };
+  render();
+}
+async function aplicarTicket(){
+  const d = state.ticketDialog;
+  d.ticket = document.getElementById('ticketMasivo').value.trim();
+  d.fecha = document.getElementById('fechaMasiva').value.trim();
+  if(!d.ticket){ d.error = 'Ingresá el número de ticket.'; render(); return; }
+  d.busy = true; d.error = ''; render();
+  const { data, error } = await sb.rpc('fn_ticket_filtrado', { p_ticket: d.ticket, p_fecha: d.fecha, p_aplicar: true, ...filtrosTerritorioRpc() });
+  d.busy = false;
+  if(error){ d.error = error.message; render(); return; }
+  d.hecho = Number(data?.[0]?.obras || 0);
+  await loadTerritory();
+  render();
+}
+function renderTicketDialog(){
+  const d = state.ticketDialog;
+  if(!d) return '';
+  const c = d.conteo;
+  const obras = (n) => `${n} obra${n === 1 ? '' : 's'}`;
+  const cuerpo = d.hecho !== null
+    ? `<p class="sub">Ticket ${esc(d.ticket)} cargado en ${obras(d.hecho)}.</p>
+       <button class="btn primary" id="closeTicket">Aceptar</button>`
+    : !c ? (d.error ? `<p class="aviso-panel error">${esc(d.error)}</p>` : `<div class="empty">Calculando…</div>`)
+    : `<p class="sub">Filtros aplicados: ${filtrosActivos().join(' · ')}.<br>
+         Se carga en las <b>${obras(c.obras)}</b> filtradas (todas las páginas).${c.otro ? ` ${obras(c.otro)} ya tienen otro ticket: se reemplaza.` : ''}</p>
+       <div class="ticket-campos">
+         <label>Ticket <input class="edit-field" id="ticketMasivo" value="${esc(d.ticket)}" placeholder="Número de ticket"></label>
+         <label>Fecha <input class="edit-field" id="fechaMasiva" value="${esc(d.fecha)}" placeholder="DDMMAAAA"></label>
+       </div>
+       ${d.error ? `<p class="aviso-panel error">${esc(d.error)}</p>` : ''}
+       <button class="btn primary" id="aplicarTicket" ${c.obras && !d.busy ? '' : 'disabled'}>${d.busy ? 'Cargando…' : `Cargar ticket en ${obras(c.obras)}`}</button>`;
+  return `
+  <div class="modal-bg" id="ticketBg">
+    <div class="modal small">
+      ${d.hecho === null ? `<button class="close" id="cancelTicket">Cancelar</button>` : ''}
+      <h2 class="display">Cargar ticket</h2>
+      ${cuerpo}
+    </div>
+  </div>`;
+}
+
+async function updateBoReportField(id, field, value){
+  if(field === 'estado_trabajo') state.editEstado = null;
+  const patch = {}; patch[field] = value === '' ? null : value;
+  await sb.from('territory_bo_report').update(patch).eq('id', id);
+  loadAll();
+}
+
+async function openHistory(trackId, pais){
+  const row = state.territoryControl.find(r => r.track_master_id===trackId && r.pais_code===pais);
+  state.history = { trackId, pais, titulo: row?.track_artist_concat || '', rows: [] };
+  state.historyLoading = true; render();
+
+  const { data, error } = await sb.rpc('fn_obra_history', {
+    p_track_master_id: trackId, p_pais: pais
+  });
+  state.history.rows = data || [];
+  state.history.error = error?.message || null;
+  state.historyLoading = false;
+  render();
+}
+
+function renderHistoryModal(){
+  if(!state.history) return '';
+  const h = state.history;
+  return `
+  <div class="modal-bg" id="historyBg">
+    <div class="modal">
+      <button class="close" id="closeHistory">Cerrar</button>
+      <h2 class="display">Histórico de cambios</h2>
+      <p class="sub">${h.titulo} · ${h.pais}</p>
+      ${state.historyLoading ? `<div class="empty">Cargando...</div>`
+        : h.error ? `<div class="empty">Error: ${h.error}</div>`
+        : !h.rows.length ? `<div class="empty">Sin modificaciones registradas.</div>`
+        : `<table><thead><tr>
+             <th>Fecha</th><th>BO</th><th>C/A</th>
+             <th class="num">% Perf Tempo</th><th class="num">% Mech Tempo</th>
+             <th>Estado</th><th>Reclamos</th><th class="num">% Mech BO</th>
+             <th>Estado de trabajo</th><th>Estado obra</th><th>Created date</th>
+           </tr></thead>
+           <tbody>${h.rows.map(r=>`
+             <tr>
+               <td class="mono">${(r.changed_at||'').replace('T',' ').slice(0,16)}</td>
+               <td class="tempo">${r.bo ?? '—'}</td>
+               <td>${r.ca ?? '—'}</td>
+               <td class="num">${r.perf_tempo==null||r.perf_tempo===''?'—':/^[0-9.]+$/.test(r.perf_tempo)?r.perf_tempo+'%':r.perf_tempo}</td>
+               <td class="num">${r.mech_tempo==null||r.mech_tempo===''?'—':/^[0-9.]+$/.test(r.mech_tempo)?r.mech_tempo+'%':r.mech_tempo}</td>
+               <td>${r.estado ?? '—'}</td>
+               <td>${r.reclamos ?? '—'}</td>
+               <td class="num">${r.mech_bo!=null?r.mech_bo+'%':'—'}</td>
+               <td>${r.estado_trabajo ?? '—'}</td>
+               <td>${r.estado_obra ?? '—'}</td>
+               <td class="mono">${r.created_date ?? '—'}</td>
+             </tr>`).join('')}
+           </tbody></table>`}
+    </div>
+  </div>`;
+}
+
+async function softDelete(kind, id){
+  const table = kind==='master' ? 'tracks_master' : 'territory_tracks';
+  await sb.from(table).update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  loadAll();
+}
+async function restore(kind, id){
+  const table = kind==='master' ? 'tracks_master' : 'territory_tracks';
+  await sb.from(table).update({ deleted_at: null }).eq('id', id);
+  loadAll();
+}
+
+// ---------- Reporte BO y CSV de la tabla principal: todas o identificadas desde la última descarga ----------
+// Cada descarga queda registrada con sus obras (fn_preparar_envio). "Identificadas" son las que obtuvieron Tempo ID
+// desde la última descarga de ese tipo (nunca figuraron identificadas en una descarga anterior). Las dos usan los
+// filtros de país y fechas de la tabla principal.
+const ENVIO_BO = { titulo: 'Enviar reporte BO', cosa: 'reporte BO', soloTempo: true, ultimo: 'tu último reporte BO' };
+function usuarioBoRecordado(){ try { return localStorage.getItem('rk_bo_usuario') || ''; } catch(e){ return ''; } }
+function carpetaBoRecordada(){ try { return localStorage.getItem('rk_bo_carpeta') || ''; } catch(e){ return ''; } }
+const ENVIO_TIPOS = {
+  reporte_bo:    { titulo: 'Descargar reporte BO', cosa: 'reporte BO', soloTempo: true, ultimo: 'tu último reporte BO' },
+  csv_principal: { titulo: 'Descargar CSV de la tabla principal', cosa: 'CSV', soloTempo: false, ultimo: 'tu última descarga' },
+};
+
+function envioFiltros(){
+  return { p_date_from: state.dateFrom || null, p_date_to: state.dateTo || null, p_pais: state.masterCountry || null,
+           p_buscar: state.searchMaster.trim() || null, p_tempo: state.tempoFilter || null };
+}
+
+async function openEnvioDialog(tipo){
+  state.envioDialog = { tipo, ultimo: null, conteo: null, enviar: tipo === 'reporte_bo' && !!state.envioBo };
+  render();
+  const [u, c] = await Promise.all([
+    // "Identificadas" es por persona (01_seguimiento.sql): la última descarga que se muestra es la propia.
+    sb.from('envios').select('*').eq('tipo', tipo).eq('created_by', state.session.user.id).order('created_at', { ascending: false }).limit(1),
+    sb.rpc('fn_envio_conteo', { p_tipo: tipo, ...envioFiltros() }),
+  ]);
+  if(state.envioDialog && state.envioDialog.tipo === tipo){
+    state.envioDialog.ultimo = u.data?.[0] || null;
+    const r = c.data?.[0] || {};
+    state.envioDialog.conteo = { todas: Number(r.todas || 0), identificadas: Number(r.identificadas || 0) };
+    render();
+  }
+}
+
+// Fecha y hora en la hora local de la PC (la base las guarda en UTC): "2026-10-21 20:22".
+function fmtFecha(ts){
+  if(!ts) return '—';
+  const d = new Date(ts);
+  return isNaN(d) ? String(ts) : d.toLocaleString('sv-SE', { hour12: false }).slice(0, 16);
+}
+
+function renderEnvioDialog(){
+  const d = state.envioDialog;
+  if(!d) return '';
+  const t = d.enviar ? ENVIO_BO : ENVIO_TIPOS[d.tipo];
+  const c = d.conteo;
+  const busqueda = state.searchMaster.trim();
+  const filtros = [busqueda && (busqueda === '-' ? 'sin Tempo ID' : `búsqueda "${esc(busqueda)}"`),
+                   state.tempoFilter && `Tempo ID ${TEMPO_FILTRO_TEXTO[state.tempoFilter]}`,
+                   state.masterCountry && `país ${state.masterCountry}`, state.dateFrom && `desde ${fechaCorta(state.dateFrom)}`,
+                   state.dateTo && `hasta ${fechaCorta(state.dateTo)}`].filter(Boolean).join(', ');
+  const u = d.ultimo;
+  const ultimo = u ? `${t.ultimo[0].toUpperCase() + t.ultimo.slice(1)}: ${fmtFecha(u.created_at)}${u.carga ? ` · carga ${u.carga}` : ''} · ${({ nuevas: 'solo nuevas', identificadas: 'identificadas desde la anterior' })[u.modo] || 'todas'} · ${u.obras} obras`
+                   : (d.tipo === 'reporte_bo' ? 'Todavía no generaste un reporte BO.' : 'Todavía no descargaste este CSV.');
+  const obras = (n) => `${n} obra${n === 1 ? '' : 's'}`;
+  return `
+  <div class="modal-bg" id="envioBg">
+    <div class="modal small">
+      <button class="close" id="closeEnvio">Cancelar</button>
+      <h2 class="display">${t.titulo}</h2>
+      <p class="sub">${ultimo}<br>${filtros ? `Filtros aplicados: ${filtros}.` : 'Sin filtros: incluye toda la tabla principal.'}${t.soloTempo ? ' Incluye únicamente obras con Tempo ID.' : ''}</p>
+      ${d.enviar ? `<div class="envio-bo">
+        <p>El archivo se carga en la carpeta de tu usuario en el servidor de BO. La contraseña no se guarda.</p>
+        <label>Usuario de BO <input class="edit-field" id="boUsuario" autocomplete="off" value="${esc(usuarioBoRecordado())}"></label>
+        <label>Contraseña de BO <input class="edit-field" id="boClave" type="password" autocomplete="new-password"></label>
+        ${d.error ? `<div class="error-bo">${esc(d.error)}</div>` : ''}
+        ${d.registro?.length ? `<details class="registro-bo"><summary>Registro de la conexión</summary>
+          <pre id="boRegistro">${esc(d.registro.join('\n'))}</pre><button class="btn" id="boCopiarRegistro">Copiar registro</button></details>` : ''}
+        ${d.certificado ? renderCertificadoBo(d.certificado) : ''}
+        ${d.carpetas ? renderCarpetasBo(d.carpetas) : ''}
+      </div>` : ''}
+      ${!c ? `<div class="empty">Calculando…</div>` : `
+      <button class="btn envio-op" data-envio-modo="todas" ${c.todas && !state.envioBusy ? '' : 'disabled'}>
+        <b>Todas · ${obras(c.todas)}</b>
+        <span>${t.soloTempo ? 'Todas las obras con Tempo ID' : 'Todas las obras'}${filtros ? ' que cumplen los filtros aplicados.' : ' de la tabla principal.'}</span>
+      </button>
+      <button class="btn envio-op" data-envio-modo="identificadas" ${c.identificadas && !state.envioBusy ? '' : 'disabled'}>
+        <b>Identificadas desde ${t.ultimo} · ${obras(c.identificadas)}</b>
+        <span>Obras que obtuvieron Tempo ID después de ${t.ultimo}${d.tipo === 'reporte_bo' ? ' (enviado o descargado)' : ''}. Lo que generan otras personas no las descuenta.</span>
+      </button>`}
+      ${d.tipo === 'reporte_bo' && state.envioBo ? `<a class="envio-cambiar" id="envioCambiar">${d.enviar
+        ? 'Descargar el archivo en lugar de enviarlo' : 'Enviar al servidor de BO en lugar de descargar'}</a>` : ''}
+    </div>
+  </div>`;
+}
+
+// Certificado del servidor de BO que no emitió una entidad reconocida: como en FileZilla, se muestran sus datos y un
+// Administrador lo acepta una vez (el sistema recuerda la huella y no vuelve a preguntar mientras sea el mismo).
+function renderCertificadoBo(c){
+  const fila = (t, v, cls) => v ? `<dt>${t}</dt><dd${cls ? ` class="${cls}"` : ''}>${esc(v)}</dd>` : '';
+  return `<div class="cert-bo">
+    <p>El certificado del servidor de BO no es de confianza: ${esc(c.motivo || '')}. FileZilla muestra el mismo aviso
+    en la primera conexión.</p>
+    <dl>${fila('Servidor', c.servidor)}${fila('Emitido para', c.emitido_para)}${fila('Nombres', c.nombres)}
+      ${fila('Emitido por', c.emitido_por)}${fila('Válido desde', c.valido_desde)}${fila('Válido hasta', c.valido_hasta)}
+      ${fila('Huella SHA-256', c.huella, 'huella')}</dl>
+    ${c.puede_aceptar
+      ? `<button class="btn" id="boConfiar" ${state.envioBusy ? 'disabled' : ''}>Confiar en este certificado y enviar</button>
+         <p class="sub">El sistema recuerda este certificado y solo vuelve a preguntar si el servidor presenta otro.</p>`
+      : `<p>Un Administrador tiene que aceptar este certificado en un envío. Mientras tanto, descargá el archivo.</p>`}
+  </div>`;
+}
+
+// El servidor de BO no deja cargar el archivo en esa carpeta: se muestran sus subcarpetas para elegir la misma que se
+// usa en FileZilla (y la carpeta superior). Elegir una vuelve a enviar a esa carpeta.
+function unirCarpeta(base, nombre){
+  if(nombre === '..'){ const partes = base.replace(/\/+$/, '').split('/'); partes.pop(); return partes.join('/') || '/'; }
+  return (base.replace(/\/+$/, '') + '/' + nombre).replace(/^\/\//, '/');
+}
+function renderCarpetasBo(c){
+  const opciones = [...(c.carpeta && c.carpeta !== '/' ? [['..', 'Carpeta superior']] : []), ...(c.carpetas || []).map(n => [n, n])];
+  return `<div class="cert-bo carpeta-bo">
+    <p>Seleccioná la carpeta donde se carga el reporte, la misma que usás en FileZilla. Carpeta actual: <b>${esc(c.carpeta || '/')}</b></p>
+    ${opciones.length ? `<div class="carpetas-bo">${opciones.map(([n, txt]) =>
+      `<button class="btn" data-carpeta-bo="${esc(unirCarpeta(c.carpeta || '/', n))}" ${state.envioBusy ? 'disabled' : ''}>${n === '..' ? '↑ ' : '📁 '}${esc(txt)}</button>`).join('')}</div>`
+      : `<p>No se encontraron subcarpetas.</p>`}
+    <label>O indicá la ruta que figura en FileZilla, en "Sitio remoto":
+      <input class="edit-field" id="boCarpeta" autocomplete="off" placeholder="/carpeta"></label>
+    <button class="btn" id="boCarpetaEnviar" ${state.envioBusy ? 'disabled' : ''}>Enviar a esa carpeta</button>
+  </div>`;
+}
+
+// Envío directo al servidor de BO: la API arma el reporte, lo sube con el usuario y la contraseña de BO y solo
+// entonces lo registra (si la subida falla, no queda registrado). La contraseña queda solo en memoria (d.pendiente)
+// mientras la ventana está abierta, para reintentar tras aceptar el certificado o elegir la carpeta; nunca se guarda.
+async function enviarReporteBo(modo, { certificado, carpeta } = {}){
+  const d = state.envioDialog;
+  let usuario = (document.getElementById('boUsuario')?.value || '').trim();
+  let clave = document.getElementById('boClave')?.value || '';
+  // Sin carpeta elegida, el servidor resuelve: la carpeta que se abre al conectarse o, si ahí no se puede escribir, la
+  // única carpeta que contiene (la de carga de cada usuario de BO). Solo se recuerda una carpeta elegida a mano.
+  const elegida = carpeta !== undefined;
+  if(!elegida) carpeta = carpetaBoRecordada();
+  if(d.pendiente && (certificado || !clave)){ ({ usuario, clave } = d.pendiente); modo = modo || d.pendiente.modo; }
+  if(!usuario || !clave){ d.error = 'Ingresá el usuario y la contraseña de BO.'; render(); return; }
+  try { localStorage.setItem('rk_bo_usuario', usuario); } catch(e){ /* sin almacenamiento */ }
+  d.error = ''; d.registro = null; d.certificado = null; d.carpetas = null; d.pendiente = null; state.envioBusy = true; render();
+  try {
+    const { data, error } = await sb.enviarReporteBo({ modo, usuario, clave, filtros: envioFiltros(), carpeta,
+                                                       ...(certificado ? { aceptar_certificado: certificado } : {}) });
+    if(error){
+      d.registro = error.detalle?.registro || null;
+      if(error.code === 'certificado_bo' && error.detalle){
+        d.certificado = error.detalle;
+        if(error.detalle.puede_aceptar) d.pendiente = { modo, usuario, clave };
+      } else if(error.code === 'carpeta_bo' && error.detalle){
+        d.error = error.message; d.carpetas = error.detalle; d.pendiente = { modo, usuario, clave };
+      } else d.error = error.message;
+      return;
+    }
+    if(elegida){ try { localStorage.setItem('rk_bo_carpeta', carpeta || ''); } catch(e){ /* sin almacenamiento */ } }
+    const blob = new Blob([data.contenido], { type: 'text/csv;charset=utf-8;' });
+    await archiveDownload(blob, data.archivo, 'bo_generado', 'bo_generado', data.obras);
+    state.envioDialog = null;
+    alert(`Reporte BO enviado: ${data.archivo} (${data.obras} obras) quedó en ${data.carpeta ? `la carpeta ${data.carpeta}` : 'tu carpeta'} de ${data.servidor}.`);
+  } finally {
+    state.envioBusy = false;
+    await loadMaster();
+    render();
+  }
+}
+
+async function startEnvio(modo){
+  if(state.envioDialog?.enviar) return enviarReporteBo(modo);
+  const tipo = state.envioDialog.tipo;
+  state.envioBusy = true; render();
+  try {
+    const { data, error } = await sb.rpc('fn_preparar_envio', { p_tipo: tipo, p_modo: modo, ...envioFiltros() });
+    if(error){ alert('No se pudo preparar la descarga: ' + error.message); return; }
+    const envio = data?.[0];
+    if(!envio || !envio.obras){ alert(modo === 'identificadas' ? 'No hay obras identificadas desde tu última descarga.' : 'No hay obras para descargar.'); return; }
+    if(tipo === 'reporte_bo') await downloadBoReport(envio, modo);
+    else await downloadMasterCsv(envio, modo);
+    state.envioDialog = null;
+  } finally {
+    state.envioBusy = false;
+    await loadMaster();
+    render();
+  }
+}
+
+// Guarda una copia de lo descargado (queda registrada; el Historial de cargas no la muestra porque no es una carga).
+async function archiveDownload(blob, filename, format, carpeta, total){
+  const hoy = new Date().toISOString().slice(0,10);
+  const path = `${carpeta}/${hoy}/${Date.now()}_${filename}`;
+  const { error: upErr } = await sb.storage.from('csv-uploads').upload(path, blob);
+  await sb.from('csv_uploads').insert({
+    filename, format,
+    total_rows: total, updated_rows: total, created_tracks: 0,
+    error_count: upErr ? 1 : 0,
+    errors: upErr ? [`No se pudo archivar en Storage: ${upErr.message}`] : null,
+    file_path: upErr ? null : path,
+  });
+  if(upErr) alert('El archivo se descargó, pero no se pudo guardar una copia en el sistema: ' + upErr.message);
+}
+
+async function downloadBoReport(envio, modo){
+  const carga = envio.carga;
+  const { data: rows, error } = await fetchAll('fn_envio_obras', { p_envio_id: envio.envio_id });
+  if(error){ alert('No se pudo generar el reporte: ' + error.message); return; }
+
+  const sinTitulo = rows.filter(r => !r.track_name_clean).length;
+  if(sinTitulo){
+    alert(`${sinTitulo} obra(s) no tienen título disponible y quedarían vacías en el reporte. Verificá que el sistema esté actualizado.`);
+  }
+
+  // Sin fila de encabezado: el archivo se sube directo.
+  // En los títulos se sacan "," y ";" porque Excel (y algunos sistemas)
+  // los toman como separador y parten el nombre en otra columna.
+  const lines = [];
+  rows.forEach(r => {
+    const track = (r.track_name_clean || '')
+      .replace(/[;,]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    // Obra con Tempo ID duplicado ("123-456"): una línea por cada Tempo ID.
+    String(r.tempo_id).split('-').map(s => s.trim()).filter(Boolean)
+      .forEach(tid => lines.push(`${tid};${track};BOcarga${carga}`));
+  });
+
+  const filename = `reporte_bo_carga${carga}${modo === 'identificadas' ? '_identificadas' : ''}.csv`;
+  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+
+  // Archivar una copia de lo que se mandó a BO, y dejarlo en el historial.
+  await archiveDownload(blob, filename, 'bo_generado', 'bo_generado', rows.length);
+}
+
+async function downloadMasterCsv(envio, modo){
+  const filename = `tabla_principal${modo === 'identificadas' ? '_identificadas' : ''}.csv`;
+  const blob = await downloadFilteredCsv('fn_envio_obras', { p_envio_id: envio.envio_id }, filename, 'track_artist_concat,tempo_id');
+  if(blob) await archiveDownload(blob, filename, 'csv_principal', 'csv_principal', envio.obras);
+}
+
+// El CSV completo en una sola consulta (la API no tiene el límite de 1.000 filas de Supabase y lo envía comprimido).
+async function downloadFilteredCsv(fn, params, filename, columns){
+  let q = sb.rpc(fn, params);
+  if(columns) q = q.select(columns);
+  const { data, error } = await q.csv();
+  if(error){ alert('No se pudo generar el CSV: ' + error.message); return; }
+  const blob = new Blob([(data || '').replace(/\n$/, '')], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  return blob;
+}
+
+
+async function downloadCsv(view, filters){
+  let q = sb.from(view).select('*');
+  if(filters?.pais_code) q = q.eq('pais_code', filters.pais_code);
+  const { data, error } = await q.csv();
+  if(error){ alert('No se pudo generar el CSV: ' + error.message); return; }
+  const blob = new Blob([data], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filters?.filename || 'export.csv';
+  a.click();
+}
+
+// Traduce cualquier variante de encabezado (con espacios, puntos, %, mayúsculas)
+// a una clave canónica común entre los tres formatos de CSV soportados.
+const HEADER_ALIASES = {
+  source_name:'source_name', rank:'rank', previous_rank:'previous_rank', peak_rank:'peak_rank',
+  track_name:'track_name', artist_names:'artist_names', artist_name:'artist_names',
+  weeks_on_chart:'weeks_on_chart', periods_on_chart:'weeks_on_chart',
+  streams:'streams', views:'streams',
+  weekly_growth:'weekly_growth', growth:'weekly_growth',
+  uri:'uri', youtube_url:'uri', source:'source',
+  // Formato viejo de Spotify Charts: Position, Track Name, Artist, Streams, URL.
+  position:'rank', artist:'artist_names', url:'uri',
+  tempo_id:'tempo_id', bo_id:'bo_id', ctrl:'percent_ctrl', percent_ctrl:'percent_ctrl',
+  collect_mec:'collect_mec', collect_ejec:'collect_ejec', control:'control', cwr:'cwr', nota:'nota',
+  submitters_song_code:'tempo_id', internal_song_code:'bo_id',
+  song_owners:'ca', song_owner:'ca', songowners:'ca', owners:'ca',
+  bointernal_status:'bo_status', internal_status:'bo_status', counterclaim_status:'reclamos',
+  song_id:'tempo_id', song_title_tx:'song_title', pais:'pais_nombre',
+  performance_pc_total:'perf_pc', mechanical_pc_total:'mech_pc', sync_pc_total:'sync_pc',
+  publishers:'publishers', contratos_del_pais:'contratos',
+  song_tempo_create_date:'created_date', estado_obra:'estado_obra',
+  track_artista:'track_artist_concat', track_artist:'track_artist_concat',
+  tipo_de_distribucion:'tipo_distribucion',
+  numero_de_distribucion:'numero_distribucion',
+  fase_distribucion:'fase_distribucion',
+  dsp:'dsp',
+  periodo:'periodo',
+  codigo_obra:'codigo_obra',
+  titulo_obra:'titulo_obra',
+  traduccion_subtitulo_interprete:'interprete',
+  numero_cae_derechohabiente:'cae_derechohabiente',
+  nombre_derechohabiente:'nombre_derechohabiente',
+  sociedad_derechohabiente:'sociedad_derechohabiente',
+  tipo_participacion_derechohabiente:'tipo_participacion',
+  porcentaje_derechohabiente:'porcentaje_derechohabiente',
+  monto_radio:'monto_radio',
+  monto_variedades_tv_abierta:'monto_tv_abierta',
+  monto_tv_cable:'monto_tv_cable',
+  monto_usos_ugp:'monto_ugp',
+  monto_online:'monto_online',
+  monto_total:'monto_total',
+};
+function canonicalHeader(h){
+  const key = stripAccents(h.replace(/^\uFEFF/, '')).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if(HEADER_ALIASES[key]) return HEADER_ALIASES[key];
+  if(key.startsWith('mechanicall_collect_share')) return 'mech_bo';
+  if(key.includes('owner')) return 'ca';
+  if(key.includes('status') && !key.includes('claim')) return 'bo_status';
+  return key;
+}
+
+const COUNTRY_NAME_ALIASES = { ARGENTINA:'AR', CHILE:'CL', PERU:'PE', URUGUAY:'UY', PARAGUAY:'PY', COLOMBIA:'CO', ECUADOR:'EC', MEXICO:'MX' };
+function stripAccents(s){ return s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function detectCountryFromFilename(filename){
+  if(!filename) return null;
+  const clean = stripAccents(filename).toUpperCase();
+  const afterPais = clean.match(/PAIS_([A-Z]+)/);
+  if(afterPais && COUNTRY_NAME_ALIASES[afterPais[1]]) return COUNTRY_NAME_ALIASES[afterPais[1]];
+  for(const [name, code] of Object.entries(COUNTRY_NAME_ALIASES)){
+    if(clean.includes(name)) return code;
+  }
+  return null;
+}
+
+// Fecha del chart, sacada del nombre del archivo.
+// Spotify: regional-uy-weekly-2024-01-04.csv
+// YouTube: youtube-charts-top-songs-uy-weekly-20240104.csv
+function detectDateFromFilename(filename){
+  if(!filename) return null;
+  let m = filename.match(/(20\d{2})-(\d{2})-(\d{2})/);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = filename.match(/(20\d{2})(\d{2})(\d{2})/);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return null;
+}
+
+function detectFormat(row, filename){
+  if('track_artist_concat' in row && 'tempo_id' in row) return 'master_tempo';
+  if('perf_pc' in row || 'mech_pc' in row || 'estado_obra' in row) return 'tempo_report';
+  if('mech_bo' in row || 'bo_status' in row || 'reclamos' in row || 'ca' in row) return 'bo_report';
+  if('track_name' in row && 'artist_names' in row){
+    // La plataforma se decide primero por el nombre del archivo y la URI,
+    // que son señales fiables; "weekly_growth" queda como último recurso
+    // porque no todos los export de YouTube traen esa columna.
+    const fname = (filename || '').toLowerCase();
+    const uri = String(row.uri || '').toLowerCase();
+    if(fname.includes('youtube') || uri.includes('youtube.com') || uri.includes('youtu.be')) return 'youtube';
+    if(fname.includes('spotify') || uri.startsWith('spotify:')) return 'spotify';
+    return 'weekly_growth' in row ? 'youtube' : 'spotify';
+  }
+  return null;
+}
+
+// Procesa varios CSV en secuencia (uno detrás de otro, no en paralelo,
+// para que no se pisen entre ellos al crear las mismas canciones).
+// Cada archivo queda en state.uploadQueue con su estado (pendiente, cargando, listo) y su resultado.
+async function handleFiles(fileList){
+  // Por semana del nombre, de la más vieja a la más nueva: no se puede saltear una semana, así que varias semanas
+  // de un mismo país se cargan en orden. Los archivos sin fecha van al final, en el orden elegido.
+  const files = Array.from(fileList || []).map((f, i) => ({ f, i, d: detectDateFromFilename(f.name) || '9999' }))
+    .sort((a, b) => a.d.localeCompare(b.d) || a.i - b.i).map(x => x.f);
+  if(!files.length) return;
+  state.uploadQueue = files.map(f => ({ filename: f.name, result: null }));
+  state.uploading = true;
+  render();
+
+  for(let i = 0; i < files.length; i++){
+    state.uploadIndex = i;
+    render();
+    await handleCsv(files[i]);
+  }
+
+  state.uploading = false;
+  state.uploadIndex = -1;
+  await loadLastChartLoad();
+  loadAll();
+}
+
+// Lee el CSV respetando el encoding real. Muchos export vienen en
+// Windows-1252 (Excel en español): si se leen como UTF-8, los caracteres
+// como "¿" o "ñ" se rompen. Si detectamos el carácter de reemplazo,
+// releemos el archivo con el otro encoding.
+async function readFileText(file){
+  const buf = await file.arrayBuffer();
+  let text = new TextDecoder('utf-8').decode(buf);
+  if(text.includes('\uFFFD')){
+    try { text = new TextDecoder('windows-1252').decode(buf); } catch(e){ /* se deja el UTF-8 */ }
+  }
+  return text;
+}
+
+// Los CSV viejos de Spotify Charts traen una primera línea de aviso ("Note that these figures are generated
+// using a formula...") antes de los encabezados: se saltea.
+function quitarNotaInicial(text){
+  return /^\uFEFF?\s*"?note that/i.test(text) ? text.slice(text.indexOf('\n') + 1) : text;
+}
+
+function handleCsv(file){
+  return new Promise(async (resolve) => {
+    let text;
+    try { text = quitarNotaInicial(await readFileText(file)); }
+    catch(err){ await cargarArchivo(file, 0, [], [`No se pudo leer el archivo: ${err}`], null, null); return resolve(); }
+
+    Papa.parse(text, {
+      header:true, skipEmptyLines:true,
+      transformHeader: canonicalHeader,
+      complete: async (res) => {
+        try {
+          if(!res.data.length){
+            await cargarArchivo(file, 0, [], ['CSV vacío'], null, null);
+            return resolve();
+          }
+          const format = detectFormat(res.data[0], file.name);
+
+          if(format === 'master_tempo'){
+            await processMasterTempoCsv(file, res.data);
+          } else if(format === 'tempo_report'){
+            await processTempoReportCsv(file, res.data);
+          } else if(format === 'bo_report'){
+            const pais = detectCountryFromFilename(file.name) || state.controlCountry;
+            if(!pais){
+              await cargarArchivo(file, res.data.length, [],
+                ['No se pudo determinar el país: el nombre del archivo no lo indica y no se seleccionó uno en la pantalla de carga.'],
+                format, null);
+            } else {
+              await processBoReportCsv(file, res.data, pais);
+            }
+          } else if(format === 'spotify' || format === 'youtube'){
+            await processRankingCsv(file, res.data, format);
+          } else {
+            await cargarArchivo(file, res.data.length, [],
+              ['No se reconoce el formato del CSV.'], null, null);
+          }
+        } catch (err) {
+          await cargarArchivo(file, 0, [], [String(err)], null, null);
+        }
+        resolve();
+      }
+    });
+  });
+}
+
+// Números enteros de los charts (posiciones, semanas, streams/vistas). Acepta separador de miles ("1,234,567" o
+// "1.234.567", por ejemplo si el archivo pasó por Excel) y decimales ("12.0"). "--", "NEW" o vacío: sin dato.
+function entero(v){
+  const t = String(v ?? '').trim().replace(/\s/g, '');
+  if(/^\d{1,3}([.,]\d{3})+$/.test(t)) return t.replace(/[.,]/g, '');
+  const m = t.match(/^(\d+)([.,]\d+)?$/);
+  return m ? m[1] : null;
+}
+
+async function processRankingCsv(file, rows, format){
+  const prepared = [];
+  let errors = [];
+
+  // El país sale del nombre del archivo (vale para Spotify y para
+  // YouTube). Si el archivo no lo trae en el nombre, se usa la columna
+  // Source.Name fila por fila, para los export viejos que sí la tenían.
+  const fileCountry = detectCountryFromFilename(file.name) || detectCountry(file.name);
+  if(!fileCountry && !('source_name' in rows[0])){
+    await cargarArchivo(file, rows.length, [],
+      [`No se pudo determinar el país: el nombre "${file.name}" no lo incluye y el archivo no trae columna Source.Name.`],
+      format, null);
+    return;
+  }
+
+  // Semana del chart: del nombre del archivo. Sin semana no se carga (la fecha del día daría una semana equivocada).
+  const fileDate = detectDateFromFilename(file.name);
+  if(!fileDate){
+    await cargarArchivo(file, rows.length, [],
+      [`El nombre "${file.name}" no indica la semana del chart (por ejemplo 2024-01-04): no se cargó.`], format, fileCountry);
+    return;
+  }
+
+  for(const row of rows){
+    // Solo el título es obligatorio. Si falta el artista (pasa en algunos
+    // videos de YouTube), la base lo guarda como "Sin artista".
+    const trackName = row.track_name?.trim();
+    const artistNames = row.artist_names?.trim() || '';
+    if(!trackName){ errors.push('Fila sin título'); continue; }
+
+    const pais = fileCountry || detectCountry(row.source_name);
+    if(!pais){ errors.push(`No se pudo determinar país en: ${row.source_name || '(sin Source.Name)'}`); continue; }
+
+    let weeklyGrowth = null;
+    if(row.weekly_growth){
+      const n = parseFloat(String(row.weekly_growth).replace('%','').replace(',','.'));
+      if(!isNaN(n)) weeklyGrowth = n;
+    }
+
+    prepared.push({
+      track_name: trackName, artist_names: artistNames, pais_code: pais,
+      rank: entero(row.rank), peak_rank: entero(row.peak_rank), previous_rank: entero(row.previous_rank),
+      weeks_on_chart: entero(row.weeks_on_chart), streams: entero(row.streams),
+      source: row.source || null, uri: row.uri || null, weekly_growth: weeklyGrowth,
+      snapshot_date: fileDate,
+    });
+  }
+
+  await cargarArchivo(file, rows.length, prepared, errors, format, fileCountry, fileDate);
+}
+
+async function processMasterTempoCsv(file, rows){
+  const prepared = [];
+  let errors = [];
+  for(const row of rows){
+    const track = (row.track_artist_concat || '').trim();
+    if(!track){ errors.push('Fila sin track_artist_concat'); continue; }
+    prepared.push({ track_artist: track, tempo_id: (row.tempo_id || '').trim() });
+  }
+
+  await cargarArchivo(file, rows.length, prepared, errors, 'master_tempo');
+}
+
+async function processTempoReportCsv(file, rows){
+  const prepared = [];
+  let errors = [];
+  for(const row of rows){
+    const tempoId = row.tempo_id?.trim();
+    if(!tempoId){ errors.push('Fila sin song_id (tempo_id)'); continue; }
+
+    // El país sale de la columna "pais" del propio archivo, fila por fila.
+    const pais = detectCountryFromFilename(row.pais_nombre || '');
+    if(!pais){ errors.push(`${tempoId}: país no reconocido "${row.pais_nombre || ''}"`); continue; }
+
+    prepared.push({
+      tempo_id: tempoId,
+      pais_code: pais,
+      created_date: row.created_date || null,
+      perf_pc: row.perf_pc ? String(row.perf_pc).replace('%','').replace(',','.') : null,
+      mech_pc: row.mech_pc ? String(row.mech_pc).replace('%','').replace(',','.') : null,
+      sync_pc: row.sync_pc ? String(row.sync_pc).replace('%','').replace(',','.') : null,
+      publishers: row.publishers || null,
+      contratos: row.contratos || null,
+      estado_obra: row.estado_obra || null,
+      song_title: row.song_title || null,
+    });
+  }
+
+  await cargarArchivo(file, rows.length, prepared, errors, 'tempo_report');
+}
+
+async function processBoReportCsv(file, rows, pais){
+  const prepared = [];
+  let errors = [];
+  for(const row of rows){
+    const tempoId = row.tempo_id?.trim();
+    if(!tempoId){ errors.push('Fila sin Submitters_Song_Code (tempo_id)'); continue; }
+    prepared.push({
+      tempo_id: tempoId,
+      bo_id: row.bo_id || null,
+      ca: row.ca ? row.ca.split('/')[0].trim() : null,
+      bo_status: row.bo_status || null,
+      reclamos: row.reclamos || null,
+      mech_bo: row.mech_bo ? String(row.mech_bo).replace('%','').replace(',','.') : null,
+    });
+  }
+
+  await cargarArchivo(file, rows.length, prepared, errors, 'bo_report', pais);
+}
+
+// Supabase Storage no admite acentos ni caracteres especiales en la
+// ruta. Se limpia solo para guardar; el nombre original se conserva en
+// csv_uploads.filename, que es lo que se muestra en el historial.
+function sanitizeStorageName(name){
+  return stripAccents(name)
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '') || 'archivo.csv';
+}
+
+// Carpeta donde se archiva cada tipo de CSV dentro del bucket.
+// Los que corresponden a un solo país se guardan por país; los que
+// mezclan países (Reporte Tempo) o no aplican, por fecha.
+function storageFolder(format, pais){
+  const hoy = new Date().toISOString().slice(0,10);
+  const p = pais || 'sin_pais';   // el historial de cargas lee el país de esta carpeta
+  switch(format){
+    case 'spotify':      return `spotify/${p}/${hoy}`;
+    case 'youtube':      return `youtube/${p}/${hoy}`;
+    case 'bo_report':    return `bo_report/${p}/${hoy}`;
+    case 'tempo_report': return `tempo_report/${hoy}`;
+    case 'master_tempo': return `tempo_ids/${hoy}`;
+    default:             return `otros/${hoy}`;
+  }
+}
+
+// Guarda el archivo original y después carga sus filas y lo registra en el historial en una sola operación de la base
+// (fn_cargar_archivo): queda todo o no queda nada. Sin el archivo original no se carga ningún dato.
+async function cargarArchivo(file, total, filas, errors, format, pais, semana){
+  const item = state.uploadQueue[state.uploadIndex];
+  const resultado = (updated, created_tracks, errs) => {
+    if(item) item.result = { format, pais, semana, total, updated, created_tracks, errors: errs };
+  };
+  const storagePath = `${storageFolder(format, pais)}/${Date.now()}_${sanitizeStorageName(file.name)}`;
+  const { error: upErr } = await sb.storage.from('csv-uploads').upload(storagePath, file);
+  if(upErr){ resultado(0, 0, [...errors, `No se cargó: no se pudo guardar el archivo original (${upErr.message}).`]); return; }
+  const { data, error } = await sb.rpc('fn_cargar_archivo', {
+    p_formato: format || null, p_filas: filas, p_archivo: file.name, p_ruta: storagePath, p_total: total,
+    p_pais: format === 'bo_report' ? pais : null, p_errores: errors,
+  });
+  if(error){ resultado(0, 0, [...errors, `No se cargó ninguna fila: ${error.message}`]); return; }
+  resultado(data.updated, data.created_tracks, data.errors);
+}
+
+async function loadLastChartLoad(){
+  // Semana del chart más reciente cargado por país y plataforma (no la fecha de subida): así un histórico de 2021
+  // subido hoy no la pisa. Cada país se carga por separado, así que cada uno tiene su fecha.
+  const { data } = await sb.rpc('fn_ultimas_cargas', {});
+  const fechas = Object.fromEntries(COUNTRIES.map(c => [c, { spotify: null, youtube: null }]));
+  (data || []).forEach(r => { if(fechas[r.pais_code]) fechas[r.pais_code][r.platform] = r.snapshot_date; });
+  state.lastLoads = fechas;
+}
+
+// País del que se muestran las fechas de última carga: el filtro de la
+// pestaña abierta; en Carga CSV e Historial, el último país elegido.
+function lastLoadCountry(){
+  if(state.activeTab==='master') return state.masterCountry;
+  if(state.activeTab==='territory') return state.territoryCountry;
+  return state.lastCountry;
+}
+
+// ---------- Login ----------
+// "Mantener la sesión iniciada en esta computadora": la elección se recuerda en este navegador (por defecto, marcada).
+function recordarPreferido(){ try { return localStorage.getItem('rk_recordar') !== '0'; } catch(e){ return true; } }
+async function doLogin(email, password, recordar = false){
+  Object.assign(state, { loginError: '', loginAviso: '', loginEmailValor: email });
+  try { localStorage.setItem('rk_recordar', recordar ? '1' : '0'); } catch(e){ /* sin storage */ }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password, recordar });
+  if(error){ state.loginError = error.message; render(); return; }
+  state.session = data.session;
+  await loadProfile();
+  await loadAll();
+}
+async function doLogout(){
+  await sb.auth.signOut();
+  state.session = null; state.profile = null; state.master=[]; state.territoryControl=[]; state.historial=null;
+  state.panel = { ...state.panel, acceso: false, datos: {}, codigo: null, mensaje: '' };
+  if(state.activeTab === 'panel') state.activeTab = 'master';
+  programarPanel();
+  render();
+}
+
+// ---------- Render ----------
+// Pantalla de ingreso: ingresar, cambiar la contraseña (con la actual) o restablecerla con un código si se olvidó.
+function renderLogin(){
+  const m = state.loginModo;
+  const email = `<label>Email</label>
+      <input type="email" id="loginEmail" name="email" autocomplete="username" placeholder="usuario@oficina.com" value="${(state.loginEmailValor || '').replace(/"/g, '&quot;')}">`;
+  const nuevas = `<label>Contraseña nueva (mínimo 10 caracteres)</label>
+      <input type="password" id="claveNueva" autocomplete="new-password">
+      <label>Repetir la contraseña nueva</label>
+      <input type="password" id="claveRepetir" autocomplete="new-password">`;
+  const boton = (id, texto) => `<div class="err" id="loginErr">${state.loginError}</div>
+      <button type="submit" class="btn primary" style="width:100%;justify-content:center" id="${id}">${texto}</button>`;
+  const volver = `<div class="login-links"><a class="login-volver" data-login-modo="ingresar">Volver al ingreso</a></div>`;
+  let cuerpo;
+  if(m === 'cambiar'){
+    cuerpo = `<p>Cambiar contraseña</p>${email}
+      <label>Contraseña actual</label>
+      <input type="password" id="claveActual" autocomplete="current-password">
+      ${nuevas}${boton('claveGuardar', 'Cambiar contraseña')}${volver}`;
+  } else if(m === 'olvide'){
+    cuerpo = `<p>Restablecer contraseña</p>
+      <p class="nota">Solicitá un código de restablecimiento a la persona que administra el sistema. El código sirve una
+      sola vez durante 30 minutos.</p>${email}
+      <label>Código de restablecimiento</label>
+      <input type="text" id="claveCodigo" autocomplete="one-time-code" placeholder="XXXX-XXXX">
+      ${nuevas}${boton('claveGuardar', 'Restablecer contraseña')}${volver}`;
+  } else {
+    cuerpo = `<p>Acceso sólo para usuarios verificados</p>${email}
+      <label>Contraseña</label>
+      <input type="password" id="loginPass" name="password" autocomplete="current-password">
+      <label class="check recordar"><input type="checkbox" id="loginRecordar" ${recordarPreferido() ? 'checked' : ''}>
+        Mantener la sesión iniciada en esta computadora</label>
+      ${state.loginAviso ? `<div class="ok" id="loginOk">${state.loginAviso}</div>` : ''}
+      ${boton('loginBtn', 'Ingresar')}
+      <div class="login-links"><a data-login-modo="cambiar" id="linkCambiar">Cambiar contraseña</a>
+        <a data-login-modo="olvide" id="linkOlvide">¿Olvidaste la contraseña?</a></div>`;
+  }
+  return `
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1 class="display">Auditor de Rankings Digitales</h1>
+      <form id="loginForm" autocomplete="on" novalidate>${cuerpo}</form>
+      <div class="login-conexion"><a href="conexion.html" target="_blank" rel="noopener" id="linkConexion">Probar la conexión con el servidor</a></div>
+    </div>
+  </div>`;
+}
+
+async function guardarClaveIngreso(){
+  const v = (id) => (document.getElementById(id) || {}).value || '';
+  const email = v('loginEmail').trim(), nueva = v('claveNueva');
+  const error = (msg) => { document.getElementById('loginErr').textContent = msg; };
+  if(!email) return error('Ingresá el email.');
+  if(nueva.length < 10) return error('La contraseña nueva debe tener al menos 10 caracteres.');
+  if(nueva !== v('claveRepetir')) return error('Las contraseñas nuevas no coinciden.');
+  const boton = document.getElementById('claveGuardar'); boton.disabled = true;
+  const r = state.loginModo === 'cambiar'
+    ? await sb.auth.cambiarClave(email, v('claveActual'), nueva)
+    : await sb.auth.restablecerClave(email, v('claveCodigo'), nueva);
+  boton.disabled = false;
+  if(r.error) return error(r.error.message);
+  Object.assign(state, { loginModo: 'ingresar', loginError: '', loginEmailValor: email,
+                         loginAviso: 'La contraseña quedó guardada. Ingresá con la contraseña nueva.' });
+  render();
+}
+
+function renderLastLoads(){
+  const pais = lastLoadCountry();
+  if(!pais) return `<div id="lastLoads"><p>Seleccionar país para ver fecha de última carga</p></div>`;
+  const f = state.lastLoads[pais] || {};
+  return `<div id="lastLoads"><p>Último Spotify cargado (${pais}): <span class="mono">${f.spotify || '—'}</span></p>
+      <p class="last-chart">Último YouTube cargado (${pais}): <span class="mono">${f.youtube || '—'}</span></p></div>`;
+}
+
+function renderTopbar(){
+  return `
+  <div class="topbar">
+    <div class="wordmark">
+      <div class="mark">RD</div>
+      <div><h1 class="display">Auditor de Rankings Digitales</h1>
+      ${renderLastLoads()}
+      </div>
+    </div>
+    <div class="session">
+      <div class="who">${state.session.user.email} · <span class="mono">${state.panel.acceso ? 'Administrador' : 'Usuario estándar'}</span></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <a class="manual-link" id="manualLink" href="manual.html" target="_blank" rel="noopener">Manual de uso</a>
+        <button id="logoutBtn">Cerrar sesión</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderTabs(){
+  const tabs = [['master','Tabla principal', true],['territory','Tabla por territorio', true],
+    ['tickets','Tickets enviados', true], ['upload','Carga CSV', canUpload()],['history','Historial de cargas', true],
+    ...(state.panel.acceso ? [['panel','Panel de control', true]] : [])];
+  return `<div class="tabs">${tabs.map(([k,l,en]) =>
+    `<div class="tab ${state.activeTab===k?'active':''}" data-tab="${k}">${l}${!en?'<span class="lock">solo lectura</span>':''}</div>`).join('')}</div>`;
+}
+
+// "1–100 de 25.000" y los botones para moverse entre páginas.
+function renderPager(tabla, total, pagina, extra = ''){
+  if(!total) return '';
+  const desde = pagina * PAGE_SIZE + 1, hasta = Math.min(total, (pagina + 1) * PAGE_SIZE);
+  return `<div class="pager">
+    ${extra}<span class="rango">${fmtNum(desde)}–${fmtNum(hasta)} de ${fmtNum(total)}</span>
+    <button class="btn" data-pager="${tabla}" data-dir="-1" ${pagina === 0 ? 'disabled' : ''}>‹ Anterior</button>
+    <button class="btn" data-pager="${tabla}" data-dir="1" ${hasta >= total ? 'disabled' : ''}>Siguiente ›</button>
+  </div>`;
+}
+
+function renderMaster(){
+  const rows = state.master;
+  return `
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <input class="search ${state.searchMaster.trim() ? 'filtro-on' : ''}" placeholder="Buscar track, artista o Tempo ID" value="${esc(state.searchMaster)}" id="searchMaster">
+      <select id="masterCountry" class="${state.masterCountry ? 'filtro-on' : ''}">
+        <option value="">Todos los países</option>
+        ${COUNTRIES.map(c=>`<option value="${c}" ${state.masterCountry===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <label class="check">Desde <input type="date" class="edit-field ${state.dateFrom ? 'filtro-on' : ''}" style="width:auto" id="dateFrom" value="${state.dateFrom}"></label>
+      <label class="check">Hasta <input type="date" class="edit-field ${state.dateTo ? 'filtro-on' : ''}" style="width:auto" id="dateTo" value="${state.dateTo}"></label>
+      ${(state.dateFrom||state.dateTo||state.masterCountry||state.tempoFilter||state.searchMaster.trim())?`<button class="btn" id="clearFilters">Limpiar</button>`:''}
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="btn" id="exportBo">${state.envioBo ? 'Enviar reporte BO' : 'Descargar reporte BO'}</button>
+      <button class="btn primary" id="exportMaster"><i>&#8595;</i> Descargar CSV</button>
+    </div>
+  </div>
+  ${filtrosActivos().length ? `<div class="filtro-activo" id="filtroActivo">Filtros aplicados: ${filtrosActivos().join(' · ')} · <b>${fmtNum(state.masterTotal)} ${state.masterTotal === 1 ? 'obra' : 'obras'}</b></div>` : ''}
+  ${state.masterConteo ? `<div class="conteo-id">Identificadas: ${fmtNum(state.masterConteo.identificadas)} · Sin identificar: ${fmtNum(state.masterConteo.sin)}</div>` : ''}
+  <datalist id="marcadoresTempo">${OPCIONES_TEMPO.map(m => `<option value="${m}">`).join('')}</datalist>
+  <table><thead><tr><th style="width:70%">Track - Artista</th><th>Tempo ID
+    <select id="tempoFilter" class="filtro-th ${state.tempoFilter ? 'filtro-on' : ''}" title="Filtrar por Tempo ID">
+      <option value="">Todos</option>
+      ${Object.entries(TEMPO_FILTRO).map(([v, l]) => `<option value="${v}" ${state.tempoFilter===v?'selected':''}>${l}</option>`).join('')}
+    </select></th></tr></thead>
+  <tbody>${rows.length ? rows.map(r=>`
+    <tr class="${r.deleted_at?'is-deleted':''}">
+      <td>${r.track_artist_concat}${nombresUnificados(r.id)}</td>
+      <td>${canWrite() ? `<input class="edit-field ${!r.tempo_id?'empty-flag':''}" data-field-master="tempo_id" data-id="${r.id}" value="${r.tempo_id||''}" placeholder="—" list="marcadoresTempo" inputmode="numeric" title="Número de Tempo ID, o elegí de la lista UNCONTROLLED / UNCONTROLLED DUP / PENDING (también escribiendo parte del nombre, por ejemplo miam). Compilado: un Tempo ID por canción separados por / (por ejemplo 123/UNCONTROLLED). Tempo ID duplicado en Tempo: los dos con guion (123-456)">` : (r.tempo_id||'—')}</td>
+    </tr>`).join('') : `<tr><td colspan="2"><div class="empty">${state.loading?'Cargando...':'Sin resultados'}</div></td></tr>`}
+  </tbody></table>
+  ${renderPager('master', state.masterTotal, state.masterPage)}`;
+}
+
+// Fecha del ticket como DD/MM/AAAA (la base la guarda como fecha).
+function fechaTicket(r){
+  if(r.ticket_fecha_txt !== undefined) return r.ticket_fecha_txt;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(r.ticket_fecha || '');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+}
+
+function filtrosTerritorio(){
+  return !!(state.territoryCountry || state.dateFromT || state.dateToT || state.estadoFilter || state.reclamosFilter || state.estadoTrabajoFilter || state.origenFilter
+            || state.searchTerritory.trim());
+}
+
+// Todas las obras figuran en todos los países (para controlar Tempo y BackOffice en cada uno). En los países donde la
+// obra no figuró en el chart, debajo del país dice "No en chart", en letra chica.
+function celdaPais(r){
+  return r.chart === 'No en chart' ? `${r.pais_code}<span class="no-chart">No en chart</span>` : r.pais_code;
+}
+
+function renderTerritory(){
+  const rows = state.territoryControl;
+
+  // Opciones "como en Excel": los valores distintos que existen hoy en la columna (los calcula la base).
+  const estadoOptions = state.territoryOpciones.estado;
+  const reclamosOptions = state.territoryOpciones.reclamos;
+  const estadoTrabajoOptions = state.territoryOpciones.estado_trabajo;
+
+  // % del Reporte Tempo: se muestra exactamente lo que dice el reporte.
+  // Si es un número se le agrega "%"; si es texto (NVFT, NOP) va tal cual.
+  const pctTempo = (valor) =>
+      valor == null || valor === ''   ? '—'
+    : /^[0-9.]+$/.test(valor)         ? valor + '%'
+    : valor;
+
+  return `
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <select id="countryFilter" class="${state.territoryCountry ? 'filtro-on' : ''}">
+        <option value="">Todos los países</option>
+        ${COUNTRIES.map(c=>`<option value="${c}" ${state.territoryCountry===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <label class="check">Desde <input type="date" class="edit-field ${state.dateFromT ? 'filtro-on' : ''}" style="width:auto" id="dateFromT" value="${state.dateFromT}"></label>
+      <label class="check">Hasta <input type="date" class="edit-field ${state.dateToT ? 'filtro-on' : ''}" style="width:auto" id="dateToT" value="${state.dateToT}"></label>
+      <select id="estadoFilter" class="${state.estadoFilter ? 'filtro-on' : ''}">
+        <option value="">Estado: todos</option>
+        ${estadoOptions.map(v=>`<option value="${esc(v)}" ${state.estadoFilter===v?'selected':''}>${esc(v)}</option>`).join('')}
+      </select>
+      <select id="reclamosFilter" class="${state.reclamosFilter ? 'filtro-on' : ''}">
+        <option value="">Reclamos: todos</option>
+        ${reclamosOptions.map(v=>`<option value="${v}" ${state.reclamosFilter===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+      <select id="estadoTrabajoFilter" class="${state.estadoTrabajoFilter ? 'filtro-on' : ''}">
+        <option value="">Estado de trabajo: todos</option>
+        ${estadoTrabajoOptions.map(v=>`<option value="${v}" ${state.estadoTrabajoFilter===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+      <select id="origenFilter" class="${state.origenFilter ? 'filtro-on' : ''}">
+        <option value="">Todo</option>
+        <option value="En chart" ${state.origenFilter ? 'selected' : ''}>Ranking de origen</option>
+      </select>
+      <input class="search ${state.searchTerritory.trim() ? 'filtro-on' : ''}" placeholder="Buscar track, artista o Tempo ID (- = sin Tempo ID)" value="${esc(state.searchTerritory)}" id="searchTerritory">
+      ${filtrosTerritorio() ? `<button class="btn" id="clearFiltersT">Limpiar</button>` : ''}
+      ${filtrosTerritorio() && canWrite() ? `<button class="btn" id="ticketFiltrado">Cargar ticket</button>` : ''}
+    </div>
+    <button class="btn primary" id="exportTerritory"><i>&#8595;</i> Descargar CSV${state.territoryCountry?` (${state.territoryCountry})`:''}</button>
+  </div>
+  ${filtrosActivos().length ? `<div class="filtro-activo" id="filtroActivo">Filtros aplicados: ${filtrosActivos().join(' · ')} · <b>${fmtNum(state.territoryTotal)} ${state.territoryTotal === 1 ? 'registro' : 'registros'}</b></div>` : ''}
+  <table><thead><tr>
+    <th>País</th><th>Track - Artista</th><th>Created date</th><th>Tempo ID</th>
+    <th class="num">% Perf Tempo</th><th class="num">% Mech Tempo</th><th>BO ID</th><th>C/A</th><th class="num">% Mech BO</th>
+    <th>Estado</th><th>Reclamos</th><th>Estado de trabajo</th><th>Ticket</th><th>Fecha</th><th></th>
+  </tr></thead>
+  <tbody>${rows.length ? rows.map(r=>`
+    <tr class="${r.deleted_at?'is-deleted':''}">
+      <td class="mono">${celdaPais(r)}</td>
+      <td>${r.track_artist_concat}</td>
+      <td class="mono">${r.created_date || '—'}</td>
+      <td class="tempo">${r.tempo_id || '—'}${r.duplicada ? ' <span class="dup-marca" title="Tempo ID duplicado en Tempo">*dup*</span>' : ''}</td>
+      <td class="num">${pctTempo(r.perf_raw)}</td>
+      <td class="num">${pctTempo(r.mech_raw)}</td>
+      <td class="tempo">${r.bo || '—'}</td>
+      <td>${r.ca || '—'}</td>
+      <td class="num">${r.mech_bo!==null && r.mech_bo!==undefined?r.mech_bo+'%':'—'}</td>
+      <td>${r.estado || '—'}</td>
+      <td>${r.reclamos || '—'}</td>
+      <td>${celdaEstadoTrabajo(r)}</td>
+      <td>${canWrite() ? `<input class="edit-field corto" data-field-seg="ticket" data-track="${r.track_master_id}" data-pais="${r.pais_code}" data-tempo="${esc(r.tempo_id || '')}" value="${esc(r.ticket || '')}" placeholder="—">` : esc(r.ticket || '—')}</td>
+      <td>${canWrite() ? `<input class="edit-field corto" data-field-seg="fecha" data-track="${r.track_master_id}" data-pais="${r.pais_code}" data-tempo="${esc(r.tempo_id || '')}" value="${fechaTicket(r)}" placeholder="DDMMAAAA">` : (fechaTicket(r) || '—')}</td>
+      <td><button class="rowbtn" data-history-track="${r.track_master_id}" data-history-pais="${r.pais_code}">Show prior</button></td>
+    </tr>`).join('') : `<tr><td colspan="15"><div class="empty">${state.loading || state.territoryStale?'Cargando...':'Sin registros para este filtro'}</div></td></tr>`}
+  </tbody></table>
+  ${renderPager('territory', state.territoryTotal, state.territoryPage)}`;
+}
+
+// Nombres de los tipos de archivo, como los ve el usuario.
+const TIPOS_CARGA = {
+  spotify: 'Spotify', youtube: 'YouTube', bo_report: 'Reporte BackOffice',
+  tempo_report: 'Reporte Tempo Control', master_tempo: 'Tempo IDs',
+};
+
+function estadoCarga(item, i){
+  const r = item.result;
+  if(r) return r.errors.length && !r.updated ? `<span class="estado err">✕ Sin cargar</span>`
+             : r.errors.length ? `<span class="estado err">✓ Con ${r.errors.length} error${r.errors.length===1?'':'es'}</span>`
+             : `<span class="estado ok">✓ Cargado</span>`;
+  return i === state.uploadIndex ? `<span class="estado run">● Procesando</span>` : `<span class="estado wait">En espera</span>`;
+}
+
+function renderUpload(){
+  if(!canUpload()) return `<div class="locked"><div class="lk">Acceso restringido</div>Tu usuario no tiene permiso de escritura.</div>`;
+  const q = state.uploadQueue;
+  const hechos = q.filter(x => x.result).length;
+  const rs = q.filter(x => x.result).map(x => ({ filename: x.filename, ...x.result }));
+  const sum = (k) => rs.reduce((a,x) => a + (k==='errors' ? x.errors.length : x[k]), 0);
+  return `
+  <div class="upload-guide">
+    <h3>Carga de archivos</h3>
+    <p>Arrastrá uno o varios archivos .csv al recuadro, o hacé clic para seleccionarlos. El sistema identifica el tipo
+    de cada archivo.</p>
+    <div class="tipos">
+      <span class="tipo-chip">Spotify <small>chart semanal</small></span>
+      <span class="tipo-chip">YouTube <small>chart semanal</small></span>
+      <span class="tipo-chip">Reporte BackOffice</span>
+      <span class="tipo-chip">Reporte Tempo Control</span>
+      <span class="tipo-chip">Tempo IDs</span>
+    </div>
+    <ul>
+      <li><b>Charts:</b> subí los archivos .csv con el nombre de descarga; el territorio y la semana del título se
+        utilizan para interpretar el archivo.</li>
+      <li><b>Reportes:</b> solo se cargan las obras con Tempo ID registrado en la tabla principal.</li>
+      <li><b>Reporte BackOffice:</b> el territorio se toma del nombre del archivo. Si no figura, seleccionalo antes de la
+        carga:
+        <select id="controlCountry">
+          <option value="">Seleccionar país</option>
+          ${COUNTRIES.map(c=>`<option value="${c}" ${state.controlCountry===c?'selected':''}>${c}</option>`).join('')}
+        </select></li>
+    </ul>
+  </div>
+  <div class="drop" id="dropzone">
+    <p>${state.uploading ? 'Carga en curso' : 'Arrastrá los archivos aquí o hacé clic para seleccionarlos'}</p>
+    <input type="file" id="fileInput" accept=".csv" multiple>
+  </div>
+  ${q.length ? `
+    <div class="progreso"><div style="width:${Math.round(100 * hechos / q.length)}%"></div></div>
+    <div class="progreso-txt">${state.uploading ? `Procesando archivo ${Math.min(hechos + 1, q.length)} de ${q.length}: <b>${q[state.uploadIndex]?.filename || ''}</b>`
+                                                : `Carga finalizada: ${q.length} archivo${q.length===1?'':'s'}`}</div>
+    ${!state.uploading ? `<div class="summary-row">
+      <div class="metric"><div class="n mono">${rs.length}</div><div class="l">Archivos</div></div>
+      <div class="metric"><div class="n mono">${sum('total')}</div><div class="l">Filas leídas</div></div>
+      <div class="metric ok"><div class="n mono">${sum('updated')}</div><div class="l">Cargadas</div></div>
+      <div class="metric new"><div class="n mono">${sum('created_tracks')}</div><div class="l">Canciones nuevas</div></div>
+      <div class="metric err"><div class="n mono">${sum('errors')}</div><div class="l">Errores</div></div>
+    </div>
+    ${sum('created_tracks') ? `<p style="font-size:12.5px;color:var(--text-muted);margin:-4px 0 14px;">Las canciones nuevas se agregaron a la <b>Tabla principal</b> sin Tempo ID. Completá ese dato en la tabla.</p>` : ''}` : ''}
+    <table id="uploadQueue"><thead><tr><th>Archivo</th><th>Estado</th><th>Tipo</th><th>País</th><th>Semana</th>
+      <th class="num">Filas</th><th class="num">Cargadas</th><th class="num">Nuevas</th><th class="num">Errores</th></tr></thead>
+    <tbody>${q.map((x, i) => { const r = x.result; return `
+      <tr>
+        <td>${x.filename}</td>
+        <td>${estadoCarga(x, i)}</td>
+        <td>${r ? (TIPOS_CARGA[r.format] || '—') : ''}</td>
+        <td class="mono">${r?.pais || (r ? '—' : '')}</td>
+        <td class="mono">${r?.semana || (r ? '—' : '')}</td>
+        <td class="num">${r ? r.total : ''}</td>
+        <td class="num">${r ? r.updated : ''}</td>
+        <td class="num">${r ? r.created_tracks : ''}</td>
+        <td class="num">${r ? (r.errors.length ? `<span class="badge dup">${r.errors.length}</span>` : '0') : ''}</td>
+      </tr>`; }).join('')}
+    </tbody></table>
+    ${rs.some(x=>x.errors.length) ? `<table style="margin-top:14px"><thead><tr><th>Detalle de errores</th></tr></thead><tbody>${
+      rs.flatMap(x => x.errors.map(e => `<tr><td><b>${x.filename}:</b> ${e}</td></tr>`)).join('')
+    }</tbody></table>` : ''}` : ''}`;
+}
+
+// ---------- Historial de cargas (solo lectura) ----------
+// Muestra lo que hay cargado en el sistema y de qué archivo salió. No descarga ni borra nada.
+const HIST_TABS = [['youtube','YouTube'], ['spotify','Spotify'], ['bo','Reportes BackOffice'], ['tempo','Reportes Tempo Control']];
+
+async function loadHistorial(){
+  const PAGE = 50000;   // la API propia no tiene el límite de 1.000 filas de Supabase: menos vueltas, sin recalcular
+  const uploads = [];
+  for(let from = 0; ; from += PAGE){
+    const { data, error } = await sb.from('csv_uploads')
+      .select('id,filename,uploaded_by,uploaded_at,total_rows,updated_rows,created_tracks,error_count,file_path,format')
+      .order('uploaded_at', { ascending: false }).range(from, from + PAGE - 1);
+    if(error){ console.error('csv_uploads:', error.message); break; }
+    uploads.push(...(data || []));
+    if(!data || data.length < PAGE) break;
+  }
+  const [charts, reportes, usuarios] = await Promise.all([
+    fetchAll('fn_historial_charts', {}), fetchAll('fn_historial_reportes', {}), fetchAll('fn_nombres_usuarios', {}),
+  ]);
+  state.historial = {
+    uploads: uploads.map(u => ({ ...u, tipo: tipoCarga(u), pais: paisCarga(u), semana: semanaCarga(u) })).filter(u => u.tipo),
+    charts: charts.data || [], reportes: reportes.data || [],
+    usuarios: Object.fromEntries((usuarios.data || []).map(x => [x.id, x.email])),
+  };
+  if(state.activeTab === 'history') render();
+}
+
+// En qué pestaña del historial va cada archivo. Las descargas (reporte BO y CSV generados) no son cargas.
+function tipoCarga(u){
+  const n = (u.filename || '').toLowerCase();
+  switch(u.format){
+    case 'youtube': case 'spotify': return u.format;
+    case 'bo_report': return 'bo';
+    case 'tempo_report': case 'master_tempo': return 'tempo';
+    case 'bo_generado': case 'csv_principal': return null;
+  }
+  // Cargas viejas sin tipo registrado: se reconocen por el nombre.
+  if(n.includes('youtube')) return 'youtube';
+  if(n.startsWith('regional') || n.includes('spotify')) return 'spotify';
+  if(n.includes('pais_') || /(^|[^a-z])bo([^a-z]|$)/.test(n) || n.includes('backoffice')) return 'bo';
+  if(n.includes('tempo')) return 'tempo';
+  // Un archivo que no se reconoció no cargó nada: no es parte de lo que hay en el sistema.
+  return u.updated_rows ? 'otros' : null;
+}
+function paisCarga(u){
+  const carpeta = (u.file_path || '').split('/')[1];
+  if(COUNTRIES.includes(carpeta)) return carpeta;
+  return detectCountryFromFilename(u.filename) || detectCountry(u.filename) || null;
+}
+function semanaCarga(u){
+  return detectDateFromFilename(u.filename) || (u.uploaded_at || '').slice(0, 10);
+}
+function quien(id){
+  const email = state.historial?.usuarios?.[id];
+  if(email) return email.split('@')[0];
+  // Cargas hechas fuera de la aplicación (por ejemplo "importación histórica") guardan un nombre en lugar del usuario.
+  return id && !/^[0-9a-f-]{36}$/.test(id) ? id : '—';
+}
+function fechaCarga(u){ return fmtFecha(u.uploaded_at); }
+
+function renderHistory(){
+  const h = state.historial;
+  if(!h) return `<div class="empty">Cargando…</div>`;
+  const cuenta = (t) => h.uploads.filter(u => u.tipo === t).length;
+  const tabs = [...HIST_TABS, ...(cuenta('otros') ? [['otros', 'Otras cargas']] : [])];
+  if(!tabs.some(([k]) => k === state.histTab)) state.histTab = 'youtube';
+  const t = state.histTab;
+  return `
+  <p class="hist-nota">Archivos cargados en el sistema.</p>
+  <div class="subtabs">${tabs.map(([k, l]) =>
+    `<button class="subtab ${t===k?'active':''}" data-hist-tab="${k}">${l}<span class="cnt">${cuenta(k)}</span></button>`).join('')}</div>
+  ${t === 'youtube' || t === 'spotify' ? renderHistCharts(t)
+    : t === 'bo' ? renderHistReportes('bo')
+    : t === 'tempo' ? renderHistReportes('tempo')
+    : renderArchivos(h.uploads.filter(u => u.tipo === 'otros'), false)}`;
+}
+
+function filaArchivo(u, conTipo, conPais){
+  return `<tr>
+    ${conTipo ? `<td>${TIPOS_CARGA[u.format] || '—'}</td>` : ''}
+    <td>${u.filename}</td>
+    ${conPais ? `<td class="mono">${u.pais || (u.format === 'tempo_report' ? 'varios' : '—')}</td>` : ''}
+    <td class="mono">${fechaCarga(u)}</td><td>${quien(u.uploaded_by)}</td>
+    <td class="num">${fmtNum(u.total_rows)}</td><td class="num">${fmtNum(u.updated_rows)}</td>
+    <td class="num">${u.error_count ? `<span class="badge dup">${u.error_count}</span>` : '0'}</td>
+  </tr>`;
+}
+function renderArchivos(lista, conTipo, conPais = true){
+  if(!lista.length) return `<div class="empty">No hay archivos cargados.</div>`;
+  return `<table><thead><tr>${conTipo ? '<th>Tipo</th>' : ''}<th>Archivo</th>${conPais ? '<th>País</th>' : ''}
+    <th>Cargado el</th><th>Por</th><th class="num">Filas</th><th class="num">Cargadas</th><th class="num">Errores</th></tr></thead>
+    <tbody>${lista.map(u => filaArchivo(u, conTipo, conPais)).join('')}</tbody></table>`;
+}
+
+function renderHistCharts(plataforma){
+  const h = state.historial;
+  const semanas = h.charts.filter(c => c.platform === plataforma);
+  const archivos = h.uploads.filter(u => u.tipo === plataforma);
+  const pais = state.histPais;
+  const chips = `<div class="chips">
+    <button class="chip ${!pais?'active':''}" data-hist-pais="">Todos</button>
+    ${COUNTRIES.map(c => { const n = semanas.filter(x => x.pais_code === c).length;
+      return `<button class="chip ${pais===c?'active':''}" data-hist-pais="${c}" ${n ? '' : 'disabled'}>${c}</button>`; }).join('')}
+  </div>`;
+  if(!pais){
+    const filas = COUNTRIES.map(c => {
+      const s = semanas.filter(x => x.pais_code === c);
+      if(!s.length) return '';
+      const fechas = s.map(x => x.snapshot_date).sort();
+      return `<tr class="clic" data-hist-pais="${c}">
+        <td class="mono">${c}</td><td class="num">${s.length}</td>
+        <td class="mono">${fechas[0]}</td><td class="mono">${fechas[fechas.length-1]}</td>
+        <td class="num">${archivos.filter(u => u.pais === c).length}</td></tr>`;
+    }).join('');
+    const sinPais = archivos.filter(u => !u.pais);
+    return chips + (filas ? `<table><thead><tr><th>País</th><th class="num">Semanas cargadas</th><th>Primera semana</th>
+        <th>Última semana</th><th class="num">Archivos</th></tr></thead><tbody>${filas}</tbody></table>
+        <p class="hist-nota" style="margin-top:8px">Seleccioná un país para ver el detalle por semana y su archivo de origen.</p>`
+      : `<div class="empty">No hay charts de ${plataforma === 'youtube' ? 'YouTube' : 'Spotify'} cargados.</div>`)
+      + (sinPais.length ? `<div class="hist-sec">Archivos sin territorio en el nombre</div>${renderArchivos(sinPais, false, false)}` : '');
+  }
+  const deEse = archivos.filter(u => u.pais === pais);
+  const usados = new Set();
+  const filas = semanas.filter(x => x.pais_code === pais).map(x => {
+    const fs = deEse.filter(u => u.semana === x.snapshot_date);
+    fs.forEach(u => usados.add(u.id));
+    const u = fs[0];
+    return `<tr><td class="mono">${x.snapshot_date}</td><td class="num">${fmtNum(x.canciones)}</td>
+      <td>${fs.length ? fs.map(f => f.filename).join('<br>') : '<span class="tempo">Archivo no registrado</span>'}</td>
+      <td class="mono">${u ? fechaCarga(u) : '—'}</td><td>${u ? quien(u.uploaded_by) : '—'}</td>
+      <td class="num">${u ? (u.error_count ? `<span class="badge dup">${u.error_count}</span>` : '0') : '—'}</td></tr>`;
+  }).join('');
+  const otros = deEse.filter(u => !usados.has(u.id));
+  return chips + `<table><thead><tr><th>Semana</th><th class="num">Canciones</th><th>Archivo</th><th>Cargado el</th>
+      <th>Por</th><th class="num">Errores</th></tr></thead><tbody>${filas}</tbody></table>`
+    + (otros.length ? `<div class="hist-sec">Otros archivos de ${pais} sin semana cargada</div>${renderArchivos(otros, false, false)}` : '');
+}
+
+function renderHistReportes(tipo){
+  const h = state.historial;
+  const res = h.reportes.filter(r => r.tipo === tipo);
+  const archivos = h.uploads.filter(u => u.tipo === tipo);
+  const nombre = tipo === 'bo' ? 'datos del Reporte BackOffice' : 'datos del Reporte Tempo Control';
+  const tids = h.reportes.find(r => r.tipo === 'tempo_ids');
+  return `
+    ${tipo === 'tempo' && tids ? `<p class="hist-nota">Obras de la tabla principal con Tempo ID: <b>${fmtNum(tids.obras)}</b>.</p>` : ''}
+    ${res.length ? `<table><thead><tr><th>País</th><th class="num">Obras con ${nombre}</th><th>Última actualización</th></tr></thead>
+      <tbody>${res.map(r => `<tr><td class="mono">${r.pais_code}</td><td class="num">${fmtNum(r.obras)}</td>
+        <td class="mono">${fmtFecha(r.actualizado)}</td></tr>`).join('')}</tbody></table>`
+      : `<div class="empty">No hay ${nombre} cargados.</div>`}
+    <div class="hist-sec">Archivos cargados</div>
+    ${renderArchivos(archivos, tipo === 'tempo', tipo === 'bo')}`;
+}
+
+// ---------- Panel de control ----------
+// Solo para las personas con acceso (lo decide la base; la API lo verifica en cada pedido). Se abre en una pestaña
+// propia y no cambia nada de las demás.
+const PANEL_SUBS = [['estado', 'Estado del sistema'], ['respaldos', 'Respaldos y OneDrive'], ['usuarios', 'Usuarios'],
+  ['actividad', 'Actividad'], ['integridad', 'Integridad de datos'], ['registro', 'Registro del servidor']];
+const SERVICIOS = {
+  espejo: 'Espejo de OneDrive', respaldo: 'Respaldos', instalador: 'Actualización de la base',
+  tunel: 'Acceso desde otras computadoras',
+};
+
+// Acceso desde otras computadoras (bash ranking.sh compartir, Tailscale): el enlace para compartir y su estado.
+function servicioTunel(t){
+  // Sin Tailscale, pero con la aplicación abierta desde una dirección pública (servidor con dirección propia, por
+  // ejemplo en AWS): esa es la dirección para compartir.
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) || location.protocol === 'file:';
+  if(!t && !local) return ['Acceso desde otras computadoras', 'ok', 'Activo',
+    `<a href="${esc(location.origin + '/')}" target="_blank" rel="noopener" id="enlaceCompartido">${esc(location.origin + '/')}</a>
+     <button class="btn" id="copiarEnlace" data-url="${esc(location.origin + '/')}">Copiar enlace</button>
+     <br>Quien tenga la dirección llega a la pantalla de ingreso; solo entran las personas con usuario del sistema.`];
+  if(!t) return ['Acceso desde otras computadoras', 'apagado', 'Sin configurar',
+                 'Para habilitarlo, en la terminal de Ubuntu: <code>bash ranking.sh compartir</code>'];
+  const d = t.detalle || {};
+  const vence = d.vence ? `<br>La sesión de Tailscale vence el ${esc(fechaCorta(String(d.vence).slice(0, 10)))}: para que no venza, `
+                          + 'desactivá el vencimiento en Tailscale (Manual de uso, "Uso desde otras computadoras").' : '';
+  if(d.estado === 'activo' && t.segundos <= 300)
+    return ['Acceso desde otras computadoras', 'ok', 'Activo',
+            `<a href="${esc(d.url)}" target="_blank" rel="noopener" id="enlaceCompartido">${esc(d.url)}</a>
+             <button class="btn" id="copiarEnlace" data-url="${esc(d.url)}">Copiar enlace</button>
+             <br>Quien tenga el enlace llega a la pantalla de ingreso; solo entran las personas con usuario del sistema.${vence}`];
+  if(d.estado === 'iniciando' && t.segundos <= 300) return ['Acceso desde otras computadoras', 'aviso', 'Iniciando', ''];
+  return ['Acceso desde otras computadoras', 'error', d.estado === 'sin_sesion' ? 'Detenido' : 'Sin conexión',
+          esc(d.mensaje || 'El servicio no informa su estado. Se reintenta solo; si continúa: bash ranking.sh verificar')];
+}
+let relojPanel = null;
+
+function esc(t){
+  return String(t ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function fmtBytes(n){
+  if(n === null || n === undefined) return '—';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; n = Number(n);
+  while(n >= 1024 && i < u.length - 1){ n /= 1024; i++; }
+  return `${n.toLocaleString('es-AR', { maximumFractionDigits: i ? 1 : 0 })} ${u[i]}`;
+}
+function haceCuanto(seg){
+  if(seg === null || seg === undefined) return '—';
+  if(seg < 60) return `hace ${seg} s`;
+  if(seg < 3600) return `hace ${Math.round(seg / 60)} min`;
+  if(seg < 86400) return `hace ${Math.round(seg / 3600)} h`;
+  return `hace ${Math.round(seg / 86400)} días`;
+}
+
+// "Enviar reporte BO": solo para las personas habilitadas (al comienzo, una); las demás descargan el reporte.
+async function loadEnvioBo(){
+  const r = await sb.rpc('fn_envio_bo_habilitado', {});
+  state.envioBo = r.data === true;
+}
+
+async function loadPanelAcceso(){
+  const r = await sb.panel.get('acceso');
+  state.panel.acceso = !!(r.data && r.data.acceso);
+}
+
+async function loadPanel(sub){
+  const p = state.panel;
+  sub = sub || p.sub;
+  const pedir = {
+    estado: () => sb.panel.get('estado'),
+    respaldos: async () => {
+      const [e, ev] = await Promise.all([sb.panel.get('estado'), sb.panel.get('eventos', { servicio: p.eventoServicio, limite: 200 })]);
+      return { data: e.data && { estado: e.data, eventos: ev.data || [] }, error: e.error || ev.error };
+    },
+    usuarios: () => sb.panel.get('usuarios'),
+    actividad: () => sb.panel.get('actividad', p.filtrosAct),
+    integridad: () => sb.panel.get('integridad'),
+    registro: () => sb.panel.get('registro'),
+  }[sub];
+  const r = await pedir();
+  if(r.error){ p.error = r.error.message; return; }
+  p.error = '';
+  p.datos[sub] = r.data;
+  p.actualizado = new Date();
+}
+
+// El estado se actualiza solo mientras la pestaña está abierta.
+function programarPanel(){
+  clearInterval(relojPanel);
+  if(state.activeTab === 'panel' && ['estado', 'respaldos'].includes(state.panel.sub)){
+    relojPanel = setInterval(async () => {
+      if(state.activeTab !== 'panel' || document.hidden || state.panel.ocupado) return;
+      const activo = document.activeElement && document.activeElement.id;
+      await loadPanel(); if(state.activeTab === 'panel' && !activo?.startsWith('panel')) render();
+    }, 15000);
+  }
+}
+
+function punto(estado){ return `<span class="punto ${estado}"></span>`; }
+
+function renderPanel(){
+  const p = state.panel;
+  const d = p.datos[p.sub];
+  const cuerpo = !d ? `<div class="empty">${p.error ? esc(p.error) : 'Cargando…'}</div>` : ({
+    estado: renderPanelEstado, respaldos: renderPanelRespaldos, usuarios: renderPanelUsuarios,
+    actividad: renderPanelActividad, integridad: renderPanelIntegridad, registro: renderPanelRegistro,
+  })[p.sub](d);
+  return `
+  <div class="subtabs">${PANEL_SUBS.map(([k, l]) =>
+    `<button class="subtab ${p.sub === k ? 'active' : ''}" data-panel-sub="${k}">${l}</button>`).join('')}
+    <button class="btn panel-actualizar" id="panelActualizar">Actualizar</button>
+    <span class="panel-hora">${p.actualizado ? 'Actualizado ' + p.actualizado.toLocaleTimeString('es-AR') : ''}</span>
+  </div>
+  ${p.error && d ? `<div class="aviso-panel error">${esc(p.error)}</div>` : ''}
+  ${p.mensaje ? `<div class="aviso-panel">${p.mensaje}</div>` : ''}
+  ${cuerpo}
+  ${renderPanelCodigo()}`;
+}
+
+function tarjeta(titulo, contenido, extra = ''){
+  return `<div class="tarjeta ${extra}"><h3>${titulo}</h3>${contenido}</div>`;
+}
+function fila(k, v){ return `<div class="dato"><span>${k}</span><b>${v}</b></div>`; }
+function barra(usado, total){
+  if(!total) return '';
+  const pc = Math.round(100 * usado / total);
+  return `<div class="barra-uso ${pc >= 90 ? 'alta' : pc >= 75 ? 'media' : ''}"><div style="width:${pc}%"></div></div>`;
+}
+
+function estadoServicio(s, limite){
+  if(!s) return ['apagado', 'Sin datos'];
+  if(s.detalle && s.detalle.apagado) return ['apagado', 'Sin configurar'];
+  return s.segundos <= limite ? ['ok', 'Funcionando'] : ['error', 'Sin respuesta'];
+}
+
+function renderPanelEstado(e){
+  const sv = e.servicios || {}, r = e.recursos || {}, dt = e.datos || {};
+  const servicios = [
+    ['Base de datos', 'ok', 'Funcionando', `PostgreSQL ${esc((e.base.version || '').split(' ')[0])} · iniciada ${fmtFecha(e.base.iniciada)}`],
+    ['API y aplicación', 'ok', 'Funcionando', `iniciada ${fmtFecha(e.api.iniciada)}${e.api.fallas_recientes ? ` · ${e.api.fallas_recientes} errores en el registro` : ''}`
+      + (e.ultimo_arranque ? `<br>Último arranque (${fmtFecha(e.ultimo_arranque.fecha)}): ${esc(e.ultimo_arranque.mensaje.replace(/^Arranque del sistema: /, ''))}` : '')],
+    ...['espejo', 'respaldo'].map(k => {
+      const [cl, tx] = estadoServicio(sv[k], 120);
+      const det = sv[k] ? (k === 'espejo'
+        ? (sv[k].detalle.apagado ? 'Sin carpeta de OneDrive en este servidor: los archivos cargados quedan solo en el sistema y en sus respaldos'
+           : `${sv[k].detalle.onedrive_disponible ? 'Carpeta disponible' : 'Carpeta de OneDrive no disponible'} · último aviso ${haceCuanto(sv[k].segundos)}`)
+        : (sv[k].detalle.apagado ? 'Sin carpeta de respaldos' : `Último aviso ${haceCuanto(sv[k].segundos)}`)) : 'El servicio todavía no informó su estado';
+      const clase = k === 'espejo' && sv[k] && sv[k].detalle.onedrive_disponible === false && cl === 'ok' ? 'aviso' : cl;
+      return [SERVICIOS[k], clase, clase === 'aviso' ? 'Con avisos' : tx, det];
+    }),
+    servicioTunel(sv.tunel),
+    ['Actualización de la base', sv.instalador ? 'ok' : 'apagado', sv.instalador ? 'Aplicada' : 'Sin datos',
+      sv.instalador ? `${fmtFecha(sv.instalador.ultimo_aviso)} · ${sv.instalador.detalle.mejoras || 0} mejoras propias` : ''],
+  ];
+  const mem = r.memoria, disco = r.disco;
+  return `
+  <div class="tarjetas">
+    ${tarjeta('Servicios', servicios.map(([n, cl, tx, det]) =>
+      `<div class="servicio" data-servicio="${esc(n)}">${punto(cl)}<div><b>${n}</b> <span class="estado-${cl}">${tx}</span>
+        <div class="det">${det}</div></div></div>`).join(''), 'ancha')}
+    ${tarjeta('Recursos de la computadora', `
+      ${disco ? fila('Disco', `${fmtBytes(disco.usado)} de ${fmtBytes(disco.total)} · libre ${fmtBytes(disco.libre)}`) + barra(disco.usado, disco.total) : ''}
+      ${mem ? fila('Memoria', `${fmtBytes(mem.total - mem.disponible)} de ${fmtBytes(mem.total)}`) + barra(mem.total - mem.disponible, mem.total) : ''}
+      ${r.carga ? fila('Uso del procesador', `${Math.min(100, Math.round(100 * r.carga[0] / (r.cpus || 1)))} % (${r.cpus} núcleos)`) : ''}
+      ${fila('Base de datos', fmtBytes(e.base.tamano))}
+      ${fila('Archivos cargados', `${fmtNum(dt.archivos)} · ${fmtBytes(dt.tamano_archivos)}`)}`)}
+    ${tarjeta('Contenido', `
+      ${fila('Obras', fmtNum(dt.obras))}
+      ${fila('Obras sin Tempo ID', fmtNum(dt.obras_sin_tempo))}
+      ${fila('Filas de charts', fmtNum(dt.filas_charts))}
+      ${fila('Registros de Reporte BackOffice', fmtNum(dt.reportes_bo))}
+      ${fila('Registros de Reporte Tempo Control', fmtNum(dt.reportes_tempo))}`)}
+    ${tarjeta('Respaldos', renderResumenRespaldos(e))}
+  </div>
+  <p class="nota-panel">Acceso al Panel de control: ${(e.acceso || []).map(esc).join(', ')}. Se administra desde la
+  consola (opción 7 de <code>bash ranking.sh usuarios</code>).</p>`;
+}
+
+function renderResumenRespaldos(e){
+  const rs = e.respaldos || {}, det = (e.servicios.respaldo || {}).detalle || {};
+  const ev = (x) => x ? `${fmtFecha(x.fecha)}<div class="det">${esc(x.mensaje)}</div>` : 'Sin registro';
+  return `${fila('Último respaldo', ev(rs.ultimo_respaldo))}
+    ${fila('Última copia en OneDrive', ev(rs.ultima_copia_onedrive))}
+    ${det.cada_horas !== undefined ? fila('Respaldo automático', det.cada_horas ? `cada ${det.cada_horas} h · se conservan ${det.conservar}` : 'Apagado') : ''}
+    ${det.respaldos !== undefined ? fila('Respaldos en la computadora', `${det.respaldos} · ${fmtBytes(det.carpeta_bytes)}`) : ''}
+    ${rs.ultimo_error ? fila('Último error', `<span class="estado-error">${fmtFecha(rs.ultimo_error.fecha)}</span><div class="det">${esc(rs.ultimo_error.mensaje)}</div>`) : ''}`;
+}
+
+function renderEventos(eventos){
+  return `<table class="tabla-panel"><thead><tr><th>Fecha</th><th>Origen</th><th>Resultado</th><th>Detalle</th><th>Usuario</th></tr></thead>
+    <tbody>${eventos.length ? eventos.map(x => `<tr><td class="mono">${fmtFecha(x.fecha)}</td><td>${esc(SERVICIOS[x.servicio] || ({panel:'Panel de control', consola:'Consola', 'ranking.sh':'ranking.sh'})[x.servicio] || x.servicio)}</td>
+      <td>${punto(x.nivel === 'ok' ? 'ok' : x.nivel === 'aviso' ? 'aviso' : 'error')}${x.nivel === 'ok' ? 'Correcto' : x.nivel === 'aviso' ? 'Aviso' : 'Error'}</td>
+      <td>${esc(x.mensaje)}</td><td>${esc(x.usuario || '')}</td></tr>`).join('')
+      : `<tr><td colspan="5"><div class="empty">Sin eventos</div></td></tr>`}</tbody></table>`;
+}
+
+function renderPanelRespaldos(d){
+  const e = d.estado, rs = e.respaldos || {}, esp = e.espejo || {}, sol = (rs.solicitudes || [])[0];
+  const enCurso = sol && ['pendiente', 'en curso'].includes(sol.estado);
+  const espejo = (e.servicios || {}).espejo;
+  return `
+  <div class="tarjetas">
+    ${tarjeta('Respaldos', `${renderResumenRespaldos(e)}
+      <div class="acciones-panel">
+        <button class="btn primary" id="panelRespaldar" ${enCurso ? 'disabled' : ''}>${enCurso ? 'Respaldo en curso…' : 'Respaldar ahora'}</button>
+        ${sol ? `<span class="det">Último pedido: ${fmtFecha(sol.pedido)} · ${esc(sol.estado)}${sol.mensaje ? ' · ' + esc(sol.mensaje) : ''}</span>` : ''}
+      </div>
+      <p class="det">Respaldo completo de la base y de los archivos, copiado también en OneDrive
+      (<code>respaldo_documentacion_sistema\\respaldos</code>). Se restaura desde la consola:
+      <code>bash ranking.sh restaurar &lt;nombre&gt;</code>.</p>`)}
+    ${tarjeta('Espejo de OneDrive', `
+      ${fila('Carpeta', espejo && espejo.detalle.carpeta ? (espejo.detalle.onedrive_disponible ? 'Disponible' : '<span class="estado-error">No disponible</span>') : 'Sin configurar')}
+      ${fila('Última copia', esp.ultima_copia ? `${fmtFecha(esp.ultima_copia.fecha)}<div class="det">${esc(esp.ultima_copia.mensaje)}</div>` : 'Sin registro')}
+      ${esp.ultimo_aviso ? fila('Último aviso', `<span class="estado-error">${fmtFecha(esp.ultimo_aviso.fecha)}</span><div class="det">${esc(esp.ultimo_aviso.mensaje)}</div>`) : ''}`)}
+  </div>
+  <h3 class="titulo-panel">Registro de copias y respaldos</h3>
+  <div class="filtros-panel">
+    <select id="panelEventoServicio">
+      <option value="">Todos los orígenes</option>
+      ${[['respaldo', 'Respaldos'], ['espejo', 'Espejo de OneDrive'], ['ranking.sh', 'ranking.sh'], ['panel', 'Panel de control'], ['consola', 'Consola']]
+        .map(([k, l]) => `<option value="${k}" ${state.panel.eventoServicio === k ? 'selected' : ''}>${l}</option>`).join('')}
+    </select>
+  </div>
+  ${renderEventos(d.eventos)}`;
+}
+
+function renderPanelUsuarios(lista){
+  const yo = state.session.user.email.toLowerCase();
+  return `
+  <div class="tarjeta">
+    <h3>Nuevo usuario</h3>
+    <div class="filtros-panel">
+      <input class="search" id="panelNuevoEmail" placeholder="email@sonymusicpub.com">
+      <input class="search corto" id="panelNuevaOficina" placeholder="Oficina (ej. AR)">
+      <button class="btn primary" id="panelCrear">Crear usuario</button>
+    </div>
+    <p class="det">El usuario recibe un código de activación (válido 72 horas) para elegir su contraseña en
+    "¿Olvidaste la contraseña?". Nadie más conoce la contraseña.</p>
+  </div>
+  <table class="tabla-panel"><thead><tr><th>Usuario</th><th>Perfil</th><th>Oficina</th><th>Último ingreso</th><th>Sesiones</th><th>Estado</th><th></th></tr></thead>
+  <tbody>${lista.map(u => `
+    <tr data-usuario="${esc(u.email)}">
+      <td>${esc(u.email)}${u.email.toLowerCase() === yo ? ' <span class="det">(vos)</span>' : ''}</td>
+      <td>${u.panel ? 'Administrador' : 'Usuario estándar'}</td>
+      <td><input class="edit-field corto" data-usuario-oficina="${esc(u.email)}" value="${esc(u.oficina || '')}" placeholder="—"></td>
+      <td class="mono">${u.ultimo_ingreso ? fmtFecha(u.ultimo_ingreso) : 'nunca'}</td>
+      <td>${u.sesiones_abiertas ? `${u.sesiones_abiertas} ${u.sesiones_abiertas == 1 ? 'abierta' : 'abiertas'}` : '—'}</td>
+      <td>${u.bloqueado ? '<span class="badge dup">Bloqueado</span>' : u.sin_clave ? '<span class="badge pct">Sin activar</span>' : '<span class="badge ok">Activo</span>'}
+        ${u.codigo_vence ? `<div class="det">Código vigente hasta ${fmtFecha(u.codigo_vence)}</div>` : ''}</td>
+      <td class="acciones-usuario">
+        <button class="btn" data-usuario-accion="codigo" data-email="${esc(u.email)}">Código de contraseña</button>
+        ${u.sesiones_abiertas ? `<button class="btn" data-usuario-accion="cerrar_sesiones" data-email="${esc(u.email)}">Cerrar sesiones</button>` : ''}
+        ${u.email.toLowerCase() === yo ? '' : u.bloqueado
+          ? `<button class="btn" data-usuario-accion="desbloquear" data-email="${esc(u.email)}">Desbloquear</button>`
+          : `<button class="btn" data-usuario-accion="bloquear" data-email="${esc(u.email)}">Bloquear</button>`}
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+// Cambios manuales: cada canción con lo que cambió (Tempo ID antes y después, unificación, estado, ticket).
+function detalleObras(obras){
+  if(!obras || !obras.length) return '';
+  return `<details class="obras-cambio"><summary>Ver obras (${obras.length})</summary><table><tbody>${obras.map(o => `<tr>
+    <td>${esc(o.obra)}</td><td class="mono">${esc(o.pais || '')}</td><td>${esc(o.cambio)}</td></tr>`).join('')}</tbody></table></details>`;
+}
+
+function renderPanelActividad(lista){
+  const f = state.panel.filtrosAct;
+  const usuarios = (state.panel.datos.usuarios || []).map(u => u.email);
+  return `
+  <div class="filtros-panel">
+    <select id="panelActUsuario"><option value="">Todos los usuarios</option>
+      ${[...new Set([...usuarios, ...lista.map(x => x.usuario)])].filter(Boolean).sort().map(u => `<option value="${esc(u)}" ${f.usuario === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select>
+    <select id="panelActTipo"><option value="">Todo</option>
+      ${['Ingreso', 'Carga', 'Descarga', 'Cambio'].map(t => `<option value="${t}" ${f.tipo === t ? 'selected' : ''}>${t}s</option>`).join('')}</select>
+    <label class="check">Desde <input type="date" class="edit-field" style="width:auto" id="panelActDesde" value="${f.desde || ''}"></label>
+    <label class="check">Hasta <input type="date" class="edit-field" style="width:auto" id="panelActHasta" value="${f.hasta || ''}"></label>
+  </div>
+  <table class="tabla-panel"><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead>
+  <tbody>${lista.length ? lista.map(x => `<tr><td class="mono">${fmtFecha(x.fecha)}</td><td>${esc(x.usuario)}</td>
+    <td><span class="badge ${({Carga:'ok', Descarga:'unc', Cambio:'pct', Ingreso:''})[x.tipo] || ''}">${x.tipo}</span></td><td>${esc(x.detalle)}${detalleObras(x.obras)}</td></tr>`).join('')
+    : `<tr><td colspan="4"><div class="empty">Sin actividad para esos filtros</div></td></tr>`}</tbody></table>
+  <p class="det">Se muestran hasta 300 acciones, de la más reciente a la más antigua; sin fechas, las de los últimos 90
+  días. Los cambios hechos por una carga se informan en la carga; los cambios manuales se agrupan por minuto y
+  <b>Ver obras</b> muestra cada canción con lo que cambió.</p>`;
+}
+
+function renderPanelIntegridad(d){
+  const a = d.archivos;
+  const faltan = d.charts.reduce((n, c) => n + c.faltantes.length, 0);
+  return `
+  <div class="tarjetas">
+    ${tarjeta('Archivos', `
+      ${fila('Registrados', fmtNum(a.registrados))}
+      ${fila('Faltan en el almacenamiento', a.cantidad_faltantes ? `<span class="estado-error">${fmtNum(a.cantidad_faltantes)}</span>` : '0')}
+      ${fila('Con tamaño distinto al registrado', a.distinto_tamano.length ? `<span class="estado-error">${a.distinto_tamano.length}</span>` : '0')}
+      ${fila('Sin registro (cargas interrumpidas)', fmtNum(a.sin_registrar))}`)}
+    ${tarjeta('Charts', `
+      ${fila('Territorios y plataformas', d.charts.length)}
+      ${fila('Semanas faltantes', faltan ? `<span class="estado-error">${faltan}</span>` : '0')}
+      ${fila('Cargas con avisos o sin filas', d.problemas.length)}`)}
+  </div>
+  <h3 class="titulo-panel">Charts por territorio y plataforma</h3>
+  <table class="tabla-panel"><thead><tr><th>Territorio</th><th>Plataforma</th><th>Semanas</th><th>Desde</th><th>Hasta</th><th>Filas</th><th>Semanas faltantes</th></tr></thead>
+  <tbody>${d.charts.length ? d.charts.map(c => `<tr data-integridad="${c.pais}-${c.plataforma}"><td>${c.pais}</td><td>${c.plataforma === 'youtube' ? 'YouTube' : 'Spotify'}</td>
+    <td>${fmtNum(c.semanas)}</td><td class="mono">${c.primera}</td><td class="mono">${c.ultima}</td><td>${fmtNum(c.filas)}</td>
+    <td>${c.faltantes.length ? `<span class="estado-error">${c.faltantes.length}</span> <span class="det mono">${c.faltantes.slice(0, 12).join(', ')}${c.faltantes.length > 12 ? '…' : ''}</span>` : '<span class="estado-ok">Completo</span>'}</td></tr>`).join('')
+    : `<tr><td colspan="7"><div class="empty">Sin charts cargados</div></td></tr>`}</tbody></table>
+  <h3 class="titulo-panel">Cargas con avisos o sin filas cargadas</h3>
+  <table class="tabla-panel"><thead><tr><th>Fecha</th><th>Usuario</th><th>Archivo</th><th>Filas</th><th>Avisos</th></tr></thead>
+  <tbody>${d.problemas.length ? d.problemas.map(c => `<tr><td class="mono">${fmtFecha(c.fecha)}</td><td>${esc(c.usuario || '')}</td>
+    <td>${esc(c.archivo)}</td><td>${fmtNum(c.cargadas)} de ${fmtNum(c.total)}</td>
+    <td>${c.avisos ? `${c.avisos}<div class="det">${(c.errores || []).slice(0, 3).map(esc).join('<br>')}</div>` : 'Ninguna fila cargada'}</td></tr>`).join('')
+    : `<tr><td colspan="5"><div class="empty">Sin cargas con problemas</div></td></tr>`}</tbody></table>
+  ${a.faltantes.length || a.distinto_tamano.length ? `<h3 class="titulo-panel">Archivos con problemas</h3>
+  <table class="tabla-panel"><thead><tr><th>Archivo</th><th>Problema</th></tr></thead><tbody>
+    ${a.faltantes.map(x => `<tr><td>${esc(x.archivo)}</td><td>No está en el almacenamiento</td></tr>`).join('')}
+    ${a.distinto_tamano.map(x => `<tr><td>${esc(x.archivo)}</td><td>Tamaño ${fmtBytes(x.real)}; registrado ${fmtBytes(x.registrado)}</td></tr>`).join('')}
+  </tbody></table>` : ''}
+  <p class="det">Una semana falta si no hay chart a menos de tres días de la fecha esperada, entre la primera y la última
+  semana cargada de ese territorio y plataforma.</p>`;
+}
+
+function renderPanelRegistro(lineas){
+  return `<div class="consola" id="panelConsola">${lineas.length ? lineas.map(l =>
+    `<div class="linea ${l.nivel === 'ERROR' || l.nivel === 'CRITICAL' ? 'error' : l.nivel === 'WARNING' ? 'aviso' : ''}"><span>${fmtFecha(l.fecha)}</span> <b>${esc(l.nivel)}</b> ${esc(l.mensaje)}</div>`).join('')
+    : '<div class="linea">Sin registros desde el último inicio de la API.</div>'}</div>
+  <p class="det">Últimas 500 líneas del servidor desde su último inicio, de la más reciente a la más antigua: inicio,
+  pedidos rechazados y errores de la base o de la aplicación.</p>`;
+}
+
+function renderPanelCodigo(){
+  const c = state.panel.codigo;
+  if(!c) return '';
+  return `
+  <div class="modal-bg" id="codigoBg">
+    <div class="modal small">
+      <button class="close" id="closeCodigo">Cerrar</button>
+      <h2 class="display">${c.alta ? 'Usuario creado' : 'Código para restablecer la contraseña'}</h2>
+      <p class="sub">${esc(c.email)}</p>
+      <div class="codigo-grande" id="panelCodigo">${esc(c.codigo)}</div>
+      <p class="det">Entregáselo a la persona: en la pantalla de ingreso, "¿Olvidaste la contraseña?", ingresa su email,
+      este código y la contraseña que elija. Sirve una sola vez, durante ${c.alta ? '72 horas' : '30 minutos'}. El código no
+      vuelve a mostrarse.</p>
+    </div>
+  </div>`;
+}
+
+async function accionUsuario(accion, email, extra = {}){
+  const p = state.panel;
+  if(accion === 'bloquear' && !confirm(`¿Bloquear a ${email}? Se cierran sus sesiones y no podrá ingresar hasta que se lo desbloquee.`)) return;
+  p.ocupado = true;
+  const r = await sb.panel.post('usuarios', { accion, email, ...extra });
+  p.ocupado = false;
+  if(r.error){ alert(r.error.message); }
+  else if(accion === 'crear' || accion === 'codigo'){ p.codigo = { email, codigo: r.data.resultado, alta: accion === 'crear' }; }
+  else p.mensaje = ({ bloquear: `${esc(email)} quedó bloqueado.`, desbloquear: `${esc(email)} quedó desbloqueado.`,
+    cerrar_sesiones: `Se cerraron las sesiones de ${esc(email)}.`, rol: `Se actualizó el rol de ${esc(email)}.` })[accion] || '';
+  await loadPanel('usuarios'); render();
+}
+
+function attachPanelEvents(){
+  const p = state.panel;
+  document.querySelectorAll('[data-panel-sub]').forEach(b => b.onclick = async () => {
+    p.sub = b.dataset.panelSub; p.mensaje = ''; render();
+    if(p.sub === 'actividad' && !p.datos.usuarios) await loadPanel('usuarios');
+    await loadPanel(); render(); programarPanel();
+  });
+  const act = document.getElementById('panelActualizar');
+  if(act) act.onclick = async () => { await loadPanel(); render(); };
+  const copiar = document.getElementById('copiarEnlace');
+  if(copiar) copiar.onclick = async () => {
+    try { await navigator.clipboard.writeText(copiar.dataset.url); copiar.textContent = 'Copiado'; }
+    catch(e){ prompt('Copiá el enlace:', copiar.dataset.url); }
+  };
+  const resp = document.getElementById('panelRespaldar');
+  if(resp) resp.onclick = async () => {
+    resp.disabled = true;
+    const r = await sb.panel.post('respaldo');
+    p.mensaje = r.error ? '' : 'Respaldo solicitado. En unos segundos figura en el registro.';
+    if(r.error) alert(r.error.message);
+    await loadPanel(); render();
+  };
+  const evs = document.getElementById('panelEventoServicio');
+  if(evs) evs.onchange = async () => { p.eventoServicio = evs.value; await loadPanel(); render(); };
+  const crear = document.getElementById('panelCrear');
+  if(crear) crear.onclick = () => {
+    const email = document.getElementById('panelNuevoEmail').value.trim();
+    if(!email) return alert('Ingresá el email del usuario.');
+    accionUsuario('crear', email, { rol: 'usuario_estandar',
+                                    oficina: document.getElementById('panelNuevaOficina').value.trim() || null });
+  };
+  document.querySelectorAll('[data-usuario-accion]').forEach(b => b.onclick = () => accionUsuario(b.dataset.usuarioAccion, b.dataset.email));
+  const cambiarOficina = (email) => accionUsuario('rol', email, {
+    rol: (p.datos.usuarios || []).find(u => u.email === email)?.rol || 'usuario_estandar',
+    oficina: document.querySelector(`[data-usuario-oficina="${CSS.escape(email)}"]`).value.trim() || null });
+  document.querySelectorAll('[data-usuario-oficina]').forEach(i => i.onchange = () => cambiarOficina(i.dataset.usuarioOficina));
+  const filtros = { panelActUsuario: 'usuario', panelActTipo: 'tipo', panelActDesde: 'desde', panelActHasta: 'hasta' };
+  Object.entries(filtros).forEach(([id, k]) => {
+    const el = document.getElementById(id);
+    if(el) el.onchange = async () => { p.filtrosAct[k] = el.value || null; await loadPanel(); render(); };
+  });
+  const cerrar = () => { p.codigo = null; render(); };
+  const cc = document.getElementById('closeCodigo'); if(cc) cc.onclick = cerrar;
+  const cb = document.getElementById('codigoBg'); if(cb) cb.onclick = (e) => { if(e.target === cb) cerrar(); };
+}
+
+function renderBody(){
+  if(state.activeTab==='master') return renderMaster();
+  if(state.activeTab==='territory') return renderTerritory();
+  if(state.activeTab==='upload') return renderUpload();
+  if(state.activeTab==='history') return renderHistory();
+  if(state.activeTab==='tickets') return renderTickets();
+  if(state.activeTab==='panel') return renderPanel();
+}
+
+function render(){
+  const root = document.getElementById('root');
+  if(!state.session){ root.innerHTML = renderLogin(); attachLoginEvents(); return; }
+  root.innerHTML = `<div class="app">
+    ${renderTopbar()}${renderTabs()}
+    <div class="panel-body">${renderBody()}</div>
+    <footer><span>Auditor de Rankings Digitales</span><span>${rows_count()}</span></footer>
+  </div>${renderHistoryModal()}${renderEnvioDialog()}${renderTicketDialog()}${renderTicketObras()}${renderAvisoFiltro()}`;
+  attachAppEvents();
+  if(state.activeTab === 'panel') attachPanelEvents();
+}
+function rows_count(){
+  if(state.activeTab==='master') return `${fmtNum(state.masterTotal)} canciones`;
+  if(state.activeTab==='territory') return `${fmtNum(state.territoryTotal)} registros de territorio`;
+  if(state.activeTab==='tickets' && state.tickets) return `${fmtNum(state.tickets.length)} tickets`;
+  return '';
+}
+
+function attachLoginEvents(){
+  // Un formulario con usuario y contraseña: Edge y Chrome ofrecen guardar la contraseña y la completan al volver.
+  const form = document.getElementById('loginForm');
+  if(form) form.onsubmit = (e) => {
+    e.preventDefault();
+    if(document.getElementById('loginBtn')){
+      doLogin(document.getElementById('loginEmail').value, document.getElementById('loginPass').value,
+              !!document.getElementById('loginRecordar')?.checked);
+    } else if(document.getElementById('claveGuardar')) guardarClaveIngreso();
+  };
+  document.querySelectorAll('[data-login-modo]').forEach(a => a.onclick = () => {
+    Object.assign(state, { loginModo: a.dataset.loginModo, loginError: '', loginAviso: '',
+                           loginEmailValor: document.getElementById('loginEmail').value });
+    render();
+  });
+}
+
+function attachAppEvents(){
+  document.getElementById('logoutBtn').onclick = doLogout;
+  document.querySelectorAll('[data-tab]').forEach(t => t.onclick = async () => {
+    state.activeTab = t.dataset.tab;
+    if(!state.uploading) state.uploadQueue = [];
+    if(state.activeTab === 'history' && !state.historial) loadHistorial();
+    if(state.activeTab === 'tickets') loadTickets();
+    programarPanel();
+    if(state.activeTab === 'panel'){ state.panel.mensaje = ''; loadPanel().then(() => { if(state.activeTab === 'panel') render(); }); }
+    render();
+    // Cada pestaña conserva sus filtros y su búsqueda; la tabla por territorio se pide al abrirla si quedó vieja.
+    if(state.activeTab === 'territory' && state.territoryStale){ await loadTerritory(); render(); }
+  });
+  document.querySelectorAll('[data-pager]').forEach(b => b.onclick = async () => {
+    const dir = Number(b.dataset.dir);
+    if(b.dataset.pager === 'master'){ state.masterPage = Math.max(0, state.masterPage + dir); await loadMaster(); }
+    else { state.territoryPage = Math.max(0, state.territoryPage + dir); await loadTerritory(); }
+    render();
+    window.scrollTo(0, 0);
+  });
+  document.querySelectorAll('[data-hist-tab]').forEach(b => b.onclick = () => { state.histTab = b.dataset.histTab; state.histPais = ''; render(); });
+  document.querySelectorAll('[data-hist-pais]').forEach(b => b.onclick = () => { state.histPais = b.dataset.histPais; render(); });
+
+  const sM = document.getElementById('searchMaster');
+  if(sM) sM.oninput = (e) => buscar(e.target.value, 'searchMaster');
+  const sT = document.getElementById('searchTerritory');
+  if(sT) sT.oninput = (e) => buscar(e.target.value, 'searchTerritory');
+
+  const cf = document.getElementById('countryFilter');
+  const soloTerritorio = async () => { state.territoryPage = 0; await loadTerritory(); };
+  if(cf) cf.onchange = (e) => aplicarFiltro(() => { state.territoryCountry = state.lastCountry = e.target.value; }, soloTerritorio);
+  const mc = document.getElementById('masterCountry');
+  if(mc) mc.onchange = (e) => aplicarFiltro(() => { state.masterCountry = state.lastCountry = e.target.value; });
+
+  const campo = (id, cambio, recargar) => { const el = document.getElementById(id);
+    if(el) el.onchange = (e) => aplicarFiltro(() => cambio(e.target.value), recargar); };
+  campo('dateFrom', v => { state.dateFrom = v; });
+  campo('dateTo', v => { state.dateTo = v; });
+  campo('dateFromT', v => { state.dateFromT = v; }, soloTerritorio);
+  campo('dateToT', v => { state.dateToT = v; }, soloTerritorio);
+  const lm = document.getElementById('clearFilters');
+  if(lm) lm.onclick = () => aplicarFiltro(() => { state.dateFrom=''; state.dateTo=''; state.masterCountry=''; state.searchMaster=''; state.tempoFilter=''; });
+  const tfl = document.getElementById('tempoFilter');
+  if(tfl) tfl.onchange = (e) => aplicarFiltro(() => { state.tempoFilter = e.target.value; });
+  const lt = document.getElementById('clearFiltersT');
+  if(lt) lt.onclick = () => aplicarFiltro(() => {
+    state.dateFromT=''; state.dateToT=''; state.territoryCountry=''; state.estadoFilter=''; state.reclamosFilter=''; state.estadoTrabajoFilter=''; state.origenFilter='';
+    state.searchTerritory='';
+  }, soloTerritorio);
+  const ef = document.getElementById('estadoFilter');
+  if(ef) ef.onchange = (e) => aplicarFiltro(() => { state.estadoFilter = e.target.value; }, soloTerritorio);
+  const rf = document.getElementById('reclamosFilter');
+  if(rf) rf.onchange = (e) => aplicarFiltro(() => { state.reclamosFilter = e.target.value; }, soloTerritorio);
+  const orf = document.getElementById('origenFilter');
+  if(orf) orf.onchange = (e) => aplicarFiltro(() => { state.origenFilter = e.target.value; }, soloTerritorio);
+  const etf = document.getElementById('estadoTrabajoFilter');
+  if(etf) etf.onchange = (e) => aplicarFiltro(() => { state.estadoTrabajoFilter = e.target.value; }, soloTerritorio);
+  const okF = document.getElementById('okFiltro');
+  const cerrarAviso = () => { state.avisoFiltro = null; render(); };
+  if(okF){
+    okF.onclick = cerrarAviso;
+    okF.onkeydown = (e) => { if(e.key === 'Escape') cerrarAviso(); };
+  }
+  const bgF = document.getElementById('avisoFiltroBg');
+  if(bgF) bgF.onclick = (e) => { if(e.target === bgF) cerrarAviso(); };
+  const cc = document.getElementById('controlCountry');
+  if(cc) cc.onchange = (e) => { state.controlCountry = e.target.value; };
+
+
+  document.querySelectorAll('[data-nombre-principal]').forEach(el => {
+    el.onclick = async () => {
+      const obra = state.master.find(r => r.id === el.dataset.id);
+      if(!confirm(`¿Usar "${el.dataset.nombre}" como nombre principal? "${obra?.track_artist_concat || ''}" queda unificado a esa obra.`)) return;
+      const { error } = await sb.rpc('fn_nombre_principal', { p_track_id: el.dataset.id, p_clave: el.dataset.nombrePrincipal });
+      if(error) alert('No se cambió el nombre. ' + error.message);
+      state.masterConteoClave = null; loadAll();
+    };
+  });
+  document.querySelectorAll('[data-field-master="tempo_id"]').forEach(el => {
+    // Números (y "/" para un compilado: 123/456), o los valores de la lista: se eligen de la lista o se escribe parte del
+    // nombre ("miam" -> PENDING MIAMI), también como parte de un compilado (123/UNCONTROLLED).
+    el.oninput = (e) => {
+      const borrando = String(e?.inputType || '').startsWith('delete');
+      const partes = el.value.split('/');
+      const limpio = partes.length > 1
+        ? partes.map(p => completarTempoParte(p, MARCADORES_TEMPO, borrando)).join('/')
+        // Tempo ID duplicado en Tempo: dos números con guion (123-456).
+        : /^[0-9]+\s*-/.test(el.value) ? el.value.replace(/[^0-9-]/g, '').replace(/-{2,}/g, '-')
+        : completarTempoParte(el.value, OPCIONES_TEMPO, borrando);
+      if(limpio !== el.value) el.value = limpio;
+      listaTempo(el.value);
+    };
+    el.onfocus = () => listaTempo(el.value);
+  });
+  document.querySelectorAll('[data-field-master]').forEach(el => {
+    const handler = () => {
+      // Letras que quedaron a medio escribir (sin completar un valor de la lista): se deja el valor anterior.
+      if(el.dataset.fieldMaster === 'tempo_id' && el.value.split('/').some(p => /[^0-9\s-]/.test(p)
+           && !(el.value.includes('/') ? MARCADORES_TEMPO : OPCIONES_TEMPO).includes(p.trim()))){
+        el.value = el.defaultValue; listaTempo(''); return;
+      }
+      if(el.value !== el.defaultValue) updateMasterField(el.dataset.id, el.dataset.fieldMaster, el.value);
+    };
+    if(el.tagName==='SELECT') el.onchange = handler; else el.onblur = handler;
+  });
+  document.querySelectorAll('[data-field-seg]').forEach(el => {
+    el.onblur = () => updateSeguimiento(el);
+    el.onkeydown = (e) => { if(e.key === 'Enter') el.blur(); };
+  });
+  document.querySelectorAll('[data-field-bo]').forEach(el => {
+    const handler = () => updateBoReportField(el.dataset.id, el.dataset.fieldBo, el.value);
+    if(el.tagName === 'SELECT') el.onchange = handler; else el.onblur = handler;
+    if(el.dataset.fieldBo === 'estado_trabajo'){
+      el.focus();
+      el.onblur = () => { if(state.editEstado){ state.editEstado = null; render(); } };
+    }
+  });
+  document.querySelectorAll('[data-edit-estado]').forEach(b => b.onclick = () => { state.editEstado = b.dataset.editEstado; render(); });
+
+  document.querySelectorAll('[data-del-master]').forEach(b => b.onclick = () => softDelete('master', b.dataset.delMaster));
+  document.querySelectorAll('[data-restore-master]').forEach(b => b.onclick = () => restore('master', b.dataset.restoreMaster));
+  document.querySelectorAll('[data-del-territory]').forEach(b => b.onclick = () => softDelete('territory', b.dataset.delTerritory));
+  document.querySelectorAll('[data-restore-territory]').forEach(b => b.onclick = () => restore('territory', b.dataset.restoreTerritory));
+
+
+  document.querySelectorAll('[data-history-track]').forEach(b => b.onclick = () =>
+    openHistory(b.dataset.historyTrack, b.dataset.historyPais));
+  const closeH = document.getElementById('closeHistory');
+  if(closeH) closeH.onclick = () => { state.history = null; render(); };
+  const bgH = document.getElementById('historyBg');
+  if(bgH) bgH.onclick = (e) => { if(e.target === bgH){ state.history = null; render(); } };
+
+  const exM = document.getElementById('exportMaster');
+  if(exM) exM.onclick = () => openEnvioDialog('csv_principal');
+  const exBo = document.getElementById('exportBo');
+  if(exBo) exBo.onclick = () => openEnvioDialog('reporte_bo');
+  document.querySelectorAll('[data-envio-modo]').forEach(b => b.onclick = () => startEnvio(b.dataset.envioModo));
+  const envioCambiar = document.getElementById('envioCambiar');
+  if(envioCambiar) envioCambiar.onclick = () => { state.envioDialog.enviar = !state.envioDialog.enviar; state.envioDialog.error = '';
+    state.envioDialog.certificado = null; state.envioDialog.carpetas = null; state.envioDialog.pendiente = null; render(); };
+  const boConfiar = document.getElementById('boConfiar');
+  if(boConfiar) boConfiar.onclick = () => enviarReporteBo(null, { certificado: state.envioDialog.certificado });
+  const boCopiar = document.getElementById('boCopiarRegistro');
+  if(boCopiar) boCopiar.onclick = async () => {
+    try { await navigator.clipboard.writeText(document.getElementById('boRegistro').textContent); boCopiar.textContent = 'Copiado'; }
+    catch(e){ boCopiar.textContent = 'Seleccioná el texto y copialo'; }
+  };
+  const boCarpetaEnviar = document.getElementById('boCarpetaEnviar');
+  if(boCarpetaEnviar) boCarpetaEnviar.onclick = () => {
+    const c = (document.getElementById('boCarpeta')?.value || '').trim();
+    if(c) enviarReporteBo(null, { carpeta: c });
+  };
+  document.querySelectorAll('[data-carpeta-bo]').forEach(b => b.onclick = () => enviarReporteBo(null, { carpeta: b.dataset.carpetaBo }));
+  const closeE = document.getElementById('closeEnvio');
+  if(closeE) closeE.onclick = () => { if(!state.envioBusy){ state.envioDialog = null; render(); } };
+  const bgE = document.getElementById('envioBg');
+  if(bgE) bgE.onclick = (e) => { if(e.target === bgE && !state.envioBusy){ state.envioDialog = null; render(); } };
+  document.querySelectorAll('[data-ticket-obras]').forEach(b => b.onclick = () => openTicketObras(b.dataset.ticketObras));
+  const cto = document.getElementById('closeTicketObras');
+  if(cto) cto.onclick = () => { state.ticketObras = null; render(); };
+  const tf = document.getElementById('ticketFiltrado');
+  if(tf) tf.onclick = openTicketDialog;
+  const at = document.getElementById('aplicarTicket');
+  if(at) at.onclick = aplicarTicket;
+  const tm = document.getElementById('ticketMasivo');
+  if(tm && !state.ticketDialog.enfocado){ tm.focus(); state.ticketDialog.enfocado = true; }
+  ['ticketMasivo', 'fechaMasiva'].forEach(id => { const el = document.getElementById(id);
+    if(el) el.onkeydown = (e) => { if(e.key === 'Enter') aplicarTicket(); }; });
+  const cerrarTicket = () => { if(!state.ticketDialog?.busy){ state.ticketDialog = null; render(); } };
+  ['cancelTicket', 'closeTicket'].forEach(id => { const el = document.getElementById(id); if(el) el.onclick = cerrarTicket; });
+  const exT = document.getElementById('exportTerritory');
+  if(exT) exT.onclick = () => downloadFilteredCsv('fn_territory_exportar', {
+    ...filtrosFechas('territory'),
+    p_pais: state.territoryCountry || null, p_buscar: state.searchTerritory || null,
+    p_estado: state.estadoFilter || null, p_chart: state.origenFilter || null,
+    p_reclamos: state.reclamosFilter || null, p_estado_trabajo: state.estadoTrabajoFilter || null,
+  }, `tabla_territorio${state.territoryCountry?'_'+state.territoryCountry:''}.csv`);
+
+  const dz = document.getElementById('dropzone'); const fi = document.getElementById('fileInput');
+  if(dz){
+    dz.onclick = () => fi.click();
+    dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
+    dz.ondragleave = () => dz.classList.remove('over');
+    dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('over'); handleFiles(e.dataTransfer.files); };
+    fi.onchange = (e) => { handleFiles(e.target.files); };
+  }
+}
+
+// ---------- Arranque ----------
+(async function init(){
+  const { data } = await sb.auth.getSession();
+  if(data.session){
+    state.session = data.session;
+    await loadProfile();
+    await loadAll();
+  } else {
+    render();
+  }
+})();
+</script>
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });</script>
+</body>
+</html>

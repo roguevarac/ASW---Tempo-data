@@ -1,0 +1,30 @@
+#!/bin/sh
+# Lo que usa ranking.sh de "tailscale" 1.104, con las mismas salidas. La prueba maneja el estado con archivos en
+# /var/lib/tailscale: sesion (inició sesión), funnel_habilitado (aceptó el enlace público), sin_red (no llega a Tailscale).
+E=/var/lib/tailscale
+NOMBRE=auditor-rankings.tail-prueba.ts.net
+case "$1 $2" in
+    "status --json")
+        if [ -f $E/sesion ]; then
+            printf '{\n  "Version": "1.104.4-simulado",\n  "BackendState": "Running",\n  "AuthURL": "",\n  "Self": {\n    "HostName": "auditor-rankings",\n    "DNSName": "%s.",\n    "Online": true,\n    "KeyExpiry": "2027-04-27T12:00:00Z"\n  },\n  "Health": []\n}\n' "$NOMBRE"
+        elif [ -f $E/sin_red ]; then
+            printf '{\n  "BackendState": "NeedsLogin",\n  "AuthURL": "",\n  "Self": {\n    "DNSName": "",\n    "Online": false\n  },\n  "Health": [\n    "You are logged out. The last login error was: fetch control key: Get \\"https://controlplane.tailscale.com/key?v=148\\": Forbidden"\n  ]\n}\n'
+        else
+            printf '{\n  "BackendState": "NeedsLogin",\n  "AuthURL": "https://login.tailscale.com/a/prueba123",\n  "Self": {\n    "DNSName": "",\n    "Online": false\n  },\n  "Health": []\n}\n'
+        fi ;;
+    "funnel status")
+        if [ -f $E/funnel ]; then printf '{\n  "TCP": {\n    "443": {\n      "HTTPS": true\n    }\n  },\n  "AllowFunnel": {\n    "%s:443": true\n  }\n}\n' "$NOMBRE"
+        else echo '{}'; fi ;;
+    "funnel reset") rm -f $E/funnel ;;
+    "funnel --bg")
+        echo "$*" > $E/funnel_pedido
+        if [ ! -f $E/funnel_habilitado ]; then
+            printf '\nFunnel is not enabled on your tailnet.\nTo enable, visit:\n\n         https://login.tailscale.com/f/funnel?node=nPrueba\n\n'
+            while [ ! -f $E/funnel_habilitado ]; do sleep 1; done
+            echo "Success."
+        fi
+        touch $E/funnel
+        eval "destino=\${$#}"
+        printf 'Available on the internet:\n\nhttps://%s/\n|-- proxy %s\n\nFunnel started and running in the background.\n' "$NOMBRE" "$destino" ;;
+    *) echo "tailscale simulado: $*" >&2; exit 1 ;;
+esac

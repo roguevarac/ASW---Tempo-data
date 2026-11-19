@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manual de uso — Auditor de Rankings Digitales</title>
+<link rel="icon" href="iconos/icono-32.png">
+<meta name="theme-color" content="#0E1520">
+<style>
+:root{
+  --void:#0E1520; --panel:#161F2C; --panel-raised:#1D2836; --line:#2B3A4C;
+  --text-primary:#E8E6DF; --text-muted:#8A97A8; --brass:#3d7be0; --brass-strong:#0f4bab;
+  --green:#5FA980; --red:#C15C51;
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{margin:0;background:var(--void);color:var(--text-primary);font-family:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+     font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+a{color:var(--brass);}
+code,.mono{font-family:'IBM Plex Mono',Consolas,monospace;font-size:0.92em;}
+code{background:var(--panel-raised);border:1px solid var(--line);border-radius:3px;padding:1px 5px;}
+.wrap{display:grid;grid-template-columns:250px minmax(0,1fr);gap:40px;max-width:1180px;margin:0 auto;padding:28px 24px 80px;}
+nav{position:sticky;top:20px;align-self:start;max-height:calc(100vh - 40px);overflow:auto;}
+nav .mark{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
+nav .mark span{width:30px;height:30px;border:1.5px solid var(--brass-strong);border-radius:2px;display:flex;align-items:center;justify-content:center;
+               color:var(--brass);font-size:12px;font-weight:600;}
+nav .mark b{font-size:14px;}
+nav ol{list-style:none;margin:0;padding:0;counter-reset:s;}
+nav li{counter-increment:s;}
+nav li a{display:block;padding:5px 10px;border-left:2px solid var(--line);color:var(--text-muted);text-decoration:none;font-size:13px;}
+nav li a::before{content:counter(s) ". ";}
+nav li a:hover{color:var(--text-primary);border-left-color:var(--brass);}
+nav .volver{display:inline-block;margin-top:18px;font-size:12.5px;}
+main{min-width:0;}
+h1{font-size:26px;margin:0 0 6px;font-weight:600;}
+.lead{color:var(--text-muted);margin:0 0 30px;max-width:70ch;}
+section{border-top:1px solid var(--line);padding:26px 0 8px;counter-increment:h;}
+main{counter-reset:h;}
+h2{font-size:19px;margin:0 0 12px;font-weight:600;}
+h2::before{content:counter(h) ". ";color:var(--brass);}
+h3{font-size:15px;margin:22px 0 8px;font-weight:600;}
+p,li{max-width:76ch;}
+ul,ol{padding-left:22px;}
+li{margin:4px 0;}
+.caja{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--brass-strong);border-radius:4px;padding:12px 16px;margin:14px 0;max-width:80ch;}
+.caja.ok{border-left-color:var(--green);}
+.caja.ojo{border-left-color:var(--red);}
+.caja p{margin:4px 0;}
+.pasos{counter-reset:p;list-style:none;padding:0;}
+.pasos>li{counter-increment:p;position:relative;padding-left:38px;margin:12px 0;}
+.pasos>li::before{content:counter(p);position:absolute;left:0;top:0;width:26px;height:26px;border-radius:50%;border:1px solid var(--brass-strong);
+                  color:var(--brass);display:flex;align-items:center;justify-content:center;font-size:12.5px;}
+table{border-collapse:collapse;width:100%;max-width:900px;margin:12px 0;font-size:13px;}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line);}
+th{color:var(--text-muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;}
+.ej{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;max-width:720px;margin:6px 0;font-size:13px;}
+.ej span:nth-child(2){color:var(--text-muted);}
+.ej code{display:block;}
+@media (max-width:820px){
+  .wrap{grid-template-columns:1fr;gap:10px;padding:18px 16px 60px;}
+  nav{position:static;max-height:none;}
+  .ej{grid-template-columns:1fr;}
+  .ej span:nth-child(2){display:none;}
+  table{display:block;overflow-x:auto;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <div class="mark"><span>RD</span><b>Manual de uso</b></div>
+  <ol>
+    <li><a href="#que-es">Qué es el Auditor de Rankings Digitales</a></li>
+    <li><a href="#entrar">Ingreso y permisos</a></li>
+    <li><a href="#pantalla">Estructura de la pantalla</a></li>
+    <li><a href="#rutina">Rutina de trabajo</a></li>
+    <li><a href="#carga">Carga CSV</a></li>
+    <li><a href="#titulos">Normalización de títulos</a></li>
+    <li><a href="#principal">Tabla principal</a></li>
+    <li><a href="#descargas">Reporte BO y CSV: opciones de descarga</a></li>
+    <li><a href="#territorio">Tabla por territorio</a></li>
+    <li><a href="#tickets">Tickets enviados</a></li>
+    <li><a href="#historial">Historial de cargas</a></li>
+    <li><a href="#onedrive">Guardado y respaldos</a></li>
+    <li><a href="#panel">Panel de control</a></li>
+    <li><a href="#otras">Uso desde otras computadoras</a></li>
+    <li><a href="#problemas">Mensajes frecuentes</a></li>
+  </ol>
+  <a class="volver" href="./">← Volver a la aplicación</a>
+</nav>
+
+<main>
+<h1>Manual de uso</h1>
+<p class="lead">Guía de uso del Auditor de Rankings Digitales: carga de charts y reportes, búsqueda y filtros, registro de
+Tempo ID, generación del reporte BO y control de cada obra por territorio.</p>
+
+<section id="que-es">
+<h2>Qué es el Auditor de Rankings Digitales</h2>
+<p>El Auditor de Rankings Digitales reúne las canciones de los charts semanales de Spotify y YouTube de cada territorio y permite
+controlar su estado:</p>
+<ul>
+  <li><b>Tabla principal:</b> cada canción figura una sola vez, aunque aparezca en charts de varios territorios o
+    semanas, junto con su <b>Tempo ID</b>.</li>
+  <li><b>Tabla por territorio:</b> cada canción en todos los territorios (aunque solo figure en el chart de uno), con
+    los datos del <b>Reporte Tempo Control</b> y del
+    <b>Reporte BackOffice</b>, y un <b>estado de trabajo</b> que indica si los porcentajes coinciden o requieren
+    revisión.</li>
+</ul>
+<p>Territorios disponibles: AR, CL, PE, UY, PY, CO, EC y MX. La información cargada queda guardada en el sistema, no
+en la computadora del usuario.</p>
+</section>
+
+<section id="entrar">
+<h2>Ingreso y permisos</h2>
+<p>El ingreso se realiza con email y contraseña. Después de 8 intentos fallidos, el ingreso se bloquea por unos
+minutos.</p>
+<ul>
+  <li><b>Mantener la sesión iniciada en esta computadora</b> (marcada por defecto): al volver a abrir la aplicación no
+    se solicita la contraseña. La sesión se cierra después de 30 días sin uso o al presionar <b>Cerrar sesión</b>.
+    Conviene desmarcarla en una computadora compartida.</li>
+  <li>Sin esa opción, la sesión se cierra al cerrar el navegador, después de 8 horas sin uso o al presionar
+    <b>Cerrar sesión</b>.</li>
+  <li><b>Guardar la contraseña:</b> al ingresar por primera vez, Edge o Chrome ofrecen guardarla. Aceptá con
+    <b>Guardar</b> y el navegador la completa en los ingresos siguientes. La contraseña queda en el administrador de
+    contraseñas del navegador, no en el sistema.</li>
+</ul>
+<p>Debajo del botón <b>Ingresar</b> figuran dos opciones. En ambas, la contraseña nueva debe tener al menos 10
+caracteres y, al guardarla, se cierran las sesiones abiertas.</p>
+<ul>
+  <li><b>Cambiar contraseña:</b> solicita el email, la contraseña actual y la nueva.</li>
+  <li><b>¿Olvidaste la contraseña?:</b> solicitá un código de restablecimiento a la persona que administra el sistema.
+    Ingresá el email, el código y la contraseña nueva. El código sirve una sola vez, durante 30 minutos.</li>
+</ul>
+<table>
+  <tr><th>Perfil</th><th>Permisos</th></tr>
+  <tr><td><b>Usuario estándar</b></td><td>Carga de archivos, edición de Tempo ID y estados de trabajo, y descargas.</td></tr>
+  <tr><td><b>Administrador</b></td><td>Lo mismo que el usuario estándar y, además, acceso al <a href="#panel">Panel de
+    control</a>. Actualmente, rocio.guevara@sonymusicpub.com.</td></tr>
+</table>
+</section>
+
+<section id="pantalla">
+<h2>Estructura de la pantalla</h2>
+<ul>
+  <li><b>Superior izquierda:</b> fecha del último chart cargado de Spotify y de YouTube <b>del territorio
+    seleccionado</b>. Como cada territorio se carga por separado, con "Todos los países" se muestra el mensaje
+    <i>"Seleccionar país para ver fecha de última carga"</i>. Se toma el territorio del filtro de la pestaña activa; en
+    Carga CSV e Historial de cargas, el último seleccionado. La fecha corresponde a la <b>semana del chart</b>, no al
+    día de la carga: cargar hoy un chart anterior no la modifica.</li>
+  <li><b>Superior derecha:</b> usuario y perfil, <b>Manual de uso</b> y <b>Cerrar sesión</b>.</li>
+  <li><b>Pestañas:</b> Tabla principal, Tabla por territorio, Tickets enviados, Carga CSV e Historial de cargas.</li>
+  <li><b>Pie de página:</b> cantidad de filas visibles con los filtros aplicados.</li>
+</ul>
+</section>
+
+<section id="rutina">
+<h2>Rutina de trabajo</h2>
+<ol class="pasos">
+  <li><b>Cargar los charts</b> de Spotify y YouTube de cada territorio en <b>Carga CSV</b>. Las canciones nuevas se
+    agregan a la tabla principal sin Tempo ID.</li>
+  <li><b>Completar los Tempo ID</b>, de una de estas formas:
+    <ul>
+      <li>manualmente, en la columna Tempo ID de la tabla principal;</li>
+      <li>por archivo: en la tabla principal, <b>Descargar CSV</b> &gt; <b>Todas</b>; completar la columna
+        <code>tempo_id</code> en Excel y cargar ese mismo archivo en Carga CSV, donde se identifica como "Tempo IDs".</li>
+    </ul>
+  </li>
+  <li><b>Generar el reporte BO</b> con <b>Enviar reporte BO</b> &gt; <b>Identificadas desde tu último reporte BO</b>
+    (solo las obras que obtuvieron Tempo ID después de tu último reporte BO) o <b>Todas</b>. Ese archivo se carga en
+    BO.</li>
+  <li><b>Cargar las respuestas</b> en Carga CSV: el <b>Reporte BackOffice</b> (uno por territorio) y el <b>Reporte Tempo
+    Control</b>.</li>
+  <li><b>Revisar la tabla por territorio:</b> filtrar <b>Estado de trabajo</b> por <b>RECLAMO ACTIVO</b>,
+    <b>REVISAR NOT WORK</b> y <b>REVISAR %</b>, y resolver cada obra.</li>
+</ol>
+</section>
+
+<section id="carga">
+<h2>Carga CSV</h2>
+<ol class="pasos">
+  <li>Arrastrá uno o varios archivos .csv al recuadro, o hacé clic para seleccionarlos. Pueden ser de distintos tipos:
+    el sistema identifica cada uno.</li>
+  <li>El avance se muestra con una barra y una lista. Cada archivo figura <i>En espera</i>, <i>Procesando</i> y, al
+    finalizar, <i>Cargado</i>, <i>Con errores</i> o <i>Sin cargar</i>, junto con su tipo, territorio, semana y filas
+    cargadas.</li>
+  <li>Al finalizar se muestran los totales y, si corresponde, el detalle de los errores.</li>
+</ol>
+<p>Cada archivo se carga completo o no se carga: si la carga se interrumpe (por ejemplo, por un corte de conexión),
+no quedan datos parciales y el archivo puede volver a cargarse.</p>
+<table>
+  <tr><th>Tipo de archivo</th><th>Información que carga</th></tr>
+  <tr><td><b>Spotify</b> (chart semanal)</td><td>La semana del chart de un territorio: posiciones y streams. Crea las
+    canciones que no existían.</td></tr>
+  <tr><td><b>YouTube</b> (chart semanal)</td><td>Igual que Spotify, con el chart de YouTube (las vistas se registran como
+    streams).</td></tr>
+  <tr><td><b>Reporte BackOffice</b></td><td>Datos de BO de cada obra en un territorio: código BO, C/A, estado, reclamos y
+    % Mech BO.</td></tr>
+  <tr><td><b>Reporte Tempo Control</b></td><td>Porcentajes de Tempo (% Perf y % Mech), fecha de creación y estado de cada
+    obra, para todos los territorios que incluya.</td></tr>
+  <tr><td><b>Tempo IDs</b></td><td>Tempo ID de obras de la tabla principal. Corresponde al CSV descargado de la tabla
+    principal, con la columna tempo_id completa con el número o uno de los valores admitidos (ver
+    <a href="#principal">Registro del Tempo ID</a>). Si un número ya está en otra obra, las dos se fusionan.</td></tr>
+</table>
+<div class="caja">
+  <p><b>Charts:</b> subí los archivos .csv con el nombre de descarga; el territorio y la semana del título se utilizan
+  para interpretar el archivo. Un chart cuyo nombre no incluye la fecha no se carga.</p>
+  <p><b>Semanas en orden:</b> no se puede saltear una semana. Cada territorio y plataforma continúa desde su última
+  semana cargada; si falta una, el archivo no se carga y se indica la semana que falta. Al seleccionar varios archivos
+  a la vez, se cargan de la semana más antigua a la más reciente. Las semanas anteriores a la última o ya cargadas se
+  pueden cargar en cualquier momento.</p>
+  <p><b>Reportes:</b> solo se cargan las obras cuyo Tempo ID ya figura en la tabla principal. Conviene completar los
+  Tempo ID antes de cargar los reportes.</p>
+  <p><b>Reporte BackOffice:</b> el territorio se toma del nombre del archivo (por ejemplo <code>…_PAIS_PARAGUAY…</code>). Si
+  no figura, seleccionalo en la pantalla de carga antes de subir el archivo.</p>
+  <p><b>Archivos repetidos:</b> volver a cargar un archivo no duplica información; se actualizan la semana y el
+  territorio correspondientes, o los datos de esas obras.</p>
+</div>
+</section>
+
+<section id="titulos">
+<h2>Normalización de títulos</h2>
+<p>Una misma canción puede figurar escrita de distintas formas según el chart o la semana. Para registrarla como una
+sola obra, el sistema normaliza el título y el artista al cargarlos:</p>
+<ul>
+  <li><b>Corrige las tildes mal codificadas</b> de archivos guardados con otra codificación: "FrÃ¡gil" se lee como
+    "Frágil", "PLÃSTICO" como "PLÁSTICO" y "DESPUESâ€¦" como "DESPUES…". También elimina los caracteres invisibles, para
+    que dos títulos iguales a la vista correspondan siempre a la misma obra.</li>
+  <li><b>Elimina los acentos:</b> "Canción" se registra como "Cancion". Los signos <code>¿</code> y <code>¡</code> se
+    conservan.</li>
+  <li><b>Escribe los puntos suspensivos como tres puntos:</b> "DESPUES…" se registra como "DESPUES...".</li>
+  <li><b>Reemplaza "&amp;" por una coma:</b> "Artista A &amp; Artista B" se registra como "Artista A, Artista B".</li>
+  <li><b>Elimina las comillas dobles:</b> <code>"EMHDM"</code> se registra como <code>EMHDM</code>.</li>
+  <li><b>Elimina los artistas vacíos</b> de la lista: algunos charts informan un artista sin nombre (", Myke Towers"),
+    que se registra como "Myke Towers".</li>
+  <li><b>Elimina las marcas de versión en vivo:</b> paréntesis o corchetes con "en vivo", "vivo" o "live", y los tramos
+    entre guiones que comienzan con esas palabras.</li>
+  <li><b>Elimina los espacios sobrantes</b>, incluidos los del inicio y el final.</li>
+  <li>Si el chart no informa el artista (caso de algunos videos de YouTube), se registra como <b>"Sin artista"</b>.</li>
+</ul>
+<p>Ejemplos:</p>
+<div class="ej"><code>¿Qué Pasó? [Live Session]</code><span>→</span><code>¿Que Paso?</code></div>
+<div class="ej"><code>Tema - En Vivo Gran Rex - Remix</code><span>→</span><code>Tema - Remix</code></div>
+<div class="ej"><code>Tema - Live at Luna Park</code><span>→</span><code>Tema</code></div>
+<div class="ej"><code>3 PECADOS DESPUESâ€¦</code><span>→</span><code>3 PECADOS DESPUES...</code></div>
+<p>Con el título y el artista normalizados se forma la columna <b>Track - Artista</b> ("Título - Artista"). Dos filas
+con el mismo título y artista normalizados corresponden a la misma obra, sin importar mayúsculas y minúsculas: sus
+charts se asocian a esa obra y no se crea una nueva.</p>
+<p>También se reconocen como la misma obra:</p>
+<ul>
+  <li><b>Artistas invitados en el título o en el artista:</b> <i>Danza Kuduro (feat. Lucenzo) - Don Omar</i> y
+    <i>Danza Kuduro - Don Omar, Lucenzo</i>. Se compara el título sin "(feat. …)", "(with …)" o "(con …)" y el conjunto
+    de artistas, con los invitados incluidos.</li>
+  <li><b>Artista incompleto:</b> <i>Jovenes Millonarios - , Myke Towers</i> corresponde a <i>Jovenes Millonarios -
+    Eladio Carrion, Myke Towers</i>, si hay una sola obra con ese título que incluye a esos artistas. Queda como nombre
+    principal el que tiene la lista completa.</li>
+</ul>
+<p>En esos casos los charts se cargan en la obra que ya existe y el otro nombre se muestra debajo como <b>Unificada</b>.
+Las obras ya cargadas con estos casos se unificaron (salvo que tuvieran Tempo ID numéricos distintos).</p>
+<div class="caja"><p>En el <b>reporte BO</b> también se eliminan las comas y los punto y coma del título, ya que Excel
+y BO los interpretan como separadores de columna.</p></div>
+</section>
+
+<section id="principal">
+<h2>Tabla principal</h2>
+<p>Una fila por canción, en orden alfabético por Track - Artista, también al buscar o filtrar. La tabla muestra 100 filas por
+página; debajo se indican las filas visibles y el total (por ejemplo, "1–100 de 12.345") y los botones para pasar de
+página. La búsqueda y los filtros se aplican sobre todas las canciones, no solo sobre la página visible.</p>
+<p>Arriba de la tabla figuran las obras <b>identificadas</b> (con Tempo ID, incluidas las marcadas como UNCONTROLLED o
+COMPILADO) y las obras <b>sin identificar</b>, con los mismos filtros y búsqueda de la tabla: ambas cantidades suman
+el total.</p>
+<h3>Búsqueda y filtros</h3>
+<ul>
+  <li><b>Buscar:</b> por título, artista o Tempo ID, sobre los resultados ya filtrados. Los resultados se actualizan
+    al dejar de escribir.</li>
+  <li><b>Tempo ID</b> (en el encabezado de esa columna): <b>Vacíos</b> muestra solo las obras sin Tempo ID y
+    <b>Con Tempo ID</b>, las que ya lo tienen. Se combina con la búsqueda: por ejemplo, un artista y Tempo ID vacíos
+    muestra las obras de ese artista que faltan identificar.</li>
+  <li><b>País:</b> canciones que figuraron en los charts de ese territorio.</li>
+  <li><b>Desde / Hasta:</b> canciones que figuraron en los charts en ese período. Combinado con el país, por ejemplo:
+    "lo ingresado en AR en octubre". <b>Limpiar</b> quita todos los filtros y la búsqueda.</li>
+</ul>
+<p>Al aplicar o quitar un filtro se abre un aviso con los filtros elegidos y la cantidad de obras que se muestran ahora
+y antes; se cierra con <b>Aceptar</b>. Mientras haya filtros, una línea arriba de la tabla los indica junto con la
+cantidad de obras, y los campos filtrados se ven resaltados. Lo mismo ocurre en la tabla por territorio, con la
+cantidad de registros.</p>
+<h3>Registro del Tempo ID</h3>
+<p>Ingresá el número en la celda y salí de ella (clic fuera o Tab): se guarda automáticamente. Las celdas vacías se
+marcan en rojo. El Tempo ID registrado se aplica también a todas las filas de esa obra en la tabla por territorio.</p>
+<p>Además del número se admiten estos valores, que pueden repetirse en varias obras: <b>UNCONTROLLED</b>,
+<b>PENDING ARGENTINA</b>, <b>PENDING CHILE</b>, <b>PENDING COLOMBIA</b>, <b>PENDING COREA</b>, <b>PENDING ESPAÑA</b>,
+<b>PENDING MEXICO</b>, <b>PENDING MIAMI</b>, <b>PENDING URUGUAY</b> y <b>PENDING USA</b>. Se eligen de la lista que se
+despliega en la celda (flecha hacia abajo o clic en la celda vacía), o se escribe parte del nombre: por ejemplo,
+<code>miam</code> completa <b>PENDING MIAMI</b> y <code>colom</code>, <b>PENDING COLOMBIA</b>. Si lo escrito coincide con
+más de un valor, la lista muestra solo esos. Las letras que no corresponden a ningún valor no se escriben. La lista incluye también <b>UNCONTROLLED DUP</b>, que
+no es un valor: unifica la obra con otra (ver <a href="#principal">UNCONTROLLED DUP</a>). Si hace falta otro valor, se
+agrega al sistema. El reporte BO incluye solo las obras con Tempo ID numérico.</p>
+<p>Un Tempo ID corresponde a una sola obra. Si ya está asignado a otra, el sistema indica a cuál. Si se trata de la
+misma canción (por ejemplo, escrita de otra forma en Spotify y en YouTube, o un cover), las dos obras se unifican:</p>
+<ul>
+  <li>Se selecciona el <b>nombre que queda como principal</b> (por ejemplo, el de la versión original y no el del
+    cover). El otro nombre queda unificado a esa obra y se muestra debajo del nombre principal, en la tabla principal.</li>
+  <li>Todo pasa a la obra que queda: charts, reportes y descargas registradas. Si las dos figuraron en el mismo chart y
+    semana, sus streams se suman y se conserva el mejor puesto. Las próximas cargas de charts con cualquiera de los dos
+    nombres se registran en esa obra.</li>
+  <li><b>Cancelar:</b> no se modifica nada.</li>
+</ul>
+<p>Para cambiar el nombre principal de una obra ya unificada, presioná <b>Usar este nombre</b> debajo del nombre
+unificado: los dos nombres se intercambian y los datos de la obra no cambian.</p>
+<p>Los datos de los Reportes BackOffice y Tempo Control se cargan por Tempo ID: siempre se muestran en la obra que tiene
+ese Tempo ID. Si un Tempo ID estaba asignado a la obra equivocada, corregí primero esa obra (con su Tempo ID correcto
+o vacía) y después registrá el Tempo ID en la obra que corresponde: sus datos de BO y de Tempo, con el ticket de cada
+territorio, pasan a esa obra en la tabla por territorio. Mientras ninguna obra tiene el Tempo ID, sus datos no se
+muestran.</p>
+<h3>Tempo ID duplicado en Tempo</h3>
+<p>Si la canción tiene dos obras en Tempo (dos Tempo ID), ingresá los dos separados por un guion:
+<code>123-456</code>. El sistema solicita confirmación y la obra queda con los dos:</p>
+<ul>
+  <li>En la tabla principal figura una sola vez, con <code>123-456</code> en la columna Tempo ID; los charts y streams son
+    los mismos.</li>
+  <li>En la tabla por territorio aparece <b>una vez por cada Tempo ID</b> en cada territorio, con <i>*dup*</i> al lado del
+    Tempo ID y el estado de trabajo <b>DUPLICADA</b>. Cada Tempo ID tiene sus propios datos del Reporte BackOffice y del
+    Reporte Tempo Control, y su propio ticket: el seguimiento se hace por separado.</li>
+  <li>El reporte BO incluye una línea por cada Tempo ID.</li>
+</ul>
+<p>Si más adelante las dos obras se unifican en Tempo, ingresá el Tempo ID que queda: la obra vuelve a tener uno solo y
+los datos del otro dejan de mostrarse.</p>
+<h3>UNCONTROLLED DUP</h3>
+<p>Para dos obras sin Tempo ID numérico que son la misma canción (por ejemplo, escrita de otra forma en Spotify y en
+YouTube), elegí <b>UNCONTROLLED DUP</b> en la lista del Tempo ID de una de ellas. El sistema solicita el Track - Artista
+de la otra: copialo exactamente como figura en la tabla principal y pegalo. Después se selecciona el nombre que queda
+como principal. Las dos obras se unifican como en la fusión por Tempo ID (charts, streams, reportes y descargas) y queda
+una sola, UNCONTROLLED. Las próximas cargas con cualquiera de los dos nombres se registran en esa obra.</p>
+<p>No se aplica si alguna de las dos tiene Tempo ID numérico: en ese caso, ingresá ese número en la otra obra para
+unificarlas.</p>
+<h3>Compilado</h3>
+<p>Algunos charts registran varias canciones en un solo nombre, separadas por "/", por ejemplo
+<i>A Un Milimetro De Mi / Tan Natural - Q' Lokura, Sergio Torres</i>. En ese caso, ingresá el Tempo ID de cada canción
+en el mismo orden del título, separados por "/": <code>123/456</code>. Cada parte puede ser también uno de los valores
+admitidos (por ejemplo <code>123/UNCONTROLLED</code>): después de escribir "/", la lista de la celda ofrece cada valor
+a continuación de lo ya escrito. El sistema muestra cómo queda separado y solicita confirmación:</p>
+<ul>
+  <li>El compilado se separa en una obra por canción: título + " - " + artista, cada una con su Tempo ID
+    (<i>A Un Milimetro De Mi - Q' Lokura, Sergio Torres</i> con 123 y <i>Tan Natural - Q' Lokura, Sergio Torres</i> con
+    456). Si alguna canción ya existe en la tabla, se utiliza esa obra y no se repite.</li>
+  <li>Los streams del compilado se dividen en partes iguales entre las canciones, en cada territorio y semana. La tabla
+    principal y la tabla por territorio muestran las canciones en lugar del compilado.</li>
+  <li>Las próximas cargas de charts con el nombre del compilado se registran directamente en sus canciones, con los
+    streams divididos: el compilado no vuelve a aparecer.</li>
+</ul>
+<p>La cantidad de Tempo ID tiene que coincidir con la cantidad de canciones del título. El mismo formato se admite en
+la columna tempo_id del archivo de Tempo IDs que se carga en Carga CSV.</p>
+<h3>Botones de descarga</h3>
+<ul>
+  <li><b>Descargar CSV:</b> "Track - Artista" y Tempo ID, para completar los Tempo ID en Excel o consultarlos en Tempo.</li>
+  <li><b>Enviar reporte BO:</b> carga el reporte directamente en el servidor de BO (ver abajo). Si el envío no está
+    habilitado para tu usuario, el botón es <b>Descargar reporte BO</b>: archivo para cargar en BO.</li>
+</ul>
+<p>Ambos abren una ventana para elegir <b>todas</b> o las <b>identificadas desde tu último reporte o descarga</b>; ver la
+sección siguiente. Respetan los filtros de país y fechas, no la búsqueda.</p>
+</section>
+
+<section id="descargas">
+<h2>Reporte BO y CSV: opciones de descarga</h2>
+<p><b>Descargar reporte BO</b> y <b>Descargar CSV</b> abren una ventana con dos opciones y la cantidad de obras de cada
+una. También se informa la última descarga de ese tipo: fecha, cantidad de obras y opción elegida.</p>
+<p>Las dos descargas respetan los filtros y la búsqueda aplicados en la tabla principal: por ejemplo, con la búsqueda
+"UNCONTROLLED" el archivo incluye solo esas obras. La ventana indica los filtros aplicados, y el archivo sale en orden
+alfabético.</p>
+<table>
+  <tr><th>Opción</th><th>Incluye</th></tr>
+  <tr><td><b>Todas</b></td><td>Reporte BO: todas las obras con Tempo ID. CSV: todas las obras de la tabla principal,
+    con y sin Tempo ID.</td></tr>
+  <tr><td><b>Identificadas desde tu último reporte BO</b> / <b>desde tu última descarga</b></td><td>Obras que obtuvieron
+    Tempo ID después de tu último reporte BO (enviado o descargado) o de tu última descarga del CSV, según el botón: las
+    que no estaban identificadas en ninguno de tus reportes o descargas anteriores.</td></tr>
+</table>
+<ul>
+  <li>Cada descarga queda registrada. Las obras identificadas que incluye dejan de contarse, <b>solo para quien la
+    generó</b>, en la opción de identificadas de ese botón. Cada persona tiene su propio seguimiento: si una persona
+    genera el reporte BO para sus países, las demás siguen viendo esas obras para generar el de los suyos. El reporte BO
+    y el CSV se registran por separado.</li>
+  <li>Para el <b>reporte BO</b> cuentan como identificadas las obras con Tempo ID numérico. Para el <b>CSV</b>, también
+    las marcadas como UNCONTROLLED o COMPILADO.</li>
+  <li>El archivo del reporte BO no tiene encabezado. Cada línea tiene el formato <code>TempoID;Título;BOcargaN</code>,
+    donde N es el número de carga, que aumenta en uno con cada reporte. El nombre del archivo lo refleja:
+    <code>reporte_bo_carga12.csv</code> (todas) o <code>reporte_bo_carga12_identificadas.csv</code>.</li>
+</ul>
+<div class="caja ojo"><p>Si no hay obras identificadas desde tu último reporte o descarga, la opción figura deshabilitada: no se
+genera un archivo vacío ni se utiliza un número de carga.</p></div>
+<h3>Enviar reporte BO</h3>
+<p>El reporte BO no se descarga: se envía directamente al servidor de BO (<code>intranet.backoffice-ms.com</code>), en
+lugar de cargarlo con FileZilla. Cada persona ingresa su propio usuario y contraseña de BO, y el archivo queda en su
+carpeta de carga.</p>
+<ol class="pasos">
+  <li>Presioná <b>Enviar reporte BO</b> en la tabla principal.</li>
+  <li>Ingresá tu <b>usuario y contraseña de BO</b> (los mismos de FileZilla). El usuario queda propuesto para la próxima
+    vez; la contraseña se solicita en cada envío y no se guarda.</li>
+  <li>Seleccioná <b>Todas</b> o <b>Identificadas desde tu último reporte BO</b>.</li>
+</ol>
+<p>El archivo, con el mismo nombre y formato de siempre (<code>reporte_bo_carga12.csv</code>), queda en la carpeta de tu
+usuario en el servidor de BO, la misma que se abre al conectarse con FileZilla. Solo si el envío se completa queda
+registrado (número de carga y obras incluidas); si falla, el sistema indica el motivo y no registra nada. Para
+descargar el archivo en lugar de enviarlo, presioná <b>Descargar el archivo en lugar de enviarlo</b> en la misma
+ventana.</p>
+<p>El envío lo hace la computadora donde funciona el sistema, con su conexión a internet; no hace falta una VPN.</p>
+<p><b>Carpeta en el servidor de BO:</b> no hace falta indicarla. Si en la carpeta que se abre al conectarse no se
+pueden cargar archivos, el sistema utiliza la única carpeta que contiene, la de carga de cada usuario de BO (la misma que
+aparece en FileZilla). Si hubiera más de una, la ventana muestra las carpetas disponibles para seleccionar la correcta;
+la elección se recuerda para los envíos siguientes.</p>
+<p>Si un envío falla, debajo del mensaje figura <b>Registro de la conexión</b>: el intercambio con el servidor de BO,
+equivalente al registro de FileZilla (la contraseña no se muestra). <b>Copiar registro</b> lo copia para informarlo a
+quien administra el sistema.</p>
+<p><b>Certificado del servidor de BO:</b> en el primer envío, el sistema puede indicar que el certificado del servidor
+no es de confianza (por ejemplo, porque es autofirmado), el mismo aviso que FileZilla muestra en la primera conexión.
+La ventana presenta los datos del certificado y su huella SHA-256. Un Administrador lo acepta con <b>Confiar en este
+certificado y enviar</b>; el sistema lo recuerda y solo vuelve a preguntar si el servidor presenta otro certificado.
+Hasta que se acepta, el usuario y la contraseña de BO no se envían al servidor.</p>
+</section>
+
+<section id="territorio">
+<h2>Tabla por territorio</h2>
+<p>Una fila por obra y territorio, con los datos de Tempo y de BO, en orden alfabético por Track - Artista y, para una
+misma obra, por territorio. Cada obra que figuró en algún chart aparece en <b>todos los territorios</b>, aunque solo se
+escuche en uno: así se controla su registro en Tempo y en BO en cada país. Las obras <b>UNCONTROLLED</b> no figuran
+en esta tabla; aparecen cuando reciben un Tempo ID numérico. En los territorios donde la obra no figuró
+en el chart, debajo del país se indica <i>No en chart</i>. Al igual que la tabla principal, muestra 100 filas por página, y la búsqueda y
+los filtros abarcan todos los registros.</p>
+<table>
+  <tr><th>Columna</th><th>Descripción</th></tr>
+  <tr><td>País, Track - Artista</td><td>Territorio y obra. Si la obra no figuró en el chart de ese territorio, debajo
+    del país se indica <i>No en chart</i>.</td></tr>
+  <tr><td>Created date</td><td>Fecha de creación de la obra en Tempo (del Reporte Tempo Control).</td></tr>
+  <tr><td>Tempo ID</td><td>El de la tabla principal. En una obra con Tempo ID duplicado, cada fila muestra uno de ellos,
+    con <i>*dup*</i> al lado.</td></tr>
+  <tr><td>% Perf Tempo, % Mech Tempo</td><td>Porcentajes del Reporte Tempo Control para ese territorio, tal como se
+    informan. Si Tempo informa un texto (por ejemplo NVFT o NOP), se muestra ese texto.</td></tr>
+  <tr><td>BO ID, C/A, % Mech BO</td><td>Código de la obra en BO, su C/A (song owner) y el porcentaje mecánico, del
+    Reporte BackOffice.</td></tr>
+  <tr><td>Estado, Reclamos</td><td>Datos de BO: estado de la obra y reclamos (counterclaims).</td></tr>
+  <tr><td>Estado de trabajo</td><td>Resultado de la comparación entre Tempo y BO (ver abajo), con una etiqueta por
+    estado: rojo para los problemas, verde para OK y azul para los estados marcados a mano.</td></tr>
+  <tr><td>Ticket</td><td>Número del ticket enviado cuando la obra está mal registrada. Para un grupo de obras se carga
+    con <b>Cargar ticket</b> (ver abajo); para una sola, se escribe en la celda y se guarda al salir de ella o al
+    presionar Enter.</td></tr>
+  <tr><td>Fecha</td><td>Fecha del ticket. Se escribe como DDMMAAAA (por ejemplo, 26092026) y se muestra como
+    26/09/2026.</td></tr>
+  <tr><td>Show prior</td><td>Histórico de cambios de la obra en ese territorio, con fecha: cada cambio del Reporte
+    BackOffice, del Reporte Tempo Control y del estado de trabajo.</td></tr>
+</table>
+<h3>Estado de trabajo automático</h3>
+<p>El sistema asigna el estado con los datos del Reporte BackOffice y del Reporte Tempo Control de la obra en ese
+territorio. Si la obra tiene más de un problema, se muestran todos en la misma celda, uno debajo del otro, y el
+filtro <b>Estado de trabajo</b> la incluye al seleccionar cualquiera de ellos. Por ejemplo, una obra con REVISAR NOT WORK
+y REVISAR % aparece al filtrar por cada uno. En la descarga, los problemas van separados por coma.</p>
+<ul>
+  <li><b>RECLAMO ACTIVO:</b> el Reporte BackOffice informa un reclamo en la columna Reclamos. Los valores vacíos, "No",
+    "None", "0" o de reclamo resuelto/cerrado no cuentan como reclamo.</li>
+  <li><b>REVISAR NOT WORK:</b> el Estado de BO no es <b>WORK</b>. Una obra que figura en los rankings tiene usos, por
+    lo que debería estar registrada como WORK.</li>
+  <li><b>REVISAR %:</b> el % Mech de BO y el de Tempo no coinciden.</li>
+  <li><b>OK BO-Tempo:</b> los porcentajes coinciden (diferencia igual o menor a 0,1).</li>
+  <li><b>OK - Obra AR / OK - Obra MX:</b> BO informa 0% y Tempo informa un porcentaje, pero la obra se originó en la
+    oficina de Argentina o de México. Es un caso esperado.</li>
+  <li><b>DUPLICADA</b> (en azul): la obra tiene el Tempo ID duplicado en Tempo (ver <a href="#principal">Tempo ID
+    duplicado en Tempo</a>). Aparece en las filas de cada uno de sus Tempo ID, junto con el resto de los estados.</li>
+  <li><b>TICKET ENVIADO</b> (en amarillo): la obra tiene un ticket cargado y sus problemas están informados. Se mantiene
+    mientras la obra tenga problemas; si un reporte nuevo la deja sin problemas, pasa a OK. Al quitar el ticket, el
+    estado se vuelve a calcular.</li>
+  <li>Sin valor: faltan los datos para comparar (Reporte Tempo Control o Reporte BackOffice de la obra en ese
+    territorio) y no hay reclamo ni otro estado de BO.</li>
+</ul>
+<p>El estado se recalcula con cada carga de un Reporte BackOffice o Tempo Control. Los estados automáticos los define
+siempre el sistema. Para registrar otro caso, presioná <b>Marcar</b> en la celda y seleccioná <b>duplicada</b> o
+<b>dif de split</b>: esos estados se mantienen aunque se carguen reportes nuevos. Para que el sistema vuelva a calcular
+el estado, presioná <b>Marcar</b> y seleccioná <b>Automático</b>.</p>
+<h3>Filtros y descarga</h3>
+<ul>
+  <li><b>País</b> y <b>Desde / Hasta</b> (semanas del chart): las obras que figuraron en algún chart en ese período, en todos los
+    territorios.</li>
+  <li><b>Estado</b> (el Estado de BO), <b>Reclamos</b> y <b>Estado de trabajo</b>, con los valores presentes en la
+    tabla, como el filtro de Excel. "—" selecciona las obras sin valor.</li>
+  <li><b>Todo / Ranking de origen</b> (al final): <b>Ranking de origen</b> muestra cada obra solo en los territorios
+    donde figuró en el chart, sin las filas de control de los demás territorios (las marcadas <i>No en chart</i>).</li>
+  <li><b>Buscar</b> por título, artista o Tempo ID; con un guion (<code>-</code>), las obras sin Tempo ID.</li>
+  <li><b>Cargar ticket</b> (aparece con un filtro aplicado): carga el mismo ticket y la misma fecha en todas las obras
+    filtradas, también las de las páginas siguientes. Antes de confirmar indica cuántas obras son y cuántas ya tienen
+    otro ticket, que se reemplaza. La fecha se propone con el día de hoy y se puede modificar.</li>
+  <li>Los filtros y la búsqueda de esta tabla se conservan al pasar a otra pestaña y volver. <b>Limpiar</b> los quita
+    todos.</li>
+  <li><b>Descargar CSV</b> genera la tabla completa con los filtros y la búsqueda aplicados, y las mismas columnas de la
+    pantalla.</li>
+</ul>
+</section>
+
+<section id="tickets">
+<h2>Tickets enviados</h2>
+<p>Un renglón por número de ticket, el más reciente primero. Se completa solo al cargar tickets en la tabla por
+territorio.</p>
+<table>
+  <tr><th>Columna</th><th>Qué representa</th></tr>
+  <tr><td>Ticket</td><td>Número de ticket.</td></tr>
+  <tr><td>Cargado por</td><td>Usuario que cargó el ticket por primera vez.</td></tr>
+  <tr><td>Cargado el</td><td>Día y hora de esa carga.</td></tr>
+  <tr><td>Fecha del ticket</td><td>La fecha ingresada junto con el ticket.</td></tr>
+  <tr><td>Países</td><td>Territorios de las obras que tienen el ticket.</td></tr>
+  <tr><td>Obras</td><td>Cantidad de obras que tienen hoy ese ticket. Si a una obra se le carga otro ticket, pasa al
+    nuevo.</td></tr>
+</table>
+<p><b>Ver obras</b> muestra cada obra del ticket con su territorio, Tempo ID, fecha y estado de trabajo.</p>
+</section>
+
+<section id="historial">
+<h2>Historial de cargas</h2>
+<p>Muestra la información cargada en el sistema y el archivo de origen de cada dato. Es de carácter informativo: no
+permite descargar ni eliminar archivos. Se organiza en cuatro secciones:</p>
+<table>
+  <tr><th>Sección</th><th>Contenido</th></tr>
+  <tr><td><b>YouTube</b> y <b>Spotify</b></td><td>Con <b>Todos</b>, un resumen por territorio: semanas cargadas, primera y
+    última semana, y cantidad de archivos. Al seleccionar un territorio (botón o fila), el detalle de cada semana:
+    cantidad de canciones, archivo de origen, fecha de carga y usuario.</td></tr>
+  <tr><td><b>Reportes BackOffice</b></td><td>Obras con datos de BO por territorio y fecha de la última actualización, y
+    los archivos cargados con su territorio.</td></tr>
+  <tr><td><b>Reportes Tempo Control</b></td><td>Obras con datos de Tempo por territorio, obras de la tabla principal con
+    Tempo ID, y los archivos cargados (reportes de Tempo y archivos de Tempo IDs).</td></tr>
+</table>
+<p>Para cada archivo se informan las filas leídas, las filas cargadas y los errores. Los charts históricos
+incorporados mediante la carga masiva inicial figuran con el usuario <b>importación histórica</b>. "Archivo no registrado" indica
+que los datos de esa semana están en el sistema, pero no hay un archivo con ese territorio y esa semana en el nombre.
+Las descargas (reporte BO y CSV de la tabla principal) no se incluyen porque no son cargas; la última de cada tipo
+se informa en la ventana de su botón de descarga.</p>
+</section>
+
+<section id="onedrive">
+<h2>Guardado de la información y respaldos</h2>
+<p>La información se conserva en tres lugares independientes, de modo que una falla en uno no implica perder datos:</p>
+<table>
+  <tr><th>Lugar</th><th>Qué guarda</th><th>Cuándo</th></tr>
+  <tr><td><b>Base de datos del sistema</b> (Docker, en la computadora)</td><td>Toda la información: obras, Tempo ID,
+    charts, reportes, usuarios y archivos cargados. Es la fuente de verdad de la aplicación.</td><td>Al instante, con
+    cada carga o cambio.</td></tr>
+  <tr><td><b>Respaldos en la computadora</b></td><td>Copia completa de la base de datos y de los archivos cargados.
+    Se conservan los últimos 14 respaldos diarios.</td><td>Una vez por día, de forma automática, y cada vez que se
+    selecciona <b>Respaldar ahora</b> en el Panel de control.</td></tr>
+  <tr><td><b>OneDrive</b></td><td>Copia de cada archivo cargado y de los respaldos de la base de datos.</td><td>Unos
+    segundos después de cada carga y después de cada respaldo.</td></tr>
+</table>
+
+<h3>Base de datos en Docker</h3>
+<p>El sistema funciona dentro de Docker, en Ubuntu (WSL) de la computadora. La base de datos guarda cada cambio en
+el disco en el momento en que se realiza: cerrar la aplicación, apagar el servidor o reiniciar la computadora no
+borra información. Una carga se guarda completa o no se guarda: si se interrumpe, la información queda como estaba
+antes y basta con repetirla.</p>
+<p>Esta información depende de la computadora. Ante una falla del disco, un cambio de equipo o la reinstalación de
+Ubuntu, se recupera desde los respaldos.</p>
+
+<h3>Respaldo en OneDrive</h3>
+<p>Cada archivo cargado en el sistema se copia automáticamente en la carpeta compartida de OneDrive
+<code>SMP-Administration Argentina - Documents\Latam\RANKING DIGITAL REGIONAL</code>, como respaldo y registro de
+auditoría:</p>
+<table>
+  <tr><th>Carpeta</th><th>Contenido</th></tr>
+  <tr><td><code>Spotify Charts\&lt;país&gt;</code></td><td>Charts de Spotify cargados.</td></tr>
+  <tr><td><code>Youtube Charts\&lt;país&gt;</code></td><td>Charts de YouTube cargados.</td></tr>
+  <tr><td><code>Reportes BackOffice\&lt;país&gt;</code></td><td>Reportes BackOffice cargados.</td></tr>
+  <tr><td><code>Reportes Tempo Control</code></td><td>Reportes Tempo Control y archivos de Tempo IDs cargados.</td></tr>
+  <tr><td><code>respaldo_documentacion_sistema</code></td><td>Respaldos completos del sistema y documentación técnica. En
+    <code>respaldos\automaticos</code>, el respaldo diario de la base de datos.</td></tr>
+</table>
+<p>Al estar en OneDrive, los respaldos quedan fuera de la computadora, en la nube de la empresa: si el equipo se daña
+o se reemplaza, el sistema se reinstala y se restaura el último respaldo, con la información hasta ese momento. Si OneDrive no está
+disponible por un tiempo, las copias pendientes se completan cuando vuelve a estarlo, y la aplicación sigue
+funcionando con normalidad.</p>
+<div class="caja"><p>La información del sistema reside en su base de datos. La carpeta de OneDrive es una copia: el sistema
+no la lee, por lo que borrar o modificar un archivo allí no altera la información de la aplicación. Para incorporar
+datos, utilizá siempre <b>Carga CSV</b>. No conviene borrar ni mover los archivos de esa carpeta: son el respaldo.</p></div>
+
+<h3>Recomendaciones de seguridad</h3>
+<ul>
+  <li>Verificá en el Panel de control, sección <b>Respaldos y OneDrive</b>, que el último respaldo y la última copia
+    en OneDrive sean recientes.</li>
+  <li>Seleccioná <b>Respaldar ahora</b> antes de una carga grande o de un cambio importante en las obras.</li>
+  <li>Mantené OneDrive iniciado y sincronizado en la computadora.</li>
+  <li>La restauración de un respaldo reemplaza toda la información actual y se realiza desde la consola, por la
+    persona responsable del sistema.</li>
+</ul>
+</section>
+
+<section id="panel">
+<h2>Panel de control</h2>
+<p>Pestaña disponible solo para las personas autorizadas; para el resto de los usuarios no figura. Permite controlar
+el funcionamiento del sistema y la actividad de los usuarios sin utilizar la consola.</p>
+<table>
+  <tr><th>Sección</th><th>Contenido</th></tr>
+  <tr><td><b>Estado del sistema</b></td><td>Funcionamiento de cada servicio (base de datos, aplicación, espejo de
+    OneDrive y respaldos), recursos de la computadora (disco, memoria y procesador), volumen de información cargada y
+    resumen de respaldos. Se actualiza cada 15 segundos.</td></tr>
+  <tr><td><b>Respaldos y OneDrive</b></td><td>Último respaldo, última copia en OneDrive y registro de cada copia y
+    respaldo, con su resultado. <b>Respaldar ahora</b> realiza un respaldo completo y lo copia en OneDrive; conviene
+    utilizarlo después de una carga importante.</td></tr>
+  <tr><td><b>Usuarios</b></td><td>Alta de usuarios, oficina, bloqueo y desbloqueo, código para restablecer la
+    contraseña y cierre de las sesiones abiertas.</td></tr>
+  <tr><td><b>Actividad</b></td><td>Ingresos, cargas, descargas y cambios manuales de cada usuario, con filtros por
+    usuario, tipo de acción y fechas. Sin fechas, muestra los últimos 90 días. En cada cambio manual, <b>Ver obras</b>
+    muestra cada canción con lo que cambió: el Tempo ID anterior y el nuevo, con qué obra se unificó, o el estado de
+    trabajo o ticket de cada territorio.</td></tr>
+  <tr><td><b>Integridad de datos</b></td><td>Por territorio y plataforma: semanas cargadas y semanas faltantes. También
+    las cargas con avisos o sin filas cargadas, y los archivos que no están en el almacenamiento.</td></tr>
+  <tr><td><b>Registro del servidor</b></td><td>Últimas líneas del registro de la aplicación: inicio, pedidos rechazados
+    y errores.</td></tr>
+</table>
+<h3>Alta de un usuario</h3>
+<ol class="pasos">
+  <li>En <b>Usuarios</b>, ingresá el email y, si corresponde, la oficina. Presioná
+    <b>Crear usuario</b>.</li>
+  <li>El sistema muestra un código de activación, válido 72 horas. Entregáselo a la persona: no vuelve a
+    mostrarse.</li>
+  <li>La persona ingresa en "¿Olvidaste la contraseña?" su email, el código y la contraseña que elija. Nadie más la
+    conoce.</li>
+</ol>
+<p>Para una contraseña olvidada, <b>Código de contraseña</b> genera un código válido 30 minutos, que se utiliza de la
+misma forma.</p>
+<div class="caja"><p>El acceso al Panel de control y la restauración de un respaldo se realizan desde la consola de la
+computadora donde está instalado el sistema (<code>bash ranking.sh usuarios</code> y
+<code>bash ranking.sh restaurar</code>).</p></div>
+</section>
+
+<section id="otras">
+<h2>Uso desde otras computadoras</h2>
+<p>El sistema funciona en un servidor, y cada persona ingresa desde su computadora con la dirección del sistema:</p>
+<ul>
+  <li><b>Servidor en AWS</b> (forma actual): dirección propia con HTTPS,
+    que informa la administradora del sistema. El servidor está siempre encendido y se ingresa desde cualquier red, con
+    o sin la VPN de la empresa.</li>
+  <li><b>Una computadora como servidor:</b> enlace HTTPS fijo de Tailscale. El <b>Panel de control</b> (Estado del
+    sistema) lo muestra, con el botón <b>Copiar enlace</b>.</li>
+</ul>
+<h3>Alta de una persona</h3>
+<ol class="pasos">
+  <li>En el Panel de control, sección <b>Usuarios</b>, creá su usuario. El sistema muestra un código de activación.</li>
+  <li>Enviale la dirección del sistema y el código.</li>
+  <li>La persona abre la dirección en Edge o Chrome. No necesita ninguna otra cuenta: la dirección lleva directamente a
+    la pantalla de ingreso del sistema.</li>
+  <li>En la pantalla de ingreso del sistema elige <b>¿Olvidaste la contraseña?</b> e ingresa su email, el código y la
+    contraseña que elija. Desde entonces ingresa con su email y esa contraseña.</li>
+  <li>Para tenerlo como aplicación (ícono propio, sin pestañas): en Edge, menú <b>···</b> &gt; <b>Aplicaciones</b> &gt;
+    <b>Instalar este sitio como aplicación</b>.</li>
+</ol>
+<h3>Disponibilidad y seguridad</h3>
+<ul>
+  <li>Quien tenga la dirección llega a la pantalla de ingreso, pero solo entran las personas con usuario y contraseña
+    del sistema. Los intentos fallidos frenan el ingreso y las sesiones vencen sin uso. La conexión viaja cifrada
+    (HTTPS).</li>
+  <li>El servidor de AWS no depende de ninguna computadora. Si el servidor es una computadora, tiene que estar
+    encendida y conectada a internet: mientras se comparte no se suspende por inactividad, pero sí al apagarla,
+    suspenderla a mano o cerrar la tapa.</li>
+  <li>Si el servidor no está disponible, la aplicación lo indica y entra sola cuando vuelve a estarlo.</li>
+  <li>Todas las personas trabajan sobre la misma información: lo que carga o modifica una persona lo ven las demás al
+    actualizar la tabla.</li>
+</ul>
+<h3>Conexión con la VPN de la empresa</h3>
+<p>Si la conexión se interrumpe un momento, el sistema reintenta las consultas automáticamente y lo indica abajo de la
+pantalla (<b>Conexión inestable con el servidor: reintentando…</b>). Los cambios (por ejemplo, registrar un Tempo ID) no
+se reintentan solos: si un corte los interrumpe, el sistema lo informa; actualizá la tabla para verificar si se
+guardaron.</p>
+<p>Si con la VPN no se puede ingresar o los cortes son frecuentes:</p>
+<ol class="pasos">
+  <li>Abrí <b>Probar la conexión con el servidor</b> (debajo de la pantalla de ingreso, o el enlace del aviso). La prueba
+    funciona aunque la red no llegue al servidor e indica si la red de la empresa bloquea el acceso, si la conexión se
+    interrumpe o si el servidor no responde.</li>
+  <li>Probá con la VPN conectada y sin ella.</li>
+  <li>Con <b>Copiar el resultado</b>, enviá el resultado a la persona que administra el sistema.</li>
+</ol>
+<p>Cuando la VPN bloquea o corta el acceso, la solución la aplica IT: habilitar la dirección del enlace en el filtro web
+de la empresa y, si corresponde, excluirla del túnel de la VPN. La persona que administra el sistema hace ese
+pedido.</p>
+<h3>Habilitación (administración)</h3>
+<p>En el servidor de AWS, la dirección propia y su certificado HTTPS, que se renueva solo, se configuran una única vez
+según la guía <code>nube/AWS.md</code>.</p>
+<p>En una computadora servidor, el enlace lo provee Tailscale y se habilita una sola vez desde la terminal de
+Ubuntu:</p>
+<ol class="pasos">
+  <li>Ejecutá <code>bash ranking.sh compartir</code>.</li>
+  <li>Se abre el navegador para iniciar sesión en Tailscale. La primera vez se crea la cuenta, que es gratuita; conviene
+    una cuenta de GitHub, Google o Microsoft personal, porque la de la empresa puede requerir la aprobación de IT.</li>
+  <li>Tailscale solicita habilitar el enlace público: confirmá con <b>Enable</b>. Al finalizar, la terminal muestra el
+    enlace, que también figura en el Panel de control.</li>
+  <li>Para que la sesión no venza a los seis meses: en <code>https://login.tailscale.com/admin/machines</code>, en el
+    equipo <b>auditor-rankings</b>, menú <b>···</b> &gt; <b>Disable key expiry</b>.</li>
+</ol>
+<p>Desde entonces, el acceso se enciende y se apaga junto con el sistema. Para dejar de compartir:
+<code>bash ranking.sh compartir --apagar</code>.</p>
+</section>
+
+<section id="problemas">
+<h2>Mensajes frecuentes</h2>
+<table>
+  <tr><th>Mensaje o situación</th><th>Acción</th></tr>
+  <tr><td>"No se pudo determinar el país…"</td><td>El nombre del archivo no indica el territorio. En un chart, utilizá el
+    nombre original de descarga. En un Reporte BackOffice, seleccioná el país en Carga CSV y volvé a cargar el
+    archivo.</td></tr>
+  <tr><td>"tempo_id … no existe en la tabla principal"</td><td>El Reporte BackOffice o Tempo Control incluye una obra cuyo
+    Tempo ID no está registrado. Registrá ese Tempo ID en la tabla principal y volvé a cargar el reporte.</td></tr>
+  <tr><td>"No se encontró la obra … en la tabla principal"</td><td>En un archivo de Tempo IDs, el "Track - Artista" no
+    coincide con ninguna obra. Utilizá el CSV descargado de la tabla principal sin modificar esa columna.</td></tr>
+  <tr><td>"No se reconoce el formato del CSV"</td><td>El archivo no tiene las columnas de ninguno de los tipos admitidos
+    (ver <a href="#carga">Carga CSV</a>). Verificá que sea el archivo original y que esté guardado como CSV.</td></tr>
+  <tr><td>"El Tempo ID … ya está asignado a …"</td><td>Si es la misma canción, volvé a ingresarlo y aceptá la
+    unificación. Si no, verificá el Tempo ID en Tempo.</td></tr>
+  <tr><td>"Para separar un compilado, el título tiene que tener una canción por cada Tempo ID…"</td><td>La cantidad de
+    Tempo ID ingresados no coincide con las canciones del título separadas por "/". Ingresá un Tempo ID por canción,
+    en el mismo orden (ver <a href="#principal">Compilado</a>).</td></tr>
+  <tr><td>"No se encontró en la tabla principal la obra …" (UNCONTROLLED DUP)</td><td>El Track - Artista pegado no
+    coincide con ninguna obra. Copialo de la tabla principal (celda Track - Artista) y volvé a intentarlo.</td></tr>
+  <tr><td>"No se cargó: falta cargar la semana del …"</td><td>Entre la última semana cargada de ese territorio y
+    plataforma y la del archivo falta al menos una. Cargá primero la semana indicada y después el archivo.</td></tr>
+  <tr><td>"… no indica la semana del chart"</td><td>El nombre del chart no incluye la fecha. Descargalo nuevamente o
+    renombralo con el nombre original de descarga y volvé a cargarlo.</td></tr>
+  <tr><td>"El código no es válido o venció"</td><td>El código ya se utilizó, pasaron más de 30 minutos o se ingresó
+    mal varias veces. Solicitá un código nuevo.</td></tr>
+  <tr><td>"La sesión venció. Volvé a ingresar."</td><td>Pasaron 8 horas sin uso, se cerró la sesión o se cambió la
+    contraseña. Ingresá nuevamente.</td></tr>
+  <tr><td>La fecha de última carga no cambia</td><td>Seleccioná el país. La fecha corresponde a la semana del chart más
+    reciente, no al día de la carga.</td></tr>
+  <tr><td>"Auditor de Rankings Digitales está iniciando o apagado"</td><td>El servidor se está iniciando o está apagado. La
+    aplicación se abre automáticamente cuando está disponible. Si el servidor está apagado, la pantalla lo enciende
+    sola o con el botón <b>Encender el servidor</b>; la primera vez, Edge solicita permiso: seleccioná "Permitir
+    siempre" y "Abrir". Con el inicio automático de Windows activado, el sistema queda listo antes de abrir la
+    aplicación.</td></tr>
+</table>
+</section>
+</main>
+</div>
+</body>
+</html>

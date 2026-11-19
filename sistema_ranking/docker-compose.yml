@@ -1,0 +1,185 @@
+# Ranking Digital: base PostgreSQL 17 + API/front, con Docker Engine (Linux o WSL2).
+# En la PC de trabajo se maneja con "bash ranking.sh ..." (ver README). En un servidor:
+#   cp .env.example .env   (completar las claves)   y   docker compose up -d
+# La primera vez el servicio "instalador" crea la base; las siguientes no toca nada si ya existe.
+# Nombre fijo: los datos (volúmenes) son los mismos aunque el proyecto se descomprima en otra carpeta.
+name: ranking-digital
+
+x-proxy: &proxy
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  http_proxy: ${http_proxy:-}
+  https_proxy: ${https_proxy:-}
+
+x-sin-proxy: &sin-proxy
+  NO_PROXY: db,localhost,127.0.0.1,${NO_PROXY:-}
+  no_proxy: db,localhost,127.0.0.1,${no_proxy:-}
+
+# Registros de cada servicio con tope (sin esto Docker los guarda enteros y crecen sin límite).
+x-registros: &registros
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  db:
+    image: ${IMAGEN_POSTGRES:-postgres:17}
+    restart: unless-stopped
+    logging: *registros
+    environment:
+      POSTGRES_DB: ranking
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD}
+      # C.UTF-8 "builtin": ordena y pasa a minúsculas igual que la base de Supabase.
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8 --locale=C
+    volumes:
+      - datos_db:/var/lib/postgresql/data
+    healthcheck:
+      # Por TCP: en la primera instalación la imagen arranca un servidor temporal solo por el socket local y después lo
+      # reinicia; si el instalador entraba en ese momento perdía la conexión ("exit 2").
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d ranking"]
+      # Al arrancar se controla cada segundo (antes, cada 5 s: hasta 5 s de espera de más antes de levantar la API).
+      start_period: 120s
+      start_interval: 1s
+      interval: 10s
+      retries: 30
+    # Sin "ports": la base no queda expuesta fuera de Docker.
+
+  instalador:
+    image: ${IMAGEN_POSTGRES:-postgres:17}
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      PGURL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/ranking
+      AUTHENTICATOR_PASSWORD: ${AUTHENTICATOR_PASSWORD:?Falta AUTHENTICATOR_PASSWORD}
+    volumes:
+      - ./db:/db:ro
+    logging: *registros
+    entrypoint: ["sh", "-c", "if psql \"$$PGURL\" -Atc \"select to_regclass('public.tracks_master') is not null\" | grep -q t; then echo 'Base ya instalada'; sh /db/mejoras.sh; else sh /db/instalar.sh; fi"]
+    restart: "no"
+
+  api:
+    image: ${IMAGEN_API:-ranking-digital-api:local}
+    build:
+      context: .
+      # Sin "network: host": Docker Compose v5.6 / Buildx 0.38 lo bloquean salvo permiso explícito. El proxy de la
+      # terminal (HTTP_PROXY, HTTPS_PROXY, NO_PROXY) se pasa igual al armado.
+      args:
+        IMAGEN_PYTHON: ${IMAGEN_PYTHON:-python:3.12-slim}
+        NO_PROXY: ${NO_PROXY:-}
+        no_proxy: ${no_proxy:-}
+        <<: *proxy
+    restart: unless-stopped
+    logging: *registros
+    depends_on:
+      instalador: { condition: service_completed_successfully }
+    environment:
+      <<: [*proxy, *sin-proxy]
+      DATABASE_URL: postgresql://authenticator:${AUTHENTICATOR_PASSWORD}@db:5432/ranking
+      JWT_SECRET: ${JWT_SECRET:?Falta JWT_SECRET}
+      SESSION_HOURS: ${SESSION_HOURS:-8}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+      # Envío del reporte BO al servidor de BO (api/envio_bo.py).
+      BO_SERVIDOR: ${BO_SERVIDOR:-intranet.backoffice-ms.com}
+      BO_PUERTO: ${BO_PUERTO:-21}
+      BO_MODO: ${BO_MODO:-auto}
+      BO_TLS_VERIFICAR: ${BO_TLS_VERIFICAR:-1}
+      STATEMENT_TIMEOUT: ${STATEMENT_TIMEOUT:-120s}
+      DB_POOL: ${DB_POOL:-10}
+    volumes:
+      - archivos:/data/storage
+    ports:
+      # 127.0.0.1: solo esta PC (en WSL2 se abre igual desde el navegador de Windows). En un servidor: ESCUCHAR=0.0.0.0
+      - "${ESCUCHAR:-127.0.0.1}:${PUERTO:-8000}:8000"
+
+  # Espejo de auditoría en OneDrive (ESPEJO_DIR en la configuración; ver api/espejo.py). Copia cada carga a la carpeta
+  # compartida; nunca lee ni borra ahí. Corre como root porque en WSL /mnt/c solo deja escribir al dueño o a root; por
+  # eso no tiene puertos y ve los archivos del sistema en solo lectura. Sin ESPEJO_DIR queda apagado.
+  espejo:
+    image: ${IMAGEN_API:-ranking-digital-api:local}
+    restart: unless-stopped
+    logging: *registros
+    user: root
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      PGURL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/ranking
+      STORAGE_DIR: /data/storage
+      ESPEJO: ${ESPEJO_DIR:+/espejo}
+    volumes:
+      - archivos:/data/storage:ro
+      - ${ESPEJO_DIR:-espejo_apagado}:/espejo
+    command: ["python", "espejo.py", "--servicio"]
+
+  # Respaldo automático (db/respaldo_automatico.sh): un respaldo completo por día en la carpeta de respaldos
+  # (RESPALDOS_DIR, la pasa ranking.sh), con el mismo formato que "ranking.sh respaldo"; conserva los últimos
+  # RESPALDO_CONSERVAR y copia el .dump al espejo de OneDrive. RESPALDO_HORAS=0 lo apaga. Sin carpeta no hace nada.
+  respaldo:
+    image: ${IMAGEN_POSTGRES:-postgres:17}
+    restart: unless-stopped
+    logging: *registros
+    depends_on:
+      instalador: { condition: service_completed_successfully }
+    environment:
+      PGURL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/ranking
+      RESPALDO_ACTIVO: ${RESPALDOS_DIR:+1}
+      RESPALDO_HORAS: ${RESPALDO_HORAS:-24}
+      RESPALDO_CONSERVAR: ${RESPALDO_CONSERVAR:-14}
+      RESPALDO_DEMORA: ${RESPALDO_DEMORA:-600}
+      ESPEJO: ${ESPEJO_DIR:+/espejo}
+    volumes:
+      - ./db:/db:ro
+      - archivos:/data/storage:ro
+      - ${RESPALDOS_DIR:-respaldos_apagado}:/respaldos
+      - ${ESPEJO_DIR:-espejo_apagado}:/espejo
+    entrypoint: ["sh", "/db/respaldo_automatico.sh"]
+
+  # Acceso desde otras computadoras (bash ranking.sh compartir): Tailscale Funnel publica la API en un enlace HTTPS fijo
+  # (https://auditor-rankings.<red>.ts.net/). La conexión sale de esta PC por el puerto 443, con el proxy de la
+  # configuración; no abre puertos. La sesión de Tailscale queda en el volumen "tailscale" (un archivo: no hace falta el
+  # llavero del sistema, que no existe en Docker). El volumen "tunel" es del acceso anterior (Microsoft) y ya no se usa. Red del equipo: llega a la API en 127.0.0.1:PUERTO, como el navegador.
+  # Solo arranca con COMPARTIR_ENLACE=1 (ranking.sh agrega el perfil "compartir").
+  tunel:
+    image: ${IMAGEN_TUNEL:-tailscale/tailscale:v1.104.4}
+    profiles: ["compartir"]
+    restart: unless-stopped
+    logging: *registros
+    network_mode: host
+    environment:
+      <<: *proxy
+      NO_PROXY: localhost,127.0.0.1,${NO_PROXY:-}
+      no_proxy: localhost,127.0.0.1,${no_proxy:-}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SOCKET: /var/run/tailscale/tailscaled.sock
+      TS_USERSPACE: "true"
+      TS_HOSTNAME: auditor-rankings
+      TS_AUTH_ONCE: "true"
+      TS_ACCEPT_DNS: "false"
+      # Certificados de la empresa (certificados/*.crt), por si el proxy inspecciona HTTPS.
+      SSL_CERT_DIR: /etc/ssl/certs:/certificados
+    volumes:
+      - tailscale:/var/lib/tailscale
+      - ./certificados:/certificados:ro
+
+  # Herramientas de administración (migración, usuarios, respaldo). No arranca sola: se usa con "docker compose run".
+  herramientas:
+    image: ${IMAGEN_API:-ranking-digital-api:local}
+    profiles: ["herramientas"]
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      <<: [*proxy, *sin-proxy]
+      PGURL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/ranking
+      STORAGE_DIR: /data/storage
+      ESPEJO: ${ESPEJO_DIR:+/espejo}
+    volumes:
+      - archivos:/data/storage
+      - exportacion:/exportacion
+      - ${ESPEJO_DIR:-espejo_apagado}:/espejo
+    working_dir: /app
+
+volumes:
+  datos_db:
+  archivos:
+  exportacion:
+  espejo_apagado:
+  respaldos_apagado:
+  tailscale:

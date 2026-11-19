@@ -1,0 +1,683 @@
+# Auditor de Rankings Digitales (ex Ranking Digital; sistema propio, sin Supabase)
+
+El sistema se llama **Auditor de Rankings Digitales** desde el 22/10/2026. Los nombres internos (carpetas, `ranking.sh`, Docker
+`ranking-digital`, `%LOCALAPPDATA%\RankingDigital`) no cambian, para no afectar la instalación.
+
+Este es el mismo sistema que corría en Supabase, ahora en un servidor propio. El front es el mismo HTML con la misma
+lógica. Lo único que cambió es a quién le habla: antes era Supabase, ahora es nuestra API.
+
+```
+navegador ──► API propia (FastAPI) ──► PostgreSQL 16
+  index.html     login, tablas, RPC,       las mismas 11 tablas, 38 funciones, vistas,
+  tempo-client   archivos                  triggers, RLS y políticas que en Supabase
+```
+
+| Supabase | Acá |
+|---|---|
+| Base de datos | `db/` instala lo mismo, generado del CSV del esquema. `tests/comparar_con_supabase.py` lo compara contra el CSV: 151 objetos idénticos. |
+| Auth (email + contraseña) | `auth.users` con bcrypt, `auth.uid()`, `auth.jwt()`. Los usuarios migrados conservan su id, email y rol. |
+| PostgREST + supabase-js | `api/app.py` + `front/tempo-client.js`, que imita los métodos de supabase-js que usa el front. |
+| Bucket `csv-uploads` | Archivos en disco (`STORAGE_DIR`) y registro en `storage.objects`, con RLS y links firmados. |
+| Edge Function de YouTube + pg_cron | No se usa más: los charts de YouTube se cargan a mano desde **Carga CSV**, igual que los de Spotify. |
+| Dashboard > Users | `USUARIOS.bat` (o `admin/usuarios.py`) |
+
+## En tu PC: Ubuntu (WSL2) + Docker Engine
+
+Todo se hace desde la terminal de Ubuntu, con Docker Engine instalado dentro de Ubuntu. No hace falta Docker
+Desktop ni ningún permiso de administrador en Windows. El sistema se abre en el navegador de Windows, en
+`http://localhost:PUERTO`.
+
+### Una sola vez
+
+```bash
+sudo apt update && sudo apt install -y git curl unzip openssl
+cd ~/proyectos
+```
+
+Bajá el proyecto de una de estas dos formas:
+
+- **Con git.** Si el repositorio es privado, git te pide tu usuario de GitHub y, como contraseña, un token
+  personal:
+  ```bash
+  git clone -b main https://github.com/roguevarac/ASW---Tempo-data.git ranking
+  cd ~/proyectos/ranking/sistema_ranking
+  ```
+- **Con el ZIP.** En GitHub, elegí la rama `main` > Code > Download ZIP. Queda en Descargas de
+  Windows, y desde Ubuntu lo descomprimís así:
+  ```bash
+  unzip /mnt/c/Users/<usuario_windows>/Downloads/ASW---Tempo-data-main.zip -d ~/proyectos
+  cd ~/proyectos/ASW---Tempo-data-main/sistema_ranking
+  ```
+  `<usuario_windows>` es tu usuario de Windows. Si el archivo tiene otro nombre, `ls /mnt/c/Users/<usuario_windows>/Downloads/*.zip`
+  lo muestra.
+
+- **Desde una copia en OneDrive** (por ejemplo `...\Backoffice\RANKING DIGITAL REGIONAL`). Esperá a que OneDrive
+  termine de sincronizar (tilde verde) y copiala dentro de Ubuntu. No la uses directo desde `/mnt/c`: OneDrive la
+  sincroniza mientras Docker la usa, y desde el disco de Windows todo anda más lento.
+  ```bash
+  cp -r "/mnt/c/Users/<usuario_windows>/OneDrive - Sony/SMP-Administration Argentina - Documents/Latam/Backoffice/RANKING DIGITAL REGIONAL" ~/proyectos/ranking
+  cd ~/proyectos/ranking/sistema_ranking
+  ```
+  Si algún archivo quedó con fin de línea de Windows, `ranking.sh` lo arregla solo. Si el que quedó así es el propio
+  `ranking.sh` (el error menciona `$'\r'`), corré una vez `sed -i 's/\r$//' ranking.sh`.
+
+Después, en la carpeta `sistema_ranking`:
+
+```bash
+bash ranking.sh instalar     # arma y arranca el sistema; la primera vez tarda unos minutos
+bash ranking.sh migrar       # trae de Supabase los datos, los usuarios y el historial
+```
+
+`instalar`:
+- genera las claves internas al azar en `~/.config/ranking-digital/ranking.env`, fuera del proyecto. No compartas
+  ese archivo.
+- baja PostgreSQL 17 y Python. Si Docker Hub está bloqueado o limitado, usa solo los espejos públicos de las mismas
+  imágenes oficiales: `mirror.gcr.io`, de Google, y `public.ecr.aws`, de Amazon.
+- arma la imagen y deja el sistema en `http://localhost:8000`, o en el siguiente puerto libre.
+
+`migrar` te pide:
+- la URL del proyecto de Supabase: Enter para usar la tuya;
+- la service_role key: Supabase > Project Settings > API Keys > service_role > Reveal. No se guarda en ningún lado.
+- las carpetas con los CSV del historial. Las de OneDrive (`Charts historicos Youtube` y `Charts historicos_spotify`)
+  las encuentra solas. También podés pegar una ruta de Windows (`C:\...`) o de Ubuntu.
+- contraseñas nuevas para los usuarios, porque Supabase no entrega las contraseñas por la API.
+
+Los archivos del historial que no estén en esas carpetas los baja del bucket. Antes de importar, todo se compara
+contra lo que había en Supabase; si algo no coincide, no se importa nada.
+
+### La aplicación en Windows
+
+El Auditor de Rankings Digitales se usa como una **aplicación**: tiene ventana propia, sin pestañas ni barra del navegador, y su
+ícono. Por dentro es una aplicación web instalable (PWA) que corre en Microsoft Edge, y el servidor en Ubuntu queda
+en segundo plano, sin ventanas negras. No hace falta ser administrador.
+
+`instalar` la crea al final. También se puede crear (o rehacer) con `bash ranking.sh acceso-directo`. Deja:
+- **Auditor de Rankings Digitales** en el escritorio y en el **menú Inicio**, así aparece en la búsqueda de Windows. Abre la
+  aplicación en su ventana. Si el servidor estaba apagado, lo enciende y muestra "Iniciando Auditor de Rankings Digitales…" hasta
+  que está listo.
+- **Apagar Auditor de Rankings Digitales**, en el menú Inicio. Los accesos con el nombre anterior se reemplazan solos al actualizar. Apaga todo; los datos quedan guardados.
+- **Arranque oculto al iniciar Windows**, si lo aceptás (recomendado). El servidor queda prendido mientras la sesión
+  de Windows esté abierta.
+
+Si querés tenerla también en la barra de tareas, instalala desde Edge:
+1. Con el servidor prendido, abrí `http://localhost:8000` en una **pestaña común** de Edge, no en InPrivate.
+2. Usá el ícono **Instalar** de la barra de direcciones, o el menú **···** > **Aplicaciones** > **Instalar este sitio
+   como aplicación**.
+3. Clic derecho en su ícono de la barra de tareas > **Anclar**.
+
+Edge solo la ofrece si la página cargó bien, con su manifiesto, sus íconos y el service worker activo. El sistema ya
+trae todo eso. Si el servidor se estaba reiniciando, recargá la página y esperá unos segundos.
+
+Si abrís la aplicación con el servidor apagado, en lugar de un error muestra "Auditor de Rankings Digitales está iniciando o
+apagado" y entra sola cuando el servidor responde. Nunca guarda datos en el navegador: todo viene siempre del
+servidor.
+
+`bash ranking.sh actualizar` también actualiza estos accesos. Los registros del lanzador quedan en
+`%LOCALAPPDATA%\RankingDigital\lanzador.log`.
+
+### Día a día
+
+| Comando | Para qué |
+|---|---|
+| Aplicación **Auditor de Rankings Digitales** (escritorio, menú Inicio) o `bash ranking.sh abrir` | Lo arranca si estaba apagado (incluso Docker) y lo abre en el navegador de Windows |
+| `bash ranking.sh detener` | Lo apaga; los datos quedan guardados |
+| `bash ranking.sh usuarios` | Crear usuarios, cambiar contraseñas, roles y oficina, bloquear y desbloquear |
+| `bash ranking.sh estado` / `logs` | Qué está corriendo / últimos mensajes, si algo falla |
+| `bash ranking.sh verificar` | Revisa que todo esté sano, sin cambiar nada |
+| `bash ranking.sh actualizar` | Respaldo, versión nueva desde GitHub y reinicio, sin perder datos (si falla, vuelve sola a la anterior) |
+| `bash ranking.sh respaldo` | Copia de la base y de los archivos en `~/proyectos/ranking-respaldos`, y también en el espejo de OneDrive (`respaldo_documentacion_sistema\respaldos`) |
+| `bash ranking.sh espejo` | Copia al espejo de OneDrive los archivos cargados que falten y actualiza la documentación |
+| `bash ranking.sh cargar-historicos` | Carga única de los charts históricos de `Spotify Charts` y `Youtube Charts` del espejo de OneDrive (antes hace un respaldo) |
+| `bash ranking.sh restaurar NOMBRE` | Vuelve a ese respaldo |
+| `bash ranking.sh vaciar-historial` | Borra solo los archivos del historial (antes hace un respaldo) |
+| `bash ranking.sh empezar-de-cero` | Borra todos los datos menos los usuarios, para empezar a cargar de cero (antes hace un respaldo) |
+
+Hay dos cosas que tenés que saber:
+- **Después de reiniciar Windows**, si aceptaste el arranque automático, el servidor ya está prendido: abrí la
+  aplicación y listo.
+- **Los charts se cargan a mano.** Spotify y YouTube se suben desde **Carga CSV**; no hay cargas automáticas. Arriba
+  se ve la fecha del último chart de Spotify y de YouTube del país elegido, porque cada país se carga por separado.
+
+**Manual de uso:** en la aplicación, botón **Manual de uso** (arriba a la derecha), o `http://localhost:8000/manual.html`.
+Explica cada pestaña, las cargas, la limpieza de títulos, el reporte BO y el estado de trabajo.
+
+**Empezar de cero.** Hay dos comandos. Los dos los confirma una persona (no corren con `--automatico`) y antes
+hacen un respaldo; para volver atrás: `bash ranking.sh restaurar <respaldo>`.
+- `bash ranking.sh empezar-de-cero` vacía todo para volver a cargar desde ahora:
+  - la tabla principal;
+  - la tabla por territorio (charts, Reporte Tempo, Reporte BO y estados de trabajo);
+  - el historial de cambios y el seguimiento de envíos;
+  - el historial de archivos.
+
+  Quedan los usuarios y el número de la próxima carga del reporte BO, para no repetir números que BO ya recibió.
+- `bash ranking.sh vaciar-historial` borra solo los archivos guardados y su lista en **Historial de cargas** (los datos cargados quedan).
+
+**Respaldos:** los datos viven dentro de Ubuntu, en volúmenes de Docker.
+- `bash ranking.sh respaldo` los copia también al espejo de OneDrive (ver la sección siguiente).
+- `actualizar` hace un respaldo antes de cada cambio.
+- Si algún día se reinstala Ubuntu, alcanza con `instalar` y `restaurar`.
+
+**Versión nueva del proyecto:** bajala en otra carpeta y corré `bash ranking.sh instalar` desde ahí. Usa la misma
+configuración y los mismos datos, y actualiza el programa.
+
+### Espejo de respaldo y auditoría en OneDrive
+
+**Principio operativo:**
+- **Fuente de verdad:** la base PostgreSQL y el almacenamiento de archivos del sistema, en Docker. La aplicación lee
+  y escribe solo ahí.
+- **Espejo:** la carpeta compartida
+  `C:\Users\<usuario_windows>\OneDrive - Sony\SMP-Administration Argentina - Documents\Latam\RANKING DIGITAL REGIONAL`
+  recibe una copia de cada carga y de cada respaldo, para transparencia y auditoría.
+- **Sin efecto sobre el sistema:** el sistema solo escribe en el espejo. Nunca lee de él ni borra nada. Si alguien
+  borra o modifica un archivo en OneDrive, la base y la aplicación no cambian, y `bash ranking.sh espejo` vuelve a
+  copiar lo que falte.
+- **Una copia que falla no frena nada:** si la copia falla (OneDrive sin la carpeta o sin permiso), la carga se
+  registra igual y el motivo queda en `bash ranking.sh logs`.
+
+**Estructura:**
+
+| Carpeta | Contenido | Cuándo se escribe |
+|---|---|---|
+| `Spotify Charts\<país>\` | Charts de Spotify cargados (país en minúsculas: `ar`, `cl`…) | En cada carga |
+| `Youtube Charts\<país>\` | Charts de YouTube cargados | En cada carga |
+| `Reportes BackOffice\<país>\` | Reportes BackOffice cargados | En cada carga |
+| `Reportes Tempo Control\` (y `Tempo IDs\`) | Reportes Tempo Control y archivos de Tempo IDs cargados | En cada carga |
+| `respaldo_documentacion_sistema\respaldos\` | `.dump` de la base y `.tgz` de los archivos | En `respaldo` y antes de cada `actualizar` |
+| `respaldo_documentacion_sistema\docs\` | README, manual de uso, instructivo de instalación (`INSTALACION_PC.md`) y esquema de datos (`esquema\`) | En `respaldo`, `actualizar` y `espejo` |
+| `LEEME - Respaldo y auditoria.txt` | Explicación de la carpeta para quien la abra | Siempre que se escribe en el espejo |
+
+Solo se copian las cargas que cargaron datos. Las descargas (reporte BO generado y CSV de la tabla principal) no
+son cargas y no se copian.
+
+**Cómo funciona:**
+- `ranking.sh` detecta la carpeta y la guarda en la configuración (`ESPEJO_DIR`).
+- El servicio `espejo` de Docker (`api/espejo.py --servicio`) monta esa carpeta en `/espejo` y copia cada carga
+  nueva unos segundos después de que se registra. Al arrancar copia lo que falte.
+- Corre como root porque en WSL `/mnt/c` solo deja escribir al dueño de la carpeta o a root. Para compensarlo, no
+  tiene puertos y ve los archivos del sistema en solo lectura. La API sigue sin privilegios y sin acceso a OneDrive.
+- Si no se encuentra la carpeta de OneDrive, el espejo queda apagado y el sistema funciona igual.
+- `bash ranking.sh espejo` y `actualizar` copian lo que falte, por ejemplo las cargas anteriores a esta función, sin
+  pisar ni borrar nada.
+- `bash ranking.sh verificar` prueba escribir en el espejo desde el servicio. Si no puede, revisá que la carpeta
+  exista y esté sincronizada en OneDrive, y mirá `bash ranking.sh logs`.
+
+### Carga única de charts históricos
+
+`bash ranking.sh cargar-historicos` carga de una vez todos los charts de las carpetas `Spotify Charts` y
+`Youtube Charts` del espejo de OneDrive, incluidas las subcarpetas. Antes de empezar, muestra cuántos archivos hay,
+pide confirmación y hace un respaldo.
+- **Misma lectura que Carga CSV** (`migracion/importar_charts.py`): país, semana y plataforma salen del nombre, se
+  leen los formatos viejos y los números con separador de miles, se limpian los títulos y se usa la misma función
+  de la base. `tests/test_importar_charts.py` compara el resultado con el de Carga CSV en el navegador.
+- **Diferencias, por tratarse de históricos:**
+  - si el nombre no indica el país, se toma de la carpeta (`ar\`, `AR\`, `Argentina\`…);
+  - si no indica la semana, el archivo no se carga (Carga CSV usaría la fecha del día);
+  - los archivos que no son charts se informan y se saltean.
+- **Se puede cortar y volver a correr:** saltea lo ya cargado, sea porque se importó antes o porque se cargó con
+  datos desde la aplicación (por ejemplo, las copias del espejo).
+- Lo importado figura en el Historial de cargas con el usuario "importación histórica". El espejo no lo vuelve a
+  copiar a OneDrive, porque ya está ahí.
+- El detalle completo, con los archivos con problemas, queda en `~/proyectos/ranking-respaldos/carga-historicos-*.log`.
+
+### Acceso desde otras computadoras (`bash ranking.sh compartir`)
+
+Para que otras personas usen el sistema desde su propia computadora, con esta PC como servidor:
+
+```bash
+bash ranking.sh compartir           # enlace HTTPS fijo: https://auditor-rankings.<red>.ts.net/
+bash ranking.sh compartir --apagar  # deja de compartir
+```
+
+**Cómo funciona:**
+- Usa **Tailscale Funnel**, en el contenedor `tunel` (`docker-compose.yml`, perfil `compartir`). El enlace no cambia y
+  llega a `http://127.0.0.1:PUERTO` de esta PC.
+- La conexión sale de la PC por el puerto 443, como cualquier página web, con el proxy de la configuración. No abre
+  puertos, no pide permisos de administrador y la API sigue escuchando solo en 127.0.0.1.
+- Quien abre el enlace no necesita ninguna cuenta: llega a la pantalla de ingreso del sistema.
+- La sesión de Tailscale queda en el volumen `tailscale`, que es un archivo. El contenedor arranca y se detiene con el
+  sistema (`abrir`, `detener`, el lanzador de Windows), y el enlace vuelve solo.
+- Si el proxy de la empresa inspecciona HTTPS, usa los certificados de `certificados/` (`bash ranking.sh certificados`).
+- El mantenedor de Ubuntu pasa el estado al Panel de control cada minuto: Estado del sistema, con "Copiar enlace" y
+  la fecha de vencimiento de la sesión. También lo muestran `verificar` y `logs`.
+- Mientras se comparte, `sin-suspension.ps1` (oculto, lo inicia `lanzar.ps1`) evita que Windows suspenda la PC por
+  inactividad. Sí se suspende al cerrar la tapa o a mano.
+
+**La primera vez** (`compartir` abre el navegador en cada paso):
+1. Iniciar sesión en Tailscale. Se crea una cuenta gratuita; conviene GitHub, Google o Microsoft personal, porque la
+   cuenta de la empresa puede requerir la aprobación de IT. Esa cuenta queda como dueña de la "red" de Tailscale.
+2. Habilitar el enlace público: botón **Enable**. Habilita HTTPS y Funnel en la red.
+3. Recomendado: en <https://login.tailscale.com/admin/machines>, en `auditor-rankings`, menú ··· > **Disable key
+   expiry**. Si no, la sesión vence a los 180 días, el Panel lo avisa y hay que volver a correr `compartir`.
+
+**Por qué Tailscale** (29/10/2026). Reemplazó a Microsoft Dev Tunnels, que no funcionó:
+- en Docker, la sesión de Microsoft se perdía porque no hay llavero del sistema;
+- desde Windows, a otras personas de la empresa el ingreso con su cuenta Microsoft les daba `HTTP ERROR 431`, y el
+  modo sin cuenta tampoco las dejó entrar.
+
+Alternativas descartadas:
+- **Cloudflare Tunnel:** necesita un dominio propio y sale por el puerto 7844, que las redes corporativas suelen
+  bloquear.
+- **ngrok gratuito:** muestra una página de advertencia y tiene límites mensuales de pedidos.
+
+Al pasar a esta versión, el acceso anterior se retira solo: se cierra en Windows y se borra el túnel de Microsoft.
+Después hay que correr `compartir` una vez.
+
+**Seguridad:** el enlace es público. Lo protege el ingreso del sistema: usuario, contraseña, sesiones que vencen y
+freno de intentos fallidos. Solo entran las personas creadas en el Panel de control. La conexión viaja cifrada hasta la
+PC. Tailscale es una cuenta gratuita a nombre de quien la crea: para un uso formal de la empresa, lo adecuado es un
+plan de Tailscale de la empresa o un servidor propio (ver "Servidor Linux"). Conviene avisar al área de sistemas.
+
+**Si no conecta:** `compartir` muestra el motivo que informa Tailscale.
+- Si es un certificado (`x509`), correr `bash ranking.sh certificados` y repetir.
+- Si la red lo bloquea, IT tiene que habilitar la salida HTTPS (443) a `controlplane.tailscale.com`,
+  `login.tailscale.com`, `log.tailscale.com` y `*.tailscale.com`.
+
+**Con la VPN de la empresa:** la VPN manda el tráfico por los filtros de la empresa, que suelen bloquear o cortar los
+enlaces `*.ts.net` (categoría "túneles/acceso remoto"). Para saber qué pasa, la persona abre
+`https://auditor-rankings.<red>.ts.net/conexion.html` (también "Probar la conexión con el servidor", en la pantalla de
+ingreso): la página queda guardada en el navegador y funciona aunque la red no llegue al servidor. Distingue:
+- red que responde en lugar del sistema (bloqueo o inspección del filtro web);
+- sin respuesta;
+- cortes intermitentes;
+- descargas grandes que se cortan.
+
+Con **Copiar el resultado** lo envía. Los cortes breves no frenan el trabajo: el front reintenta las consultas solo
+(`tempo-client.js`, evento `rk-conexion`); los cambios no se reintentan, para no aplicarlos dos veces.
+
+Pedido para IT (reemplazar `<red>` por el del enlace que muestra el Panel de control):
+
+> Necesitamos que los usuarios conectados a la VPN puedan abrir la aplicación interna Auditor de Rankings Digitales
+> en `https://auditor-rankings.<red>.ts.net` (HTTPS, puerto 443). Pedimos:
+> 1. permitir ese dominio en el filtro web / proxy, sin inspección TLS;
+> 2. si la VPN es de túnel completo, excluir ese dominio del túnel (split tunneling) o permitir su salida a internet.
+>
+> El acceso está protegido por usuario y contraseña propios del sistema y viaja cifrado.
+
+Si la computadora servidor también usa la VPN, el estado del acceso figura en el Panel de control. Si ahí no aparece
+activo, el pedido a IT es el de "Si no conecta" (salida a `*.tailscale.com`).
+
+**Usuarios:** cada persona necesita su usuario. Se crea desde el Panel de control > Usuarios: el sistema muestra un
+código de activación, y la persona elige su contraseña en "¿Olvidaste la contraseña?". Puede instalarla como
+aplicación desde Edge (··· > Aplicaciones > Instalar). Si el servidor está apagado, la aplicación muestra "no está
+disponible" y entra sola cuando vuelve.
+
+### Envío del reporte BO al servidor de BO
+
+"Enviar reporte BO" sube el archivo al servidor de BO en lugar de descargarlo (`api/envio_bo.py`, `POST /bo/enviar`). Usa
+el usuario y la contraseña de BO de cada persona: se piden en cada envío y no se guardan.
+- **Conexión:** como FileZilla con un servidor FTP: FTP cifrado (TLS) si el servidor lo ofrece y, si no, FTP simple.
+- **Destino:** la carpeta en la que entra el usuario al conectarse.
+- **Si falla la subida:** no se registra el envío (todo va en una transacción).
+- **Quién lo hace:** la PC servidor, con su conexión a internet, hacia `intranet.backoffice-ms.com` por el puerto 21
+  (no hace falta VPN).
+- **Cifrado:** si el servidor rechaza el saludo TLS ("handshake failure", porque solo acepta cifrados o versiones de TLS
+  antiguas), reintenta en modo compatible, como FileZilla. Si el cifrado no se puede establecer, en `BO_MODO=auto` usa
+  FTP simple; con `BO_MODO=ftps`, no envía.
+- **Carpeta:** no se pide. Se intenta en la carpeta que se abre al conectarse; si responde sin permiso (550) y contiene
+  una sola carpeta (en BO, la de carga de cada usuario), se carga ahí. Con varias, la ventana las lista (MLSD, o LIST de
+  Unix/IIS) para elegir, o se escribe la ruta; esa elección se recuerda en el navegador.
+- **Certificado no reconocido** (autofirmado, de otro nombre, vencido): como FileZilla, la ventana muestra el certificado
+  y su huella SHA-256; un Administrador lo acepta una vez ("Confiar en este certificado y enviar") y el sistema solo
+  acepta ese certificado desde entonces (tabla `envio_bo_certificados`; queda en la Actividad del Panel). Para volver a
+  preguntar: `DELETE FROM envio_bo_certificados`. `BO_TLS_VERIFICAR=0` acepta cualquier certificado (no recomendado).
+
+Quién puede usarlo: todas las personas, también las que se creen después (desde el 17/11/2026; tabla
+`envio_bo_config`). Para volver a habilitarlo de a una persona: `bash ranking.sh usuarios`, opción 8, con el email
+`todos` y la respuesta `no` (o `usuarios.py envio-bo todos no`); después, la misma opción con el email de cada persona.
+
+Configuración opcional en `ranking.env` (después, `bash ranking.sh abrir`):
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `BO_SERVIDOR` | `intranet.backoffice-ms.com` | servidor de BO |
+| `BO_PUERTO` | `21` | puerto FTP |
+| `BO_MODO` | `auto` | `auto` (TLS si el servidor lo ofrece), `ftps` (solo cifrado) o `ftp` |
+| `BO_TLS_VERIFICAR` | `1` | `0` acepta un certificado no confiable, como aceptarlo en FileZilla |
+
+Si el servidor de BO usa SFTP (puerto 22) en lugar de FTP, hay que agregarlo: hoy no está soportado.
+
+### Red de la empresa (proxy y certificados)
+
+`ranking.sh` reconoce los errores típicos de una red corporativa y te dice cuál de estos pasos hace falta:
+
+- **Error de certificado (`x509`, `certificate`, `SSL`).** El proxy de la empresa revisa el HTTPS. Corré
+  `bash ranking.sh certificados`. Copia los certificados raíz de Windows (sin permisos de administrador) a Ubuntu, a
+  Docker y a la imagen del sistema. Después volvé a correr el paso que falló.
+- **No hay salida a internet (`timeout`, `no such host`).** Si en la empresa se usa un proxy, ponelo en
+  `~/.bashrc` (`export HTTPS_PROXY=http://proxy:puerto HTTP_PROXY=http://proxy:puerto`) y abrí una terminal nueva.
+  Para que Docker también baje imágenes por el proxy:
+  ```bash
+  sudo mkdir -p /etc/docker
+  echo '{ "proxies": { "http-proxy": "http://proxy:puerto", "https-proxy": "http://proxy:puerto", "no-proxy": "localhost,127.0.0.1" } }' | sudo tee /etc/docker/daemon.json
+  sudo service docker restart
+  ```
+  Si `/etc/docker/daemon.json` ya existía, agregale la parte `"proxies"` en lugar de reemplazarlo.
+- **Docker Hub limitado o bloqueado.** No hay que hacer nada: usa solo los espejos públicos. Si la empresa tiene su
+  propio espejo, ponelo en `IMAGEN_POSTGRES` e `IMAGEN_PYTHON` dentro de `~/.config/ranking-digital/ranking.env`.
+
+El proxy de la terminal (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`) se guarda en `~/.config/ranking-digital/ranking.env`
+la primera vez que se corre cualquier comando con él. Desde ahí lo usan todos los comandos, incluso el lanzador
+oculto de Windows, que no lee `~/.bashrc`. Así el sistema no ve una configuración distinta según quién lo abra, y
+`abrir` nunca reinicia un sistema que ya funciona.
+
+Al armar la imagen se le pasa ese proxy. Si el proxy es
+un programa que corre en la misma PC (por ejemplo en `127.0.0.1`), el armado no llega a él: en ese caso usá la
+dirección de la red de la empresa del proxy, no la local.
+
+## Alternativa: Windows sin WSL (doble clic, versión portable)
+
+Para una PC con Windows sin WSL ni Docker. Usa la misma base y el mismo programa, con PostgreSQL y Python portables.
+
+No hay que instalar nada ni tener permisos de administrador. PostgreSQL 17 y Python 3.12 corren desde una carpeta
+de tu usuario (`%LOCALAPPDATA%\RankingDigital`), como cualquier programa portable.
+
+1. Bajá el ZIP de la rama desde GitHub. Antes de descomprimirlo: clic derecho > Propiedades > tildá
+   **Desbloquear** > Aceptar. Después descomprimilo y entrá a la carpeta `sistema_ranking`.
+2. **`1_INSTALAR.bat`**. La primera vez baja unos 50 MB de componentes oficiales:
+   - Python 3.12, de NuGet (lo publica la Python Software Foundation);
+   - PostgreSQL 17, del paquete de npm `@embedded-postgres/windows-x64`.
+
+   Cada archivo se verifica por su sha256 antes de usarlo. Los paquetes de Python ya vienen en el ZIP
+   (`windows\paquetes`). Después arma la base, deja el sistema funcionando en http://localhost:8000 (o el siguiente
+   puerto libre) y crea el acceso directo **Auditor de Rankings Digitales** en el escritorio. También te pregunta si querés que
+   arranque solo al prender la PC.
+3. **`2_MIGRAR_DESDE_SUPABASE.bat`**. Trae de Supabase los datos, los usuarios y el historial de cargas. Te pide:
+   - la URL del proyecto: Enter para usar la tuya;
+   - la service_role key: Supabase > Project Settings > API Keys > service_role > Reveal;
+   - una contraseña nueva para cada usuario, porque Supabase no entrega las contraseñas.
+
+   Los archivos del historial los toma de tus carpetas de OneDrive `Charts historicos Youtube` y
+   `Charts historicos_spotify`, buscándolos por nombre y tamaño exactos. Los que no estén ahí, los baja del bucket.
+   Todo viaja por HTTPS y usa los certificados de Windows, así que funciona detrás del proxy de la empresa. La clave
+   no se guarda en ningún archivo.
+4. Para el día a día:
+   - el acceso directo del escritorio, o **`ABRIR_SISTEMA.bat`**;
+   - **`USUARIOS.bat`** para crear usuarios, cambiar contraseñas, cambiar roles y bloquear;
+   - **`DETENER.bat`** para apagarlo (los datos quedan guardados).
+
+**Si el paso 2 no puede bajar algo** (la red de la empresa bloquea esa dirección), el mensaje muestra el link. Bajá
+el archivo con el navegador; queda en tu carpeta Descargas. Después volvé a correr `1_INSTALAR.bat`: lo encuentra
+ahí solo y lo verifica. Los dos links son:
+- https://api.nuget.org/v3-flatcontainer/python/3.12.10/python.3.12.10.nupkg
+- https://registry.npmjs.org/@embedded-postgres/windows-x64/-/windows-x64-17.10.0-beta.17.tgz
+
+Hay dos diferencias con Supabase:
+- **Solo funciona mientras la PC está prendida.**
+- **Solo entra quien usa esa PC.** El sistema escucha solo en esa PC. Para que lo use todo el equipo, tiene que
+  instalarse en un servidor (sección siguiente).
+
+**Dónde queda cada cosa** (todo en `%LOCALAPPDATA%\RankingDigital`, fuera de OneDrive a propósito, porque OneDrive
+puede dañar una base de datos mientras la sincroniza):
+- `datos\`: la base y los archivos del historial;
+- `logs\`: los registros, para ver qué pasó si algo falla;
+- `config.env`: las claves internas, generadas al azar;
+- `app\`: la copia del programa.
+
+**Para actualizar:** bajá el ZIP nuevo y corré `1_INSTALAR.bat`. Reemplaza el programa y conserva los datos, los
+usuarios y las claves.
+
+## En un servidor de AWS (o cualquier Ubuntu con Docker)
+
+El mismo `ranking.sh` funciona en un servidor Ubuntu. La guía completa del traspaso desde la PC, paso a paso, está en
+[`nube/AWS.md`](nube/AWS.md):
+- `nube/preparar_servidor.sh` instala Docker oficial (Compose y Buildx), la hora de Buenos Aires y memoria de
+  intercambio;
+- `bash ranking.sh instalar` y `bash ranking.sh restaurar <respaldo>` en el servidor;
+- `bash ranking.sh retirar [enlace]` en la PC: respaldo final y la PC deja de ser el servidor. Los comandos que
+  arrancarían el sistema ahí se niegan (habría dos sistemas con datos distintos) y los accesos de Windows abren el
+  enlace (`escritorio/lanzar_remoto.ps1`). `bash ranking.sh reactivar` lo deshace;
+- `bash ranking.sh compartir` en el servidor, con la misma cuenta de Tailscale y la máquina vieja eliminada: el enlace
+  no cambia.
+
+En el servidor no hay OneDrive: los respaldos quedan en `~/proyectos/ranking-respaldos` y en instantáneas diarias del
+disco (AWS Data Lifecycle Manager). El servicio `espejo` queda encendido sin copiar nada.
+
+**Dirección propia (desde el 17/11/2026):** `https://<IP-CON-GUIONES>.sslip.io`, con IP fija y Caddy por delante (HTTPS de
+Let's Encrypt, renovación automática), abierta desde cualquier red. Reemplaza al enlace de Tailscale, que quedó
+apagado. Los pasos están en `nube/AWS.md`, paso 9.
+
+## Servidor Linux (para que lo use todo el equipo)
+
+Hace falta un servidor con Docker.
+
+```sh
+cd sistema_ranking
+cp .env.example .env        # completar las 3 claves (cada una larga y distinta)
+docker compose up -d        # la primera vez instala la base; después no la toca
+```
+
+El sistema queda en `http://servidor:8000`. Si se va a usar fuera de la red interna, poné adelante un proxy con
+HTTPS (nginx, Caddy o el balanceador de la empresa), porque el login viaja en cada pedido. La base no se publica
+fuera del servidor.
+
+### Migrar los datos de Supabase en el servidor
+
+1. Exportá (en el servidor o en cualquier PC con Python: `pip install "psycopg[binary]" httpx`):
+   `python migracion/exportar_supabase.py exportacion --sin-archivos`. Las opciones:
+   - Sin `--sin-archivos`, también baja el bucket entero (unos 68 MB).
+   - Con `--via-db` (cadena de conexión, puerto 5432), además conserva las contraseñas y saca una foto exacta de un
+     mismo instante. En redes corporativas ese puerto suele estar bloqueado.
+2. Importá:
+   ```sh
+   docker compose run --rm -v ./exportacion:/exportacion -v "/ruta/charts:/charts:ro" \
+     -e PGURL=postgresql://postgres:<POSTGRES_PASSWORD>@db:5432/ranking \
+     api python /app/migracion/importar.py /exportacion --archivos-desde /charts
+   ```
+   - Va todo en una sola transacción y sin disparar triggers, así que los datos quedan exactamente como estaban.
+   - Compara las filas contra el manifiesto; si algo no coincide, no importa nada.
+   - Si falta algún archivo del historial, lo lista en `exportacion/archivos_faltantes.txt`. Para esos archivos:
+     `exportar_supabase.py exportacion --bajar-faltantes` los baja del bucket, y `--permitir-faltantes` importa
+     igual, sin ellos.
+   - `--reemplazar` carga sobre datos que ya existen.
+3. Contraseñas: `admin/usuarios.py clave <email>` para cada usuario.
+
+## Usuarios (servidor Linux)
+
+```sh
+docker compose exec -e PGURL=postgresql://postgres:<POSTGRES_PASSWORD>@db:5432/ranking api \
+  python /app/admin/usuarios.py listar
+#  crear <email> <admin|usuario_estandar|auditor> [oficina]   (pide la contraseña, mínimo 10 caracteres)
+#  clave <email> · rol <email> <rol> [oficina] · bloquear <email> · desbloquear <email>
+#  codigo <email>   código de un solo uso (30 minutos) para "¿Olvidaste la contraseña?" en la pantalla de ingreso
+#  panel <email> si|no   da o quita el acceso al Panel de control (solo desde la consola)
+```
+
+Un usuario bloqueado pierde la sesión en el momento, no cuando le vence.
+
+## Qué se mejoró respecto de Supabase
+
+- **El rol `anon` no tiene permisos.** En Supabase, `anon` tenía permisos completos sobre las vistas y sobre
+  `bo_export_counter`, y la clave anon estaba escrita en el HTML. Con esa clave cualquiera podía leer esas vistas
+  sin loguearse. Ahora no hay clave en el front y sin login no se ve nada.
+- **Las vistas respetan las mismas reglas de RLS que las tablas** (`security_invoker`). Así no sirven para saltear
+  las políticas.
+- El login frena los intentos repetidos de adivinar contraseñas.
+- Los links de descarga están firmados y vencen.
+- Las rutas de archivos están validadas, así que no se puede salir de la carpeta del bucket.
+- Un `PATCH` sin filtro se rechaza: no se puede modificar la tabla entera por error.
+- Un usuario bloqueado pierde la sesión en el acto.
+- **Seguimiento de envíos** (`db/mejoras/01_seguimiento.sql`): el sistema registra qué obras salieron en cada
+  reporte BO y en cada descarga del CSV de la tabla principal. Al descargar se elige **Solo las nuevas** (las que
+  nunca salieron en ese tipo de descarga, para el seguimiento semanal) o **Todas** (la revisión completa, por
+  ejemplo trimestral). La elección se hace en el cartel que abre cada botón de descarga; cada descarga queda
+  registrada.
+- **Historial de cargas** (solo lectura): por YouTube y Spotify (con país), Reportes BackOffice y Reportes Tempo
+  Control. Muestra qué hay cargado en la base y de qué archivo salió (`db/mejoras/02_historial.sql`).
+- **Charts solo de carga manual:** Spotify y YouTube se suben desde Carga CSV; ya no hay carga automática.
+- **Fecha de última carga por país**, arriba en la aplicación.
+- **Manual de uso** dentro de la aplicación (`front/manual.html`).
+- **Espejo de respaldo y auditoría en OneDrive** (`api/espejo.py`): cada carga y cada respaldo se copian a la carpeta
+  compartida, sin que el sistema dependa de ella.
+- **Apertura y búsqueda inmediatas con volumen real** (`db/mejoras/03_rendimiento.sql`): el front de Supabase traía
+  las tablas enteras de a 1.000 filas (cada tanda volvía a calcular la consulta) y filtraba en el navegador; con los
+  históricos cargados tardaba más de dos minutos en abrir. Ahora la base busca, filtra, ordena y pagina
+  (`fn_master_pagina`, `fn_territory_pagina`, `fn_envio_conteo`, `fn_ultimas_cargas`, con índices propios) y el
+  navegador recibe solo las 100 filas visibles y el total. Con 20.000 canciones y 208.000 filas de charts: abrir
+  0,3 s, buscar menos de 1 s, tabla por territorio 0,4 s. Las funciones originales (`fn_master_view`,
+  `fn_territory_view`) quedan iguales y se siguen usando para las descargas completas.
+
+### Uso diario en la empresa (`db/mejoras/04_uso_diario.sql`)
+
+Supabase fue el entorno de prueba; estas limitaciones venían de ahí y se corrigieron para el uso diario:
+
+| Antes (heredado de Supabase) | Ahora |
+|---|---|
+| La sesión vencía a las 8 horas del ingreso aunque se estuviera trabajando (la página se recargaba, incluso en medio de una carga). | Sesiones en la base (`auth.sesiones`): el front renueva el token mientras se usa (`/auth/renovar`); vence tras `SESSION_HOURS` sin uso. |
+| "Cerrar sesión" solo borraba el token del navegador: una copia seguía sirviendo hasta vencer. | `/auth/salir` anula la sesión en el servidor. Bloquear al usuario o cambiar la contraseña corta las demás sesiones en el acto. |
+| La contraseña solo se cambiaba desde la consola. | En la pantalla de ingreso: **Cambiar contraseña** (`/auth/clave`, pide la actual) y **¿Olvidaste la contraseña?** (`/auth/restablecer`, con un código de un solo uso que genera quien administra: `ranking.sh usuarios`, opción 6; vale 30 minutos y 5 intentos, se guarda solo su hash). Al guardar se cierran todas las sesiones. |
+| Mensaje de ingreso en inglés; el freno de intentos contaba también los ingresos correctos (8 ingresos en 5 minutos bloqueaban). | Mensajes en castellano; solo cuentan los intentos fallidos. |
+| Cada archivo se mandaba de a 250 filas, en pedidos separados: un corte dejaba el archivo cargado a medias y sin registro en el historial. | `fn_cargar_archivo`: el archivo original se guarda primero y después filas y registro van en una sola transacción. Queda todo o nada. |
+| Un chart sin semana en el nombre se cargaba con la fecha del día (semana equivocada). | Se rechaza con un mensaje, igual que en `cargar-historicos`. |
+| `fn_set_tempo_id` quería unificar obras con el mismo Tempo ID, pero `UNIQUE(tempo_id)` rechazaba el cambio antes. | `fn_asignar_tempo_id`: nombra la obra que tiene el Tempo ID y, con la confirmación de la persona, unifica las dos (charts, reportes, controles y envíos). `fn_set_tempo_id` queda igual. |
+| La descarga de la tabla por territorio ignoraba reclamos, estado de trabajo y búsqueda, y se pedía de a tandas. | `fn_territory_exportar`: lo mismo que se ve en pantalla, en un solo pedido. |
+| Sin compresión: el front y los CSV viajaban enteros. | Respuestas comprimidas (gzip). |
+| Respaldos solo a mano. | Servicio `respaldo` (`db/respaldo_automatico.sh`): un respaldo completo por día en `~/proyectos/ranking-respaldos` (`ranking_auto_*`, se restaura igual), conserva los últimos 14 y copia el `.dump` a OneDrive (`respaldos/automaticos`). `RESPALDO_HORAS=0` en `ranking.env` lo apaga. |
+| Los registros de Docker crecían sin límite. | Tope de 3 archivos de 10 MB por servicio. |
+
+### Panel de control (`db/mejoras/05_panel.sql`)
+
+Pestaña solo para las personas de `panel.acceso` (al principio, `rocio.guevara@sonymusicpub.com`; se cambia con
+`ranking.sh usuarios`, opción 7). Reemplaza el uso de la consola para controlar el sistema:
+
+- **Seguridad:** la API verifica el acceso en cada pedido (`/panel/*`) y las funciones de la base (`panel.*`, SECURITY
+  DEFINER) lo vuelven a verificar. Las tablas del esquema `panel` no tienen permisos para los usuarios. La API no tiene
+  acceso a Docker: los servicios informan su estado escribiendo en la base.
+- **Estado del sistema:** cada servicio deja un aviso de vida (`panel.latido`): el espejo y los respaldos cada 30 s,
+  el instalador al aplicar las mejoras. Recursos (disco del almacenamiento, memoria, carga) leídos por la API.
+- **Respaldos y OneDrive:** `panel.eventos` registra cada copia del espejo, cada respaldo y sus copias en OneDrive
+  (también los de `ranking.sh respaldo`). "Respaldar ahora" deja un pedido en `panel.solicitudes`, que el servicio
+  `respaldo` atiende en segundos (respaldo completo con nombre de respaldo manual, copia del `.dump` y el `.tgz`).
+- **Usuarios:** alta sin contraseña con código de activación (72 h), rol, oficina, bloqueo (no el propio), código de
+  contraseña y cierre de sesiones. Cada acción queda en `panel.eventos` con quién la hizo.
+- **Actividad:** ingresos, cargas, descargas y cambios manuales (los de una carga no se listan fila por fila).
+- **Integridad:** semanas faltantes por territorio y plataforma, cargas con avisos o sin filas, archivos registrados que
+  faltan o cambiaron de tamaño en el almacenamiento.
+- **Registro del servidor:** últimas 500 líneas de la API (en memoria), con los pedidos rechazados y los errores.
+
+Queda en la consola, a propósito: dar acceso al panel y restaurar un respaldo (detiene la API).
+
+### Arranque rápido (24/10/2026)
+
+- La base se controla cada segundo mientras arranca (`start_interval`); antes, cada 5 s.
+- `db/mejoras.sh` guarda una firma de `db/mejoras/*.sql` y no las vuelve a aplicar si no cambiaron
+  (`FORZAR_MEJORAS=1` las fuerza).
+- La API arranca sin esperar a la base y `/health` responde 503 hasta que la base esté lista.
+- Lo pesado se hace después del arranque, para no competir con el primer ingreso:
+  - el repaso completo del espejo de OneDrive, al minuto (`ESPEJO_DEMORA`); las cargas nuevas se copian enseguida;
+  - el primer respaldo automático, a los 10 minutos (`RESPALDO_DEMORA`).
+- Las pantallas de espera consultan cada segundo.
+- El service worker versiona su caché con una firma de la pantalla de espera y los íconos (la escribe
+  `front/generar_index.py`), así no queda una pantalla vieja guardada en la PC.
+- Cada `ranking.sh abrir` registra cuánto tardó (Docker, base y aplicación, y cuánto hace que se encendió Ubuntu). El
+  Panel de control lo muestra en Estado del sistema.
+
+### Servidor apagado al abrir la aplicación (26/10/2026)
+
+La aplicación instalada desde Edge no puede encender el servidor; si Ubuntu estaba apagado, esperaba sin fin.
+- `ranking.sh acceso-directo` registra el enlace `auditor-rankings://` para el usuario de Windows (HKCU, sin
+  administrador), que corre `lanzar.ps1 -SoloServidor`. La pantalla de espera (`apagado.html`) lo usa sola y con el botón
+  **Encender el servidor**; Edge pide permiso la primera vez.
+- `actualizar` regenera los accesos en WSL aunque nunca se hayan creado (con inicio automático por defecto).
+- `abrir --mantener` (el lanzador oculto) no se rinde:
+  - espera a Docker hasta 5 minutos y reintenta cada 15 s;
+  - nunca pide la contraseña de sudo sin terminal;
+  - deja `arranque.log` junto a la configuración.
+- `verificar` muestra el último arranque y avisa si el servidor no se enciende con Windows.
+- `/listo.png` responde cuando la base está lista: la pantalla "iniciando" del lanzador entra recién entonces.
+
+### Carga masiva de Tempo IDs (`bash ranking.sh cargar-tempo-ids <archivo>`)
+
+Planilla de dos columnas, en cualquier orden: "Título // Artistas" (o "Título - Artistas") y Tempo ID, en .xlsx o
+.csv. Una ruta de Windows también sirve.
+- **Limpieza** (`migracion/importar_tempo_ids.py`, lee el .xlsx sin librerías): tildes mal codificadas
+  ("FrÃ¡gil", y "FrA¡gil" / "MuA±eca" de la planilla normalizada), tildes sueltas, tachados, caracteres invisibles,
+  comillas tipográficas, espacios. "Sin artista" cuenta como vacío ("Título - Artista - Sin artista" se separa bien).
+- **Cruce** (`fn_cargar_tempo_ids`, `db/mejoras/06_tempo_ids.sql`): con la normalización de los charts y sin mayúsculas,
+  tildes, signos ni espacios. Niveles:
+  1. exacta;
+  2. artistas en otro orden;
+  3. un artista en común;
+  4. título sin "(feat. …)";
+  5. solo título, si la fila no trae artistas y hay una sola obra;
+  6. otra versión: sin "(Official Video)", "- Sped Up", "(Remastered …)", "(Acústico)", "(Prod. …)"… (nunca los remixes)
+     y un artista en común.
+
+  Solo para filas y obras que quedan sin coincidencia (obras sin Tempo ID numérico), por parecido (trigramas propios,
+  sin extensiones):
+  7. título parecido: un artista en común y título con 75 % de parecido o una sola letra distinta (8 letras o más);
+  8. artista parecido: el mismo título (8 letras o más) y el artista con 50 % de parecido.
+
+  En 7 y 8, los números del título y la condición de remix tienen que ser iguales ("Vol. 52" no es "Vol. 53"), y la
+  obra tiene que ser la única posible para la fila y la fila la única para la obra. Lo que no alcanza queda en el
+  reporte como "Sugerencia para revisar" (desde 40 % de parecido).
+- **Segunda pasada** (en la misma transacción): las obras con Tempo ID o marcador, de esta carga o de antes (también
+  los asignados a mano), se usan como filas: sus otras versiones sin identificar lo heredan y se unifican. Mismas reglas
+  (un número distinto nunca se pisa). En el reporte aparecen con "sistema" en la columna Fila.
+- **Reglas:**
+  - todas las obras que coinciden reciben el Tempo ID; si varias tienen el mismo, se unifican (`unificar_obras`);
+  - nunca se pisa un Tempo ID numérico distinto;
+  - si el archivo trae dos Tempo ID para la misma obra, no se carga ninguno;
+  - los marcadores (UNCONTROLLED, COMPILADO) se cargan en las obras sin Tempo ID numérico, sin unificar; si la misma obra
+    tiene un número en otra fila, gana el número;
+  - los vacíos solo se informan.
+- **Marcadores repetibles** (`db/mejoras/07_marcadores.sql`): `UNIQUE(tempo_id)` pasó a un índice único parcial (solo
+  números, mismo nombre). Se quitó `fk_territory_tempo_id`, que exigía la restricción y solo copiaba el Tempo ID a los
+  charts (lo hace el trigger). El trigger ya no copia marcadores a `territory_control`.
+- **Proceso:**
+  - primero simula y muestra el resumen; con la confirmación, hace un respaldo y carga;
+  - el reporte fila por fila (CSV con `;` para Excel) queda en la carpeta de respaldos y en OneDrive
+    (`Reportes Tempo Control/Tempo IDs`);
+  - el archivo original queda en el Historial de cargas.
+- **Resultado medido** con la planilla real (10.074 filas) contra una base armada con las variantes de los charts
+  (versiones, letras de menos, artistas mal escritos y casi 600 señuelos del mismo artista con otro número, "Pt. 2" o
+  "(Remix)"): 94 % de las filas con Tempo ID numérico y 90 % de las UNCONTROLLED cargadas, ningún número asignado a una
+  obra equivocada, unos 70 s. La planilla "normalizada v2" (9.936 filas) tiene los mismos 3.929 Tempo ID; no agrega
+  obras, pero resuelve algunas filas que en la primera tienen dos Tempo ID: conviene cargar la primera y después la v2.
+  Repetir la carga no cambia nada.
+
+## Comportamientos heredados que se mantienen
+
+- El borrado lógico solo lo puede hacer el rol `admin` (decisión de permisos: así queda).
+- `fn_upsert_territory_track` tiene un `ON CONFLICT` que no coincide con ningún índice único, así que falla si se
+  la llama. El front no la usa; se deja igual que en Supabase.
+- `fn_set_tempo_id` sigue existiendo tal cual (el front usa `fn_asignar_tempo_id`).
+
+## Pruebas
+
+`tests/correr_todo.sh` corre todo contra un Postgres local. Cada prueba empieza con la base recién instalada.
+
+| Prueba | Qué revisa |
+|---|---|
+| `comparar_con_supabase.py` | Estructura idéntica a la del CSV de Supabase. |
+| `test_e2e.py` | Por HTTP, cada operación del front: login, cargas, ediciones, reportes, historial, archivos, exportaciones, permisos por rol y bloqueo. |
+| `test_navegador.py` | El front real en Chromium: login, cargar CSV de Spotify y de YouTube, fecha de última carga por país, reporte BO y CSV con solo nuevas o todas, seguimiento, manual, editar, descargar, historial, reporte BO, sesión y auditor en solo lectura. |
+| `test_migracion.py` | Exportar e importar comparando fila por fila y archivo por archivo. Los dos modos (API y conexión directa), con Supabase simulado; archivos del historial tomados de carpetas tipo OneDrive; protecciones ante datos existentes, archivos faltantes o alterados. |
+| `test_espejo.py` | Espejo de OneDrive: carpeta de cada tipo de carga, nombres que Windows no acepta, que nunca interrumpe una carga, que solo escribe, y la sincronización de todas las cargas. |
+| `test_importar_charts.py` | Carga masiva de charts históricos: mismo resultado que Carga CSV en el navegador, país por carpeta, archivos sin semana, archivos que no son charts, retomar sin duplicar. |
+| `test_uso_diario.py` | Sesiones (renovar, inactividad, cerrar, bloqueo), cambio y restablecimiento de contraseña con código desde el ingreso, freno de intentos fallidos, carga todo o nada, chart sin semana, unificación por Tempo ID y permisos, descarga con todos los filtros, compresión; y lo mismo en el navegador. |
+| `test_panel.py` | Panel de control: 403 para cualquier otro usuario, alta con código de activación, rol, bloqueo, cierre de sesiones, actividad, semanas y archivos faltantes, "Respaldar ahora", registro; y lo mismo en el navegador. |
+| `test_tempo_ids.py` | Carga de Tempo IDs desde un .xlsx: tildes como mayúsculas o mal codificadas, otro orden, menos artistas, feat., solo título, coreano, señuelos, conflictos, UNCONTROLLED, simular, repetir sin cambios, historial y que no se pueda llamar desde la aplicación. |
+| `test_rendimiento.py` | Con 20.000 canciones y 208.000 filas de charts: mismos totales que las funciones originales, orden de las páginas, búsqueda literal, filtros, y que abrir, buscar, paginar y filtrar en el navegador tarde menos de 3 s. |
+| `test_docker_linux.py` | `bash ranking.sh ...` con Docker Engine, como en tu PC: instalar detrás de un proxy que inspecciona HTTPS (primero falla y explica; con los certificados anda), espejos si Docker Hub está limitado, migrar, usuarios, respaldo y restauración, vaciar el historial, empezar de cero, espejo de OneDrive (carga nueva copiada, borrado sin efecto, OneDrive sin permiso), respaldo automático (al arrancar, a nombre del usuario, copia en OneDrive, conserva los últimos 14), "Respaldar ahora" del panel y avisos de los servicios, mejoras sobre una base ya instalada, detener, abrir sin reiniciar la API y versión nueva en otra carpeta. |
+| `test_portable.py` | La versión portable de Windows con PowerShell real y PostgreSQL 17, como la usa una persona: instalar, migrar, poner contraseñas, administrar usuarios, apagar, volver a abrir y actualizar. |
+| `test_componentes_windows.py` | Los componentes reales de Windows (Python y PostgreSQL): verificación por sha256, archivos alterados, descarga caída y que al descomprimir esté todo lo necesario. |
+| `test_paquetes_windows.py` | Que los paquetes de Python incluidos alcancen para Windows sin internet (dependencias evaluadas como en Windows). |
+
+## Archivos
+
+```
+db/          instalar.sh (Docker/servidor) e instalar.py (Windows portable, sin psql) + SQL (03 y 04 se generan del CSV con generar_esquema.py)
+             mejoras/ + mejoras.sh: cambios propios, idempotentes; se aplican en cada arranque, también a una base ya instalada
+api/         app.py (API)
+front/       index.html (generado de ../frontend_ranking_digital.html con generar_index.py), tempo-client.js, manual.html
+admin/       usuarios.py
+migracion/   exportar_supabase.py e importar.py
+windows/     los scripts que corren los .bat (PowerShell 5.1 o superior) y paquetes/ (Python para Windows, sin internet)
+ranking.sh   todo en Linux / WSL2 con Docker Engine (instalar, migrar, abrir, usuarios, respaldo...)
+certificados/ certificados raíz de la empresa para la imagen (los deja "ranking.sh certificados"; no se suben)
+*.bat        doble clic en Windows: 1_INSTALAR, 2_MIGRAR_DESDE_SUPABASE, ABRIR_SISTEMA, USUARIOS, DETENER
+tests/       correr_todo.sh y las pruebas
+```
+
+Si se cambia el front original, regenerá `front/index.html` con `python3 front/generar_index.py`. Ese script falla
+si en el HTML queda alguna referencia a Supabase o alguna clave.

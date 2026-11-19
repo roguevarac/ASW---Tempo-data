@@ -1,0 +1,693 @@
+"""
+Prueba el front REAL (front/index.html sin cambios de lógica) en Chromium contra la API propia.
+Recorre lo que hace un usuario: login, carga de CSV de Spotify y de Tempo IDs, tabla principal,
+edición de tempo_id, tabla por territorio, histórico de cambios, descarga de CSV, historial de
+cargas (solo lectura, por plataforma, país y reporte), reporte BO, sesión persistente y cierre de sesión.
+
+Variables: BASE (URL de la API), PGURL (superusuario de la base).
+"""
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import tempfile
+
+from playwright.sync_api import sync_playwright
+
+# Chromium de la máquina de pruebas (variable CHROMIUM o el enlace estable de /opt/pw-browsers; si no, el de Playwright).
+CHROMIUM = os.environ.get("CHROMIUM") or ("/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else None)
+
+BASE = os.environ.get("BASE", "http://localhost:8787")
+PGURL = os.environ["PGURL"]
+fallas, errores_js = [], []
+
+
+def check(nombre, cond, extra=""):
+    print(("OK   " if cond else "FAIL ") + nombre + ("" if cond else f"  -> {extra}"))
+    if not cond:
+        fallas.append(nombre)
+
+
+def sqlq(q):
+    return subprocess.run(["psql", PGURL, "-At", "-c", q], capture_output=True, text=True, check=True).stdout.strip()
+
+
+tmp = pathlib.Path(tempfile.mkdtemp())
+spotify = tmp / "regional-ar-weekly-2026-10-08.csv"
+spotify.write_text("rank,uri,artist_names,track_name,source,peak_rank,previous_rank,weeks_on_chart,streams\n"
+                   "1,spotify:track:1,Artista Navegador,Tema Navegador,Sello,1,2,3,5000\n"
+                   "2,spotify:track:2,Otro Artista,Segundo Tema,Sello,2,1,8,4000\n", encoding="utf-8")
+youtube = tmp / "youtube-charts-top-songs-uy-weekly-20261001.csv"
+youtube.write_text("Rank,Previous Rank,Track Name,Artist Name,Weeks on Chart,Views,Weekly Growth,YouTube URL\n"
+                   "1,3,Tema Video,Artista Video,4,90000,12.5%,https://www.youtube.com/watch?v=abc\n", encoding="utf-8")
+# Formato oficial de YouTube Charts (Artist Names, Periods on Chart, Growth; vistas con separador de miles).
+youtube_oficial = tmp / "youtube-charts-top-songs-py-weekly-20230309.csv"
+youtube_oficial.write_text("Rank,Previous Rank,Track Name,Artist Names,Periods on Chart,Views,Growth,YouTube URL\n"
+                           '1,--,Tema Oficial,Artista Oficial,1,"1,234,567",N/A,https://www.youtube.com/watch?v=xyz\n', encoding="utf-8")
+# Formato viejo de Spotify Charts: una línea de aviso antes de los encabezados Position, Track Name, Artist, Streams, URL.
+spotify_viejo = tmp / "regional-py-weekly-2023-12-14 -ult.csv"
+spotify_viejo.write_text("Note that these figures are generated using a formula that protects against any artificial inflation of streams.,,,,\n"
+                         "Position,Track Name,Artist,Streams,URL\n"
+                         "1,Tema Viejo,Artista Viejo,345678,https://open.spotify.com/track/abc\n", encoding="utf-8")
+tempo = tmp / "tempo_ids.csv"
+tempo.write_text("Track - Artista,Tempo ID\nTema Navegador - Artista Navegador,777001\n", encoding="utf-8")
+
+with sync_playwright() as p:
+    nav = p.chromium.launch(executable_path=CHROMIUM)
+    ctx = nav.new_context(accept_downloads=True)
+    pag = ctx.new_page()
+    pag.on("pageerror", lambda e: errores_js.append(str(e)))
+    pag.on("console", lambda m: errores_js.append(m.text) if m.type == "error" else None)
+
+    # Las descargas del reporte BO se prueban como las ven quienes no envían al servidor; el envío, más abajo.
+    sqlq("update envio_bo_config set todos = false")
+    pag.goto(BASE + "/")
+    pag.wait_for_selector("#loginEmail")
+    check("la página carga y muestra el login", pag.is_visible("#loginBtn"))
+    check("la pantalla de ingreso ofrece probar la conexión con el servidor",
+          pag.get_attribute("#linkConexion", "href") == "conexion.html")
+
+    pag.fill("#loginEmail", "admin@prueba.local"); pag.fill("#loginPass", "incorrecta"); pag.click("#loginBtn")
+    try:
+        pag.wait_for_function("() => document.body.innerText.includes('El email o la contraseña no son correctos.')", timeout=10000)
+    except Exception:
+        pass
+    # el 400 del login incorrecto es esperado (supabase-js también lo registra en consola)
+    errores_js.clear()
+    check("login incorrecto muestra el error", "El email o la contraseña no son correctos." in pag.content())
+
+    check("el ingreso es un formulario con usuario y contraseña (el navegador ofrece guardarla) y 'Mantener la sesión' marcada",
+          pag.locator("form#loginForm input[autocomplete=username]#loginEmail").count() == 1
+          and pag.locator("form#loginForm input[autocomplete=current-password]#loginPass").count() == 1
+          and pag.locator("form#loginForm button[type=submit]#loginBtn").count() == 1 and pag.is_checked("#loginRecordar"))
+    pag.fill("#loginEmail", "admin@prueba.local"); pag.fill("#loginPass", "clave-admin-123"); pag.press("#loginPass", "Enter")
+    pag.wait_for_selector("#logoutBtn", timeout=10000)
+    check("login correcto entra al sistema", pag.is_visible("#logoutBtn"))
+    check("con 'Mantener la sesión iniciada', la sesión queda guardada en la computadora (sobrevive a cerrar el navegador)",
+          pag.evaluate("JSON.parse(localStorage.getItem('rk_session') || '{}').recordar === true && !sessionStorage.getItem('rk_session')"))
+
+    # ---- carga de CSV (Spotify y Tempo IDs), en secuencia como el front
+    pag.click('[data-tab="upload"]')
+    pag.set_input_files("#fileInput", [str(spotify)])
+    pag.wait_for_function("() => !document.body.innerText.includes('Procesando')", timeout=20000)
+    pag.wait_for_timeout(1500)
+    check("CSV de Spotify cargado: 2 obras con el país y la fecha del nombre del archivo",
+          sqlq("select count(*) || '|' || min(pais_code) || '|' || min(snapshot_date) from territory_tracks where platform='spotify'") == "2|AR|2026-10-08")
+    check("archivo de Spotify archivado en el bucket",
+          sqlq("select count(*) from storage.objects where name like 'spotify/AR/%regional-ar-weekly-2026-10-08.csv'") == "1")
+    guia = pag.inner_text(".upload-guide")
+    check("Carga CSV indica cómo subir los charts (registro formal)",
+          "subí los archivos .csv con el nombre de descarga" in guia and "acá" not in guia and "subilos" not in guia, guia)
+    check("Carga CSV nombra los tipos de archivo y no lista columnas",
+          all(t in guia for t in ("Spotify", "YouTube", "Reporte BackOffice", "Reporte Tempo Control", "Tempo IDs"))
+          and "artist_names" not in pag.inner_text(".panel-body") and "Submitters_Song_Code" not in pag.inner_text(".panel-body"), guia)
+    fila_carga = pag.inner_text("#uploadQueue tbody tr")
+    check("la carga muestra cada archivo con su estado, tipo, país y semana",
+          all(t in fila_carga for t in ("regional-ar-weekly-2026-10-08.csv", "Cargado", "Spotify", "AR", "2026-10-08")), fila_carga)
+    pag.set_input_files("#fileInput", [str(tempo)])
+    pag.wait_for_timeout(2500)
+    check("CSV de Tempo IDs cargado", sqlq("select tempo_id from tracks_master where track_name_clean='Tema Navegador'") == "777001")
+
+    # ---- tabla principal: se ven las obras y se edita un tempo_id
+    pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
+    check("tabla principal muestra las obras cargadas", "Tema Navegador - Artista Navegador" in pag.content())
+    check("contador arriba de la tabla: identificadas (con Tempo ID) y sin identificar",
+          "Identificadas: 1 · Sin identificar: 1" in pag.inner_text(".conteo-id")
+          and pag.evaluate("document.querySelector('.conteo-id').getBoundingClientRect().bottom <= document.querySelector('.tab-content table, table').getBoundingClientRect().top"),
+          pag.inner_text(".conteo-id"))
+
+    campo = pag.locator('[data-field-master="tempo_id"][value=""]').first
+    check("Tempo ID ofrece la lista de valores estándar",
+          pag.evaluate("[...document.querySelectorAll('#marcadoresTempo option')].map(o => o.value).join('|')")
+          == "UNCONTROLLED|UNCONTROLLED DUP|PENDING ARGENTINA|PENDING CHILE|PENDING COLOMBIA|PENDING COREA|PENDING ESPAÑA|"
+             "PENDING MEXICO|PENDING MIAMI|PENDING URUGUAY|PENDING USA")
+    campo.click(); pag.keyboard.type("xyz")
+    check("Tempo ID: las letras que no corresponden a ningún valor de la lista no se escriben", campo.input_value() == "", campo.input_value())
+    pag.keyboard.type("miam")
+    check("Tempo ID: escribir parte del nombre completa el valor ('miam' -> PENDING MIAMI)", campo.input_value() == "PENDING MIAMI", campo.input_value())
+    campo.fill(""); campo.click(); pag.keyboard.type("colom")
+    check("...'colom' -> PENDING COLOMBIA", campo.input_value() == "PENDING COLOMBIA", campo.input_value())
+    campo.fill(""); campo.click(); pag.keyboard.type("pen")
+    opciones_pen = pag.evaluate("[...document.querySelectorAll('#marcadoresTempo option')].map(o => o.value)")
+    campo.press("Tab"); pag.wait_for_timeout(1000)
+    check("Tempo ID: si lo escrito coincide con varios valores no se completa, y al salir sin elegir no se guarda nada",
+          campo.input_value() == "" and len(opciones_pen) == 11
+          and sqlq("select coalesce(tempo_id, '-') from tracks_master where track_name_clean='Segundo Tema'") == "-", campo.input_value())
+    campo.click(); pag.keyboard.type("12a3"); 
+    check("Tempo ID: de lo que se escribe quedan solo los números", campo.input_value() == "123", campo.input_value())
+    campo.fill("PENDING CHILE")
+    check("Tempo ID: un valor elegido de la lista queda completo", campo.input_value() == "PENDING CHILE", campo.input_value())
+    campo.fill("")
+    campo.fill("777002"); campo.press("Tab"); pag.wait_for_timeout(1500)
+    check("editar tempo_id desde la tabla (fn_set_tempo_id)", sqlq("select tempo_id from tracks_master where track_name_clean='Segundo Tema'") == "777002")
+    check("el contador se actualiza al registrar un Tempo ID", "Identificadas: 2 · Sin identificar: 0" in pag.inner_text(".conteo-id"),
+          pag.inner_text(".conteo-id"))
+    pag.fill("#searchMaster", "Segundo"); pag.wait_for_timeout(1200)
+    check("el contador respeta la búsqueda (suma el total de la tabla)", "Identificadas: 1 · Sin identificar: 0" in pag.inner_text(".conteo-id")
+          and "de 1" in pag.inner_text(".pager"), pag.inner_text(".conteo-id"))
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    sqlq("insert into tracks_master (track_name_raw, artist_name_raw) values ('Tema Sin Tempo', 'Artista Guion')")
+    pag.fill("#searchMaster", "-"); pag.wait_for_timeout(1500)
+    filas = pag.evaluate("[...document.querySelectorAll('[data-field-master]')].map(i => i.value)")
+    check("buscar '-' muestra solo las obras sin Tempo ID",
+          filas == [""] and "Tema Sin Tempo" in pag.inner_text("tbody") and "Sin Tempo ID" in pag.inner_text("#filtroActivo"),
+          (filas, pag.inner_text("tbody")[:300]))
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    def aceptar_filtro():
+        pag.wait_for_selector("#okFiltro", timeout=15000)
+        texto = pag.inner_text(".aviso-filtro")
+        pag.click("#okFiltro"); pag.wait_for_selector("#okFiltro", state="detached")
+        return texto
+    pag.select_option("#tempoFilter", "vacios")
+    aviso = aceptar_filtro()
+    filas = pag.evaluate("[...document.querySelectorAll('[data-field-master]')].map(i => i.value)")
+    check("filtro Tempo ID 'Vacíos' en el encabezado de la columna: solo obras sin Tempo ID",
+          filas == [""] and "Tempo ID: vacíos" in aviso and "Tema Sin Tempo" in pag.inner_text("tbody"), (filas, aviso))
+    pag.fill("#searchMaster", "Guion"); pag.wait_for_timeout(1500)
+    vacias_artista = pag.inner_text("tbody")
+    pag.fill("#searchMaster", "Navegador"); pag.wait_for_timeout(1500)
+    check("...se combina con la búsqueda por artista (vacíos de ese artista)",
+          "Tema Sin Tempo" in vacias_artista and "Tema Sin Tempo" not in pag.inner_text("tbody")
+          and pag.locator("[data-field-master]").count() == 0, (vacias_artista[:200], pag.inner_text("tbody")[:200]))
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    pag.select_option("#tempoFilter", "con")
+    aceptar_filtro()
+    filas = pag.evaluate("[...document.querySelectorAll('[data-field-master]')].map(i => i.value)")
+    check("filtro Tempo ID 'Con Tempo ID': solo obras identificadas", filas and all(filas), filas)
+    pag.click("#clearFilters"); aceptar_filtro()
+    check("Limpiar quita también el filtro Tempo ID", pag.input_value("#tempoFilter") == "")
+    sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from tracks_master where track_name_raw = 'Tema Sin Tempo'")
+
+    # ---- compilado: un Tempo ID por canción separados por "/" separa la obra en una por canción
+    sqlq("select fn_upsert_ranking_row('Uno Comp / Dos Comp', 'Banda Nav', 'AR', 3, 3, 3, 1, 1001, 'x', 'u', 'spotify', null, '2026-10-08')")
+    comp_id = sqlq("select id from tracks_master where track_name_raw = 'Uno Comp / Dos Comp'")
+    pag.fill("#searchMaster", "Comp"); pag.wait_for_timeout(1500)
+    dialogos = []
+    def responder(d):
+        dialogos.append(d.message); d.accept()
+    pag.on("dialog", responder)
+    campo = pag.locator(f'[data-field-master="tempo_id"][data-id="{comp_id}"]')
+    campo.click(); pag.keyboard.type("777101/x")
+    opciones = pag.evaluate("[...document.querySelectorAll('#marcadoresTempo option')].map(o => o.value)")
+    check("compilado: después de '/' no se escriben letras y la lista ofrece los valores a continuación (123/UNCONTROLLED)",
+          campo.input_value() == "777101/" and opciones[:2] == ["777101/UNCONTROLLED", "777101/PENDING ARGENTINA"], (campo.input_value(), opciones[:2]))
+    campo.fill("777101/UNCONTROLLED"); pag.keyboard.type("9")
+    check("...el valor elegido de la lista queda completo", campo.input_value() == "777101/UNCONTROLLED", campo.input_value())
+    campo.fill("777101/UNCONTROLLED"); campo.press("Tab"); pag.wait_for_timeout(3000)
+    pag.remove_listener("dialog", responder)
+    check("compilado: se escribe 123/UNCONTROLLED, se confirma y la obra queda separada en una por canción, con los streams divididos",
+          len(dialogos) == 2 and "se va a separar en 2 obras" in dialogos[0] and "Uno Comp - Banda Nav (777101)" in dialogos[0]
+          and "Dos Comp - Banda Nav (UNCONTROLLED)" in dialogos[0] and "quedó separado en 2 obras" in dialogos[1]
+          and sqlq("select string_agg(tm.track_artist_concat || '=' || tm.tempo_id || '=' || tt.streams, '|' order by tm.track_artist_concat) from tracks_master tm "
+                   "join territory_tracks tt on tt.track_master_id = tm.id where tm.track_name_raw like '%Comp%'")
+          == "Dos Comp - Banda Nav=UNCONTROLLED=500|Uno Comp - Banda Nav=777101=501", (dialogos, sqlq("select string_agg(track_artist_concat, '|') from tracks_master where track_name_raw like '%Comp%'")))
+    check("...y la tabla muestra las dos obras en lugar del compilado",
+          "Uno Comp - Banda Nav" in pag.inner_text("tbody") and "Uno Comp / Dos Comp" not in pag.inner_text("tbody"), pag.inner_text("tbody")[:300])
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from territory_tracks where track_master_id in "
+         "(select id from tracks_master where track_name_raw in ('Uno Comp', 'Dos Comp')); "
+         "delete from tracks_master where track_name_raw in ('Uno Comp', 'Dos Comp')")
+
+    # ---- UNCONTROLLED DUP: se pega el Track - Artista de la otra obra y queda una sola, UNCONTROLLED
+    sqlq("select fn_upsert_ranking_row('Dup Nav A', 'Banda Nav', 'AR', 4, 4, 4, 1, 300, 'x', 'u', 'spotify', null, '2026-10-08'); "
+         "select fn_upsert_ranking_row('Dup Nav B', 'Banda Nav', 'AR', 5, 5, 5, 1, 20, 'x', 'u', 'spotify', null, '2026-10-08')")
+    dup_b = sqlq("select id from tracks_master where track_name_raw = 'Dup Nav B'")
+    pag.fill("#searchMaster", "Dup Nav"); pag.wait_for_timeout(1500)
+    dialogos = []
+    def responder_dup(d):
+        dialogos.append((d.type, d.message))
+        d.accept("Dup Nav A - Banda Nav") if d.type == "prompt" else d.accept()
+    pag.on("dialog", responder_dup)
+    campo = pag.locator(f'[data-field-master="tempo_id"][data-id="{dup_b}"]')
+    campo.fill("UNCONTROLLED DUP")
+    check("UNCONTROLLED DUP se elige de la lista y queda completo", campo.input_value() == "UNCONTROLLED DUP", campo.input_value())
+    campo.press("Tab")
+    pag.wait_for_selector("#elegirNombreBg", timeout=10000)
+    opciones = pag.locator("#elegirNombreBg [data-nombre]").all_inner_texts()
+    check("al unificar se elige qué nombre queda: las dos obras (y Cancelar)",
+          opciones == ["Dup Nav A - Banda Nav", "Dup Nav B - Banda Nav", "Cancelar"], opciones)
+    pag.click('#elegirNombreBg [data-nombre="esta"]'); pag.wait_for_timeout(3000)
+    pag.remove_listener("dialog", responder_dup)
+    check("UNCONTROLLED DUP: pide pegar el Track - Artista, unifica y queda una sola obra UNCONTROLLED con el nombre elegido",
+          [d[0] for d in dialogos] == ["prompt", "alert"] and "pegá el Track - Artista exacto" in dialogos[0][1]
+          and 'unificadas en "Dup Nav B - Banda Nav"' in dialogos[1][1]
+          and sqlq("select string_agg(tm.track_artist_concat || '=' || tm.tempo_id || '=' || tt.streams, '|') from tracks_master tm "
+                   "join territory_tracks tt on tt.track_master_id = tm.id where tm.track_name_raw like 'Dup Nav%'")
+          == "Dup Nav B - Banda Nav=UNCONTROLLED=320", (dialogos, sqlq("select string_agg(track_artist_concat, '|') from tracks_master where track_name_raw like 'Dup Nav%'")))
+    pag.wait_for_selector(".unificados", timeout=10000)
+    check("la tabla principal muestra debajo del nombre la obra unificada, con 'Usar este nombre'",
+          "Unificada: Dup Nav A - Banda Nav" in pag.inner_text("tbody") and pag.locator("[data-nombre-principal]").count() == 1,
+          pag.inner_text("tbody")[:300])
+    pag.once("dialog", lambda d: d.accept())
+    pag.click("[data-nombre-principal]"); pag.wait_for_timeout(2500)
+    check("'Usar este nombre' da vuelta la unificación: queda la otra como nombre principal",
+          sqlq("select string_agg(track_artist_concat, '|') from tracks_master where track_name_raw like 'Dup Nav%'") == "Dup Nav A - Banda Nav"
+          and "Unificada: Dup Nav B - Banda Nav" in pag.inner_text("tbody"), pag.inner_text("tbody")[:300])
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from territory_tracks where track_master_id in "
+         "(select id from tracks_master where track_name_raw like 'Dup Nav%'); delete from obra_alias where clave like 'dup nav%'; "
+         "delete from tracks_master where track_name_raw like 'Dup Nav%'")
+
+    # ---- Tempo ID duplicado en Tempo: "123-456" en la tabla principal, una fila por Tempo ID en la tabla por territorio
+    sqlq("select fn_upsert_ranking_row('Dup Tempo Nav', 'Banda DTN', 'AR', 6, 6, 6, 1, 10, 'x', 'u', 'spotify', null, '2026-10-08')")
+    dtn = sqlq("select id from tracks_master where track_name_raw = 'Dup Tempo Nav'")
+    pag.fill("#searchMaster", "Dup Tempo Nav"); pag.wait_for_timeout(1500)
+    mensajes_dtn = []
+    def anotar_dtn(d):
+        mensajes_dtn.append(d.message); d.accept()
+    pag.on("dialog", anotar_dtn)
+    campo = pag.locator(f'[data-field-master="tempo_id"][data-id="{dtn}"]')
+    campo.click(); pag.keyboard.type("777201-777202")
+    check("Tempo ID duplicado: en la celda se escriben los dos números con guion", campo.input_value() == "777201-777202", campo.input_value())
+    campo.press("Tab"); pag.wait_for_timeout(2500)
+    pag.remove_listener("dialog", anotar_dtn)
+    check("...pide confirmación y la tabla principal muestra '777201-777202'",
+          mensajes_dtn and "queda con 2 Tempo ID (777201 y 777202)" in mensajes_dtn[0]
+          and pag.locator(f'[data-field-master="tempo_id"][data-id="{dtn}"]').input_value() == "777201-777202", mensajes_dtn)
+    pag.click('[data-tab="territory"]'); pag.wait_for_timeout(1200)
+    pag.fill("#searchTerritory", "Dup Tempo Nav"); pag.wait_for_timeout(1500)
+    filas_dtn = pag.evaluate("[...document.querySelectorAll('tbody tr')].filter(f => f.innerText.includes('Dup Tempo Nav') && f.cells[0].innerText.startsWith('AR'))"
+                             ".map(f => f.cells[3].innerText.replace(/\\s+/g, ' ') + '|' + f.cells[11].innerText.replace(/\\s+/g, ' '))")
+    check("tabla por territorio: la obra aparece una vez por cada Tempo ID, con *dup* y el estado DUPLICADA",
+          [f.split("|")[0] for f in filas_dtn] == ["777201 *dup*", "777202 *dup*"] and all("DUPLICADA" in f for f in filas_dtn), filas_dtn)
+    pag.fill("#searchTerritory", ""); pag.wait_for_timeout(1200)
+    pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1200)
+    sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from tempo_duplicado where tempo_id = '777202'; "
+         "delete from territory_tracks where track_master_id in (select id from tracks_master where track_name_raw = 'Dup Tempo Nav'); "
+         "delete from tracks_master where track_name_raw = 'Dup Tempo Nav'")
+
+    # ---- cortes de conexión (VPN): las consultas se reintentan solas con un aviso; los cambios no se reintentan
+    cortes = {"n": 0}
+    def cortar(ruta):
+        if cortes["n"] < 2:
+            cortes["n"] += 1; ruta.abort()
+        else:
+            ruta.continue_()
+    pag.route("**/rpc/fn_master_pagina", cortar)
+    pag.fill("#searchMaster", "Segundo")
+    pag.wait_for_selector("#avisoConexion", timeout=8000)
+    aviso = pag.inner_text("#avisoConexion")
+    pag.wait_for_selector("#avisoConexion", state="detached", timeout=20000)
+    check("con cortes de conexión, la tabla se carga igual: reintenta sola y muestra 'reintentando' mientras tanto",
+          cortes["n"] == 2 and "reintentando" in aviso and "Segundo Tema" in pag.inner_text("tbody"), (cortes, aviso))
+    pag.unroute("**/rpc/fn_master_pagina")
+    sqlq("insert into tracks_master (track_name_raw, artist_name_raw) values ('Tema Corte', 'Artista Corte')")
+    pag.fill("#searchMaster", "Tema Corte"); pag.wait_for_timeout(1500)
+    pag.route("**/rpc/fn_asignar_tempo_id", lambda ruta: ruta.abort())
+    mensajes = []
+    def anotar(d):
+        mensajes.append(d.message); d.accept()
+    pag.on("dialog", anotar)
+    campo = pag.locator('[data-field-master="tempo_id"]').first
+    campo.fill("777301"); campo.press("Tab"); pag.wait_for_timeout(2500)
+    pag.remove_listener("dialog", anotar); pag.unroute("**/rpc/fn_asignar_tempo_id")
+    check("un cambio cortado no se reintenta: avisa que se verifique si se guardó",
+          any("No se pudo confirmar el cambio" in m for m in mensajes)
+          and sqlq("select coalesce(tempo_id, '-') from tracks_master where track_name_raw = 'Tema Corte'") == "-", mensajes)
+    sqlq("select set_config('app.allow_hard_delete', 'true', false); delete from tracks_master where track_name_raw = 'Tema Corte'")
+    pag.fill("#searchMaster", ""); pag.wait_for_timeout(1500)
+    if pag.locator("#avisoConexion").count():
+        pag.evaluate("document.getElementById('avisoConexion').remove()")
+    errores_js[:] = [e for e in errores_js if "ERR_FAILED" not in e and "Failed to load resource" not in e]
+    prueba = ctx.new_page()
+    prueba.goto(BASE + "/conexion.html")
+    prueba.wait_for_selector("#resumen:not([hidden])", timeout=60000)
+    check("prueba de conexión con el servidor disponible: indica que funciona correctamente",
+          "funciona correctamente" in prueba.inner_text("#resumen") and prueba.locator("li.mal").count() == 0, prueba.inner_text("main")[:500])
+    prueba.close()
+
+    pag.click('[data-tab="upload"]')
+    # YouTube se carga a mano, igual que Spotify (no hay carga automática)
+    pag.set_input_files("#fileInput", [str(youtube)])
+    pag.wait_for_function("() => !document.body.innerText.includes('Procesando')", timeout=20000)
+    pag.wait_for_timeout(1500)
+    check("CSV de YouTube cargado a mano: país y fecha del nombre del archivo",
+          sqlq("select count(*) || '|' || min(pais_code) || '|' || min(snapshot_date) || '|' || min(streams) from territory_tracks where platform='youtube'")
+          == "1|UY|2026-10-01|90000")
+    pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
+
+    # ---- fecha de última carga: por país (cada país se carga en otro momento)
+    def ultima_carga():
+        return "\n".join(l.strip() for l in pag.inner_text("#lastLoads").splitlines() if l.strip())
+    check("con todos los países pide elegir uno para ver la fecha",
+          ultima_carga() == "Seleccionar país para ver fecha de última carga", ultima_carga())
+    check("el pie de página ya no menciona Supabase", "Supabase" not in pag.inner_text("footer"), pag.inner_text("footer"))
+    total_todas = int(sqlq("select count(*) from tracks_master where deleted_at is null"))
+    total_ar = int(sqlq("select count(distinct track_master_id) from territory_tracks where pais_code = 'AR' and deleted_at is null"))
+    pag.select_option("#masterCountry", "AR")
+    aviso = aceptar_filtro()
+    check("al filtrar aparece un aviso con el filtro, la cantidad de obras que se ven ahora y la de antes",
+          "Filtro aplicado" in aviso and "País: AR" in aviso and f"{total_ar} obra" in aviso and f"Antes: {total_todas} obra" in aviso, aviso)
+    check("el filtro queda a la vista arriba de la tabla y el desplegable resaltado",
+          f"Filtros aplicados: País: AR · {total_ar} obra" in pag.inner_text("#filtroActivo")
+          and "filtro-on" in pag.get_attribute("#masterCountry", "class"), pag.inner_text("body")[:300])
+    check("país AR: fecha de Spotify de AR y YouTube sin cargas",
+          ultima_carga() == "Último Spotify cargado (AR): 2026-10-08\nÚltimo YouTube cargado (AR): —", ultima_carga())
+    pag.select_option("#masterCountry", "UY"); aceptar_filtro()
+    check("país UY: fecha de YouTube de UY y Spotify sin cargas",
+          ultima_carga() == "Último Spotify cargado (UY): —\nÚltimo YouTube cargado (UY): 2026-10-01", ultima_carga())
+    pag.click('[data-tab="history"]'); pag.wait_for_timeout(500)
+    check("en Historial se ven las fechas del último país elegido", "(UY): 2026-10-01" in ultima_carga(), ultima_carga())
+    pag.click('[data-tab="territory"]'); pag.wait_for_timeout(500)
+    check("en la tabla por territorio, sin país elegido, pide elegir uno",
+          ultima_carga() == "Seleccionar país para ver fecha de última carga", ultima_carga())
+    pag.click('[data-tab="master"]'); pag.select_option("#masterCountry", "")
+    aviso = aceptar_filtro()
+    check("al quitar el filtro el aviso lo indica y desaparece la línea de filtros",
+          "Filtros quitados" in aviso and pag.locator("#filtroActivo").count() == 0, aviso)
+
+    # ---- nombres de archivo de los charts: país, semana y plataforma salen del nombre
+    nombres = {
+        "regional-ar-weekly-2021-01-07.csv": ["AR", "2021-01-07", "spotify"],
+        "regional-py-weekly-2023-12-14 -ult.csv": ["PY", "2023-12-14", "spotify"],
+        "youtube-py-weekly-2023-03-09.csv": ["PY", "2023-03-09", "youtube"],
+        "youtube-TopSongs-ar-weekly-2021-01-07.csv": ["AR", "2021-01-07", "youtube"],
+        "regional-ar-weekly-2024-07-04.csv": ["AR", "2024-07-04", "spotify"],
+        "youtube-charts-top-songs-py-weekly-20230309": ["PY", "2023-03-09", "youtube"],
+        "youtube-charts-top-songs-py-weekly-20230309.csv": ["PY", "2023-03-09", "youtube"],
+    }
+    leidos = pag.evaluate("""(nombres) => Object.fromEntries(nombres.map(n => [n, [
+        detectCountryFromFilename(n) || detectCountry(n), detectDateFromFilename(n),
+        detectFormat({ track_name: 'x', artist_names: 'y' }, n)]]))""", list(nombres))
+    for n, esperado in nombres.items():
+        check(f"nombre de chart '{n}': país, semana y plataforma", leidos[n] == esperado, leidos[n])
+
+    # ---- formatos de chart: el oficial de YouTube y el viejo de Spotify (con aviso arriba)
+    pag.click('[data-tab="upload"]')
+    pag.set_input_files("#fileInput", [str(youtube_oficial), str(spotify_viejo)])
+    pag.wait_for_function("() => !document.body.innerText.includes('Procesando')", timeout=20000)
+    pag.wait_for_timeout(1500)
+    fila = ("select t.platform || '|' || t.pais_code || '|' || t.snapshot_date || '|' || t.rank || '|' || coalesce(t.previous_rank::text, '-') "
+            "|| '|' || t.streams || '|' || coalesce(t.weeks_on_chart::text, '-') || '|' || coalesce(t.uri, '-') "
+            "from territory_tracks t join tracks_master m on m.id = t.track_master_id where m.track_name_clean = ")
+    check("YouTube formato oficial: Artist Names, Periods on Chart y vistas \"1,234,567\"",
+          sqlq(fila + "'Tema Oficial'") == "youtube|PY|2023-03-09|1|-|1234567|1|https://www.youtube.com/watch?v=xyz"
+          and sqlq("select artist_name_clean from tracks_master where track_name_clean = 'Tema Oficial'") == "Artista Oficial",
+          sqlq(fila + "'Tema Oficial'"))
+    check("Spotify formato viejo (aviso arriba; Position, Artist, URL) con nombre '... -ult.csv'",
+          sqlq(fila + "'Tema Viejo'") == "spotify|PY|2023-12-14|1|-|345678|-|https://open.spotify.com/track/abc"
+          and sqlq("select artist_name_clean from tracks_master where track_name_clean = 'Tema Viejo'") == "Artista Viejo",
+          sqlq(fila + "'Tema Viejo'"))
+    check("los dos archivos cargados sin errores", pag.inner_text(".metric.ok .n").strip() == "2"
+          and pag.inner_text(".metric.err .n").strip() == "0", pag.inner_text(".summary-row"))
+    pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
+
+    # ---- descarga de la tabla principal: elige "todas" o "identificadas desde la última descarga" y queda registrada
+    total_obras = int(sqlq("select count(*) from tracks_master where deleted_at is null"))
+    ident_csv = int(sqlq("select count(*) from tracks_master where deleted_at is null and coalesce(trim(tempo_id), '') <> ''"))
+    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="identificadas"]')
+    check("Descargar CSV ofrece todas o identificadas desde la última descarga, con la cantidad de cada una",
+          f"Todas · {total_obras} obras" in pag.inner_text(".modal")
+          and f"Identificadas desde tu última descarga · {ident_csv} obra" in pag.inner_text(".modal")
+          and "nuevas" not in pag.inner_text(".modal").lower(), pag.inner_text(".modal"))
+    with pag.expect_download() as d:
+        pag.click('[data-envio-modo="identificadas"]')
+    contenido = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
+    check("descarga CSV de las identificadas (la primera vez, todas las que tienen Tempo ID)",
+          contenido.startswith("track_artist_concat,tempo_id") and "777001" in contenido
+          and len(contenido.strip().splitlines()) == ident_csv + 1 and d.value.suggested_filename == "tabla_principal_identificadas.csv",
+          (d.value.suggested_filename, contenido[:300]))
+    pag.wait_for_timeout(1000)
+    check("la descarga del CSV queda en el historial",
+          sqlq("select count(*) from csv_uploads where format='csv_principal' and file_path like 'csv_principal/%'") == "1",
+          sqlq("select count(*) from csv_uploads where format='csv_principal'"))
+    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="identificadas"]')
+    check("después no hay identificadas nuevas para el CSV (la opción queda apagada) y muestra la última descarga",
+          pag.is_disabled('[data-envio-modo="identificadas"]') and "Identificadas desde tu última descarga · 0 obras" in pag.inner_text(".modal")
+          and "Tu última descarga:" in pag.inner_text(".modal")
+          and "identificadas desde la anterior" in pag.inner_text(".modal"), pag.inner_text(".modal"))
+    pag.click("#closeEnvio")
+    sqlq("insert into tracks_master (track_name_raw, artist_name_raw, tempo_id) values ('Tema Identificado Despues', 'Artista X', '777050')")
+    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="identificadas"]')
+    pag.wait_for_function("() => !document.querySelector('[data-envio-modo=\"identificadas\"]').disabled")
+    with pag.expect_download() as d:
+        pag.click('[data-envio-modo="identificadas"]')
+    contenido = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
+    check("una obra identificada después de la última descarga sale sola en 'identificadas'",
+          contenido.strip().splitlines()[1:] == ["Tema Identificado Despues - Artista X,777050"], contenido)
+    pag.wait_for_timeout(800)
+    pag.click("#exportMaster"); pag.wait_for_selector('[data-envio-modo="todas"]')
+    with pag.expect_download() as d:
+        pag.click('[data-envio-modo="todas"]')
+    contenido = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
+    check("CSV 'todas': todas las obras, con y sin Tempo ID", d.value.suggested_filename == "tabla_principal.csv"
+          and len(contenido.strip().splitlines()) == total_obras + 2, (d.value.suggested_filename, contenido[:300]))
+    pag.wait_for_timeout(800)
+
+    # ---- tabla por territorio + histórico
+    sqlq("select fn_upsert_bo_report_row('777001','AR','00123','C','ok','',50)")
+    pag.click('[data-tab="territory"]'); pag.wait_for_timeout(1000)
+    check("tabla por territorio muestra la obra", "Tema Navegador" in pag.content())
+    filas_tema = pag.evaluate("[...document.querySelectorAll('tbody tr')].filter(f => f.innerText.includes('Tema Navegador'))"
+                              ".map(f => f.cells[0].innerText.replace(/\\s+/g, ' '))")
+    check("la obra aparece en los 8 países; en los que no figuró en el chart, debajo del país dice 'No en chart'",
+          filas_tema == ["AR"] + [f"{c} No en chart" for c in ("CL", "PE", "UY", "PY", "CO", "EC", "MX")], filas_tema)
+    check("el último filtro ofrece Todo y Ranking de origen",
+          pag.locator("#origenFilter option").all_inner_texts() == ["Todo", "Ranking de origen"])
+    pag.select_option("#origenFilter", "En chart"); aceptar_filtro()
+    filas_origen = pag.evaluate("[...document.querySelectorAll('tbody tr')].filter(f => f.innerText.includes('Tema Navegador'))"
+                                ".map(f => f.cells[0].innerText.replace(/\\s+/g, ' '))")
+    check("Ranking de origen: la obra solo en el país de su chart, sin las filas de control",
+          filas_origen == ["AR"] and "Ranking de origen" in pag.inner_text("#filtroActivo")
+          and "No en chart" not in pag.inner_text("tbody"), filas_origen)
+    pag.select_option("#origenFilter", ""); aceptar_filtro()
+    check("tabla por territorio: columnas en el orden pedido",
+          pag.evaluate("[...document.querySelectorAll('thead th')].map(t => t.textContent.trim()).filter(Boolean).join('|')")
+          == "País|Track - Artista|Created date|Tempo ID|% Perf Tempo|% Mech Tempo|BO ID|C/A|% Mech BO|Estado|Reclamos|Estado de trabajo|Ticket|Fecha",
+          pag.evaluate("[...document.querySelectorAll('thead th')].map(t => t.innerText.trim()).join('|')"))
+    check("filtros de la tabla por territorio en orden: país, desde, hasta, Estado, Reclamos y Estado de trabajo (sin filtro de chart)",
+          pag.evaluate("[...document.querySelectorAll('.toolbar-left select, .toolbar-left input[type=date]')].map(e => e.id).join(',')")
+          == "countryFilter,dateFromT,dateToT,estadoFilter,reclamosFilter,estadoTrabajoFilter,origenFilter",
+          pag.evaluate("[...document.querySelectorAll('.toolbar-left select, .toolbar-left input[type=date]')].map(e => e.id).join(',')"))
+    tk = pag.locator('[data-field-seg="ticket"]').first
+    tk.fill("INC-555"); tk.press("Enter"); pag.wait_for_timeout(1000)
+    fe = pag.locator('[data-field-seg="fecha"]').first
+    fe.fill("26092026"); fe.press("Enter"); pag.wait_for_timeout(1000)
+    pag.fill("#searchTerritory", "Navegador"); pag.wait_for_timeout(1500)
+    pag.click('[data-tab="master"]'); pag.wait_for_timeout(800)
+    pag.click('[data-tab="territory"]'); pag.wait_for_timeout(1200)
+    check("la búsqueda de la tabla por territorio se conserva al cambiar de pestaña",
+          pag.input_value("#searchTerritory") == "Navegador" and 'Búsqueda: "Navegador"' in pag.inner_text("#filtroActivo")
+          and "Tema Navegador" in pag.inner_text("tbody"), pag.inner_text("body")[:400])
+    pag.click("#clearFiltersT")
+    aviso = aceptar_filtro()
+    check("Limpiar en la tabla por territorio quita todos sus filtros",
+          "Filtros quitados" in aviso and pag.input_value("#searchTerritory") == "" and pag.locator("#filtroActivo").count() == 0, aviso)
+    check("ticket y fecha se escriben en la tabla y la fecha se muestra DD/MM/AAAA",
+          sqlq("select ticket || '|' || ticket_fecha from territory_seguimiento") == "INC-555|2026-09-26"
+          and fe.input_value() == "26/09/2026", (sqlq("select ticket || '|' || ticket_fecha from territory_seguimiento"), fe.input_value()))
+    pag.fill("#searchTerritory", "Navegador"); pag.wait_for_timeout(1500)
+    pag.click("#ticketFiltrado"); pag.wait_for_selector("#aplicarTicket", timeout=5000)
+    texto_ticket = pag.inner_text("#ticketBg")
+    pag.fill("#ticketMasivo", "INC-777"); pag.fill("#fechaMasiva", "04112026"); pag.click("#aplicarTicket")
+    pag.wait_for_selector("#closeTicket", timeout=5000)
+    check("Cargar ticket con un filtro aplicado: indica cuántas obras y carga el ticket en todas las filtradas",
+          "Se carga en las" in texto_ticket and "INC-777" in pag.inner_text("#ticketBg")
+          and sqlq("select count(*) from territory_seguimiento where ticket = 'INC-777' and ticket_fecha = '2026-11-04'")
+          == sqlq("select count(*) from fn_territory_pagina(p_buscar => 'Navegador', p_limite => 100000)"), texto_ticket)
+    pag.click("#closeTicket"); pag.wait_for_timeout(500)
+    check("...y la tabla muestra el ticket nuevo", pag.locator('[data-field-seg="ticket"]').first.input_value() == "INC-777")
+    pag.click("#clearFiltersT"); aceptar_filtro()
+    check("sin filtros no se ofrece Cargar ticket", pag.locator("#ticketFiltrado").count() == 0)
+    pag.click('[data-tab="tickets"]'); pag.wait_for_selector("#tablaTickets", timeout=10000)
+    check("pestaña Tickets enviados: el ticket con quién lo cargó y cuántas obras",
+          "INC-777" in pag.inner_text("#tablaTickets") and "admin@prueba.local" in pag.inner_text("#tablaTickets"),
+          pag.inner_text("#tablaTickets")[:400])
+    pag.click('[data-ticket-obras="INC-777"]'); pag.wait_for_selector("#closeTicketObras")
+    pag.wait_for_timeout(800)
+    check("...y Ver obras muestra las obras del ticket", "Tema Navegador" in pag.inner_text("#ticketObrasBg"), pag.inner_text("#ticketObrasBg")[:300])
+    pag.click("#closeTicketObras")
+    pag.click('[data-tab="territory"]'); pag.wait_for_timeout(1200)
+    pag.locator('[data-history-track]').first.click(); pag.wait_for_selector("#closeHistory", timeout=5000)
+    check("histórico de cambios abre", pag.is_visible("#closeHistory"))
+    pag.click("#closeHistory")
+    celda = lambda: pag.locator("tbody tr", has=pag.locator("[data-edit-estado], [data-field-bo]")).first.locator("td").nth(11)
+    check("estado de trabajo: etiquetas y botón Marcar, sin desplegable a la vista",
+          celda().locator(".badge").count() >= 1 and celda().locator("select").count() == 0
+          and celda().locator("[data-edit-estado]").count() == 1, celda().inner_html())
+    celda().locator("[data-edit-estado]").click(); pag.wait_for_timeout(300)
+    check("Marcar ofrece solo Automático y los estados manuales",
+          celda().locator("option").all_inner_texts() == ["Automático", "duplicada", "dif de split"], celda().inner_html())
+    celda().locator("select").select_option("duplicada"); pag.wait_for_timeout(1200)
+    check("marcar 'duplicada' la guarda y se muestra como etiqueta",
+          sqlq("select estado_trabajo from territory_bo_report where pais_code = 'AR'") == "duplicada"
+          and celda().locator(".badge").inner_text() == "duplicada", celda().inner_html())
+    celda().locator("[data-edit-estado]").click(); pag.wait_for_timeout(300)
+    celda().locator("select").select_option(""); pag.wait_for_timeout(1200)
+    check("volver a Automático recalcula el estado",
+          sqlq("select estado_trabajo from territory_bo_report where pais_code = 'AR'") not in ("duplicada", None, ""),
+          sqlq("select estado_trabajo from territory_bo_report where pais_code = 'AR'"))
+
+    # ---- reporte BO: identificadas desde la última descarga (contador + descarga + copia en el bucket + seguimiento)
+    pag.click('[data-tab="master"]'); pag.wait_for_timeout(800)
+    con_tempo = int(sqlq("select count(*) from tracks_master where deleted_at is null and tempo_id ~ '^[0-9]+$'"))
+    check("la barra de la tabla principal no tiene un desplegable de seguimiento (se elige al descargar)",
+          pag.locator("#segFilter").count() == 0)
+    pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="identificadas"]')
+    with pag.expect_download() as d:
+        pag.click('[data-envio-modo="identificadas"]')
+    bo = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
+    carga = sqlq("select counter from bo_export_counter")
+    check("reporte BO (identificadas) con número de carga y solo obras con Tempo ID",
+          d.value.suggested_filename == f"reporte_bo_carga{carga}_identificadas.csv" and "777001;" in bo
+          and len(bo.strip().splitlines()) == con_tempo and all(l.endswith(f";BOcarga{carga}") for l in bo.splitlines()),
+          (d.value.suggested_filename, bo[:200]))
+    pag.wait_for_timeout(1000)
+    check("copia del reporte BO guardada y registrada",
+          sqlq("select count(*) from csv_uploads where format='bo_generado' and file_path like 'bo_generado/%'") == "1")
+    check("el reporte BO queda registrado con sus obras (sin columna Seguimiento en la tabla)",
+          sqlq("select count(*) from envio_obras eo join envios e on e.id = eo.envio_id where e.carga = " + carga) == str(con_tempo)
+          and "Seguimiento" not in pag.inner_text("thead"), pag.inner_text("thead"))
+    pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="todas"]')
+    check("reporte BO: sin identificadas nuevas, la opción queda apagada", pag.is_disabled('[data-envio-modo="identificadas"]'), pag.inner_text(".modal"))
+    with pag.expect_download() as d:
+        pag.click('[data-envio-modo="todas"]')
+    bo2 = pathlib.Path(d.value.path()).read_text(encoding="utf-8")
+    check("reporte BO (todas, revisión completa): vuelve a incluir todo con la carga siguiente",
+          d.value.suggested_filename == f"reporte_bo_carga{int(carga) + 1}.csv" and len(bo2.strip().splitlines()) == con_tempo,
+          (d.value.suggested_filename, bo2[:200]))
+    pag.wait_for_timeout(800)
+
+    # ---- enviar el reporte BO al servidor de BO (solo para las personas habilitadas)
+    sqlq("update envio_bo_config set todos = true")
+    pag.reload(); pag.wait_for_selector("#exportBo", timeout=15000)
+    check("habilitado para todas las personas, el botón es 'Enviar reporte BO'", pag.inner_text("#exportBo") == "Enviar reporte BO",
+          pag.inner_text("#exportBo"))
+    sqlq("update envio_bo_config set todos = false")
+    pag.reload(); pag.wait_for_selector("#exportBo", timeout=15000)
+    check("sin habilitar, el botón sigue siendo 'Descargar reporte BO'", pag.inner_text("#exportBo") == "Descargar reporte BO")
+    sqlq("insert into envio_bo_usuarios (email) values ('admin@prueba.local') on conflict do nothing")
+    pag.reload(); pag.wait_for_selector("#exportBo", timeout=15000)
+    check("habilitada, el botón dice 'Enviar reporte BO'", pag.inner_text("#exportBo") == "Enviar reporte BO", pag.inner_text("#exportBo"))
+    pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="todas"]')
+    check("el cartel pide usuario y contraseña de BO y ofrece descargar en lugar de enviar",
+          pag.locator("#boUsuario").count() == 1 and pag.get_attribute("#boClave", "type") == "password"
+          and "Descargar el archivo en lugar de enviarlo" in pag.inner_text(".modal"), pag.inner_text(".modal")[:300])
+    envios_bo = sqlq("select count(*) from envios where tipo = 'reporte_bo'")
+    pag.click('[data-envio-modo="todas"]'); pag.wait_for_timeout(500)
+    check("sin usuario ni contraseña no envía y lo pide", "Ingresá el usuario y la contraseña de BO" in pag.inner_text(".modal"))
+    pag.fill("#boUsuario", "bo_prueba"); pag.fill("#boClave", "clave")
+    pag.click('[data-envio-modo="todas"]')
+    pag.wait_for_selector(".error-bo", timeout=60000)
+    check("si el servidor de BO no responde, lo explica en el cartel y no queda registrado el envío",
+          "No se envió el reporte BO" in pag.inner_text(".error-bo") and sqlq("select count(*) from envios where tipo = 'reporte_bo'") == envios_bo,
+          pag.inner_text(".error-bo"))
+    # Servidor de BO con certificado autofirmado (el caso real): el cartel lo muestra, como FileZilla, y al aceptarlo envía.
+    try:
+        from pyftpdlib.authorizers import DummyAuthorizer
+        from pyftpdlib.handlers import TLS_FTPHandler
+        from pyftpdlib.ioloop import IOLoop
+        from pyftpdlib.servers import FTPServer
+    except ImportError:
+        FTPServer = None
+    if FTPServer and os.environ.get("BO_PUERTO_PRUEBA", "2121") == "2121":
+        import threading
+        carpeta_bo = pathlib.Path(tempfile.mkdtemp(prefix="rk_bo_nav_"))
+        cert_bo = carpeta_bo / "cert.pem"
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=localhost",
+                        "-keyout", str(cert_bo), "-out", str(cert_bo)], check=True, capture_output=True)
+        (carpeta_bo / "bo" / "Upload").mkdir(parents=True)
+        aut = DummyAuthorizer(); aut.add_user("bo_prueba", "clave", str(carpeta_bo / "bo"), perm="elr")   # como BO: carga en una subcarpeta
+        aut.override_perm("bo_prueba", str(carpeta_bo / "bo" / "Upload"), perm="elradfmw", recursive=True)
+        man = type("ManejadorNav", (TLS_FTPHandler,), {"certfile": str(cert_bo), "authorizer": aut,
+                                                       "tls_control_required": False, "tls_data_required": False})
+        srv = FTPServer(("127.0.0.1", 2121), man, ioloop=IOLoop())
+        threading.Thread(target=srv.serve_forever, kwargs={"blocking": True}, daemon=True).start()
+        sqlq("delete from envio_bo_certificados; insert into panel.acceso (email) values ('admin@prueba.local') on conflict do nothing")
+        pag.fill("#boClave", "clave")
+        pag.click('[data-envio-modo="todas"]')
+        pag.wait_for_selector(".cert-bo", timeout=60000)
+        texto_cert = pag.inner_text(".cert-bo")
+        check("certificado no reconocido: el cartel muestra sus datos y la huella, y ofrece confiar en él (como FileZilla)",
+              "autofirmado" in texto_cert and "Huella SHA-256" in texto_cert and "localhost" in texto_cert
+              and pag.locator("#boConfiar").count() == 1 and sqlq("select count(*) from envios where tipo = 'reporte_bo'") == envios_bo,
+              texto_cert)
+        avisos_bo = []
+        def responder_bo(dl):
+            avisos_bo.append(dl.message); dl.accept()
+        pag.on("dialog", responder_bo)
+        check("el cartel no pide la carpeta del servidor (cada usuario de BO tiene una sola)", pag.locator("#boCarpeta").count() == 0)
+        pag.click("#boConfiar")
+        pag.wait_for_function("() => !document.getElementById('envioBg')", timeout=60000)
+        pag.remove_listener("dialog", responder_bo)
+        enviados = list((carpeta_bo / "bo" / "Upload").glob("reporte_bo_carga*.csv"))
+        check("al confiar en el certificado, envía sin volver a pedir la contraseña a la única carpeta del usuario, y lo recuerda",
+              len(enviados) == 1 and avisos_bo and "Reporte BO enviado" in avisos_bo[0] and "/Upload" in avisos_bo[0]
+              and sqlq("select aceptado_por from envio_bo_certificados") == "admin@prueba.local", (avisos_bo, enviados))
+        srv.close_all()
+        sqlq("delete from panel.acceso where email = 'admin@prueba.local'")
+        pag.click("#exportBo"); pag.wait_for_selector('[data-envio-modo="todas"]')
+    pag.click("#envioCambiar")
+    check("'Descargar el archivo en lugar de enviarlo' vuelve a la descarga",
+          "Descargar reporte BO" in pag.inner_text(".modal") and pag.locator("#boClave").count() == 0, pag.inner_text(".modal")[:200])
+    pag.click("#closeEnvio")
+    sqlq("delete from envio_bo_usuarios where email = 'admin@prueba.local'; update envio_bo_config set todos = true")
+    errores_js[:] = [e for e in errores_js if "502" not in e and "Failed to load resource" not in e]
+
+    # ---- manual de uso
+    check("el enlace al manual está arriba", pag.get_attribute("#manualLink", "href") == "manual.html")
+    manual = ctx.new_page(); manual.goto(BASE + "/manual.html")
+    texto_manual = manual.inner_text("main")
+    check("el manual explica cargas, limpieza de títulos, nuevas/todas y estado de trabajo",
+          all(t in texto_manual for t in ("Carga CSV", "Normalización de títulos", "Identificadas desde tu último reporte BO", "Cada persona tiene su propio seguimiento", "Estado de trabajo automático", "REVISAR NOT WORK", "RECLAMO ACTIVO", "(el Estado de BO)", "Semanas en orden", "falta cargar la semana", "Cargar ticket", "TICKET ENVIADO", "Mantener la sesión iniciada", "Con Tempo ID", "Compilado", "UNCONTROLLED DUP", "Usar este nombre", "Ranking de origen", "Tempo ID duplicado", "Enviar reporte BO", "Probar la conexión", "Tickets enviados",
+                                          "Historial de cargas", "carácter informativo", "Reporte Tempo Control",
+                                          "Respaldo en OneDrive", "no altera la información",
+                                          "Base de datos en Docker", "Recomendaciones de seguridad", "Usuario estándar"))
+          and not any(t in texto_manual for t in ("Ver eliminados", "Trimestral", "usuario_estandar")),
+          texto_manual[:300])
+    manual.close()
+
+    # ---- historial de cargas: solo lectura, por plataforma y país, y por reporte
+    pag.click('[data-tab="history"]'); pag.wait_for_selector(".subtab", timeout=10000)
+    check("la pestaña se llama Historial de cargas", pag.inner_text('[data-tab="history"]').strip() == "Historial de cargas")
+    subtabs = pag.locator(".subtab").all_inner_texts()
+    check("el historial se divide en YouTube, Spotify, Reportes BackOffice y Reportes Tempo Control",
+          [re.sub(r"\d+$", "", t).strip() for t in subtabs] == ["YouTube", "Spotify", "Reportes BackOffice", "Reportes Tempo Control"], subtabs)
+    def panel():
+        return pag.inner_text(".panel-body")
+    check("el historial no tiene la nota redundante de solo lectura", "Solo lectura" not in panel(), panel()[:200])
+    check("el historial es solo informativo: sin descargas ni borrados",
+          pag.locator(".panel-body button", has_text="Descargar").count() == 0
+          and pag.locator(".panel-body button", has_text="Eliminar").count() == 0)
+    pag.click('[data-hist-tab="spotify"]'); pag.wait_for_timeout(300)
+    check("Spotify, todos los países: resumen por país (semanas cargadas)",
+          pag.locator('tr[data-hist-pais="AR"]').count() == 1 and pag.locator('tr[data-hist-pais="PY"]').count() == 1
+          and pag.is_disabled('.chip[data-hist-pais="CL"]'), panel()[:600])
+    pag.click('.chip[data-hist-pais="AR"]'); pag.wait_for_timeout(300)
+    fila = pag.inner_text(".panel-body tbody tr")
+    check("Spotify AR: cada semana con sus canciones, el archivo del que salió y quién lo cargó",
+          all(t in fila for t in ("2026-10-08", "2", "regional-ar-weekly-2026-10-08.csv", "admin")), fila)
+    pag.click('[data-hist-tab="youtube"]'); pag.wait_for_timeout(300)
+    pag.click('.chip[data-hist-pais="PY"]'); pag.wait_for_timeout(300)
+    check("YouTube PY: la semana y el archivo oficial de YouTube",
+          "2023-03-09" in panel() and "youtube-charts-top-songs-py-weekly-20230309.csv" in panel(), panel()[:600])
+    pag.click('[data-hist-tab="bo"]'); pag.wait_for_timeout(300)
+    check("Reportes BackOffice: obras con datos de BO por país", "AR\t1" in panel() and "obras con datos del reporte backoffice" in panel().lower(),
+          panel()[:600])
+    pag.click('[data-hist-tab="tempo"]'); pag.wait_for_timeout(300)
+    check("Reportes Tempo Control: obras con Tempo ID y la carga de Tempo IDs",
+          "Obras de la tabla principal con Tempo ID: 3" in panel() and "tempo_ids.csv" in panel() and "Tempo IDs" in panel(), panel()[:600])  # 3: con "Tema Identificado Despues"
+    todo = "".join(pag.click(f'[data-hist-tab="{k}"]') or panel() for k in ("youtube", "spotify", "bo", "tempo"))
+    check("las descargas (reporte BO y CSV generados) no aparecen como cargas",
+          "reporte_bo_carga" not in todo and "tabla_principal" not in todo)
+
+    # ---- sesión persistente y cierre
+    pag.reload(); pag.wait_for_selector("#logoutBtn", timeout=10000)
+    check("al recargar la página sigue la sesión", pag.is_visible("#logoutBtn"))
+    pag.click("#logoutBtn"); pag.wait_for_selector("#loginEmail", timeout=5000)
+    check("cerrar sesión vuelve al login", pag.is_visible("#loginEmail"))
+
+    # ---- usuario auditor: solo lectura (sin pestaña de carga habilitada)
+    pag.fill("#loginEmail", "auditor@prueba.local"); pag.fill("#loginPass", "clave-auditor-123"); pag.click("#loginBtn")
+    pag.wait_for_selector("#logoutBtn", timeout=10000)
+    pag.click('[data-tab="master"]'); pag.wait_for_timeout(1000)
+    check("auditor entra y ve la tabla principal en solo lectura",
+          "Tema Navegador" in pag.content() and pag.locator('[data-field-master="tempo_id"]').count() == 0)
+    nav.close()
+
+reales = [e for e in errores_js if "fonts.g" not in e and "net::ERR" not in e]
+check("sin errores de JavaScript en la página", not reales, reales[:5])
+print(f"\nFallas: {len(fallas)}")
+sys.exit(1 if fallas else 0)
